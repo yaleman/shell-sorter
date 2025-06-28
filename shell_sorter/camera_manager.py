@@ -51,7 +51,7 @@ class CameraManager:
                 cameras.append(camera_info)
                 self.cameras[i] = camera_info
                 
-                logger.info(f"Detected camera {i} with resolution {width}x{height}")
+                logger.info("Detected camera %d with resolution %dx%d", i, width, height)
             
             cap.release()
         
@@ -72,14 +72,14 @@ class CameraManager:
             for index in camera_indices:
                 if index in self.cameras:
                     self.cameras[index].is_selected = True
-                    logger.info(f"Selected camera {index}")
+                    logger.info("Selected camera %d", index)
                 else:
-                    logger.warning(f"Camera {index} not found")
+                    logger.warning("Camera %d not found", index)
                     return False
             
             return True
         except Exception as e:
-            logger.error(f"Error selecting cameras: {e}")
+            logger.error("Error selecting cameras: %s", e)
             return False
     
     def get_selected_cameras(self) -> List[CameraInfo]:
@@ -100,14 +100,14 @@ class CameraManager:
             try:
                 return future.result(timeout=timeout)
             except concurrent.futures.TimeoutError:
-                logger.warning(f"Camera {camera_index} open timed out after {timeout}s")
+                logger.warning("Camera %d open timed out after %gs", camera_index, timeout)
                 return None
     
     def start_camera_stream(self, camera_index: int) -> bool:
         """Start streaming from a specific camera."""
         try:
             if camera_index not in self.cameras:
-                logger.warning(f"Camera {camera_index} not found in detected cameras")
+                logger.warning("Camera %d not found in detected cameras", camera_index)
                 return False
             
             with self._lock:
@@ -115,10 +115,10 @@ class CameraManager:
                 self.stop_camera_stream(camera_index)
                 
                 # Create new capture with timeout
-                logger.info(f"Opening camera {camera_index}...")
+                logger.info("Opening camera %d...", camera_index)
                 cap = self._open_camera_with_timeout(camera_index, timeout=3.0)
                 if cap is None:
-                    logger.error(f"Failed to open camera {camera_index} within timeout")
+                    logger.error("Failed to open camera %d within timeout", camera_index)
                     return False
                 
                 # Set camera properties for better performance
@@ -140,11 +140,11 @@ class CameraManager:
                 thread.start()
                 
                 self.cameras[camera_index].is_active = True
-                logger.info(f"Started streaming from camera {camera_index}")
+                logger.info("Started streaming from camera %d", camera_index)
                 return True
                 
         except Exception as e:
-            logger.error(f"Error starting camera {camera_index}: {e}")
+            logger.error("Error starting camera %d: %s", camera_index, e)
             return False
     
     def stop_camera_stream(self, camera_index: int) -> None:
@@ -176,23 +176,23 @@ class CameraManager:
                 if camera_index in self.cameras:
                     self.cameras[camera_index].is_active = False
                 
-                logger.info(f"Stopped streaming from camera {camera_index}")
+                logger.info("Stopped streaming from camera %d", camera_index)
                 
         except Exception as e:
-            logger.error(f"Error stopping camera {camera_index}: {e}")
+            logger.error("Error stopping camera %d: %s", camera_index, e)
     
     def _stream_camera(self, camera_index: int) -> None:
         """Internal method to stream frames from a camera."""
         cap = self.active_captures[camera_index]
         stop_event = self.stop_streaming[camera_index]
         
-        logger.info(f"Started streaming thread for camera {camera_index}")
+        logger.info("Started streaming thread for camera %d", camera_index)
         
         while not stop_event.is_set():
             try:
                 ret, frame = cap.read()
                 if not ret:
-                    logger.warning(f"Failed to read frame from camera {camera_index}")
+                    logger.warning("Failed to read frame from camera %d", camera_index)
                     if stop_event.wait(0.1):  # Wait with timeout for responsive shutdown
                         break
                     continue
@@ -206,10 +206,10 @@ class CameraManager:
                     break
                 
             except Exception as e:
-                logger.error(f"Error in camera {camera_index} stream: {e}")
+                logger.error("Error in camera %d stream: %s", camera_index, e)
                 break
         
-        logger.info(f"Stopped streaming thread for camera {camera_index}")
+        logger.info("Stopped streaming thread for camera %d", camera_index)
     
     def get_latest_frame(self, camera_index: int) -> Optional[bytes]:
         """Get the latest frame from a camera as JPEG bytes."""
@@ -222,24 +222,24 @@ class CameraManager:
             logger.warning("No cameras selected for streaming")
             return []
         
-        logger.info(f"Attempting to start {len(selected_cameras)} selected cameras: {[c.index for c in selected_cameras]}")
+        logger.info("Attempting to start %d selected cameras: %s", len(selected_cameras), [c.index for c in selected_cameras])
         
         started = []
         failed = []
         
         for camera in selected_cameras:
-            logger.info(f"Starting camera {camera.index}...")
+            logger.info("Starting camera %d...", camera.index)
             if self.start_camera_stream(camera.index):
                 started.append(camera.index)
-                logger.info(f"Successfully started camera {camera.index}")
+                logger.info("Successfully started camera %d", camera.index)
             else:
                 failed.append(camera.index)
-                logger.error(f"Failed to start camera {camera.index}")
+                logger.error("Failed to start camera %d", camera.index)
         
         if failed:
-            logger.warning(f"Failed to start cameras: {failed}")
+            logger.warning("Failed to start cameras: %s", failed)
         
-        logger.info(f"Started {len(started)} out of {len(selected_cameras)} cameras")
+        logger.info("Started %d out of %d cameras", len(started), len(selected_cameras))
         return started
     
     def stop_all_cameras(self) -> None:
@@ -256,10 +256,10 @@ class CameraManager:
         # Wait for all threads to finish
         for camera_index, thread in list(self.streaming_threads.items()):
             if thread.is_alive():
-                logger.info(f"Waiting for camera {camera_index} thread to finish...")
+                logger.info("Waiting for camera %d thread to finish...", camera_index)
                 thread.join(timeout=2.0)
                 if thread.is_alive():
-                    logger.warning(f"Camera {camera_index} thread did not finish cleanly")
+                    logger.warning("Camera %d thread did not finish cleanly", camera_index)
         
         # Clear all data structures
         self.cameras.clear()
