@@ -1,20 +1,21 @@
 import uvicorn
 from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Generator
 from datetime import datetime
 import logging
 
 from .config import Settings
 from .ml_trainer import MLTrainer
+from .camera_manager import CameraManager
 
 
 class MachineController:
     """Controls the sorting machine state and job management."""
-    
+
     def __init__(self) -> None:
         self.machine_status: Dict[str, Any] = {
             "status": "idle",
@@ -23,19 +24,19 @@ class MachineController:
             "last_update": datetime.now().isoformat(),
         }
         self.sorting_jobs: List[Dict[str, Any]] = []
-    
+
     def get_status(self) -> Dict[str, Any]:
         """Get current machine status."""
         return self.machine_status
-    
+
     def get_jobs(self) -> List[Dict[str, Any]]:
         """Get all sorting jobs."""
         return self.sorting_jobs
-    
+
     def get_recent_jobs(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent jobs in reverse chronological order."""
         return self.sorting_jobs[-limit:][::-1]
-    
+
     def start_sorting(self, case_type: str, quantity: int) -> Dict[str, Any]:
         """Start a new sorting job."""
         job_id = len(self.sorting_jobs) + 1
@@ -47,16 +48,18 @@ class MachineController:
             "started_at": datetime.now().isoformat(),
             "completed_at": None,
         }
-        
+
         self.sorting_jobs.append(new_job)
-        self.machine_status.update({
-            "status": "running",
-            "current_job": new_job,
-            "last_update": datetime.now().isoformat(),
-        })
-        
+        self.machine_status.update(
+            {
+                "status": "running",
+                "current_job": new_job,
+                "last_update": datetime.now().isoformat(),
+            }
+        )
+
         return new_job
-    
+
     def stop_sorting(self) -> None:
         """Stop the current sorting job."""
         if self.machine_status["current_job"]:
@@ -67,12 +70,14 @@ class MachineController:
                         job["status"] = "stopped"
                         job["completed_at"] = datetime.now().isoformat()
                         break
-        
-        self.machine_status.update({
-            "status": "idle",
-            "current_job": None,
-            "last_update": datetime.now().isoformat(),
-        })
+
+        self.machine_status.update(
+            {
+                "status": "idle",
+                "current_job": None,
+                "last_update": datetime.now().isoformat(),
+            }
+        )
 
 
 # Initialize settings on startup
@@ -84,6 +89,9 @@ ml_trainer = MLTrainer(settings)
 # Initialize machine controller
 machine_controller = MachineController()
 
+# Initialize camera manager
+camera_manager = CameraManager()
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -93,8 +101,6 @@ app = FastAPI(title="Shell Sorter Control Panel", version="1.0.0")
 # Setup templates and static files
 templates_dir = Path(__file__).parent / "templates"
 static_dir = Path(__file__).parent / "static"
-templates_dir.mkdir(exist_ok=True)
-static_dir.mkdir(exist_ok=True)
 
 templates = Jinja2Templates(directory=str(templates_dir))
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -115,11 +121,17 @@ def get_settings() -> Settings:
     return settings
 
 
+def get_camera_manager() -> CameraManager:
+    """Dependency to get the camera manager instance."""
+    return camera_manager
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(
     request: Request,
     controller: MachineController = Depends(get_machine_controller),
     app_settings: Settings = Depends(get_settings),
+    cam_manager: CameraManager = Depends(get_camera_manager),
 ) -> HTMLResponse:
     return templates.TemplateResponse(
         "dashboard.html",
@@ -128,6 +140,7 @@ async def dashboard(
             "machine_status": controller.get_status(),
             "recent_jobs": controller.get_recent_jobs(),
             "supported_case_types": app_settings.supported_case_types,
+            "cameras": cam_manager.get_cameras(),
         },
     )
 
@@ -271,6 +284,133 @@ async def train_model(
             raise HTTPException(status_code=400, detail=message)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Camera Management Endpoints
+
+
+@app.get("/api/cameras/detect")
+async def detect_cameras(
+    cam_manager: CameraManager = Depends(get_camera_manager),
+) -> List[Dict[str, Any]]:
+    """Detect all available cameras."""
+    cameras = cam_manager.detect_cameras()
+    return [
+        {
+            "index": cam.index,
+            "name": cam.name,
+            "resolution": cam.resolution,
+            "is_active": cam.is_active,
+            "is_selected": cam.is_selected,
+        }
+        for cam in cameras
+    ]
+
+
+@app.get("/api/cameras")
+async def get_cameras(
+    cam_manager: CameraManager = Depends(get_camera_manager),
+) -> List[Dict[str, Any]]:
+    """Get list of detected cameras."""
+    cameras = cam_manager.get_cameras()
+    return [
+        {
+            "index": cam.index,
+            "name": cam.name,
+            "resolution": cam.resolution,
+            "is_active": cam.is_active,
+            "is_selected": cam.is_selected,
+        }
+        for cam in cameras
+    ]
+
+
+@app.post("/api/cameras/select")
+async def select_cameras(
+    camera_indices: List[int],
+    cam_manager: CameraManager = Depends(get_camera_manager),
+) -> Dict[str, Any]:
+    """Select which cameras to use for sorting."""
+    success = cam_manager.select_cameras(camera_indices)
+    if success:
+        return {
+            "message": f"Selected cameras: {camera_indices}",
+            "selected_cameras": camera_indices,
+        }
+    else:
+        raise HTTPException(status_code=400, detail="Failed to select cameras")
+
+
+@app.post("/api/cameras/{camera_index}/start")
+async def start_camera(
+    camera_index: int,
+    cam_manager: CameraManager = Depends(get_camera_manager),
+) -> Dict[str, str]:
+    """Start streaming from a specific camera."""
+    success = cam_manager.start_camera_stream(camera_index)
+    if success:
+        return {"message": f"Started camera {camera_index}"}
+    else:
+        raise HTTPException(
+            status_code=400, detail=f"Failed to start camera {camera_index}"
+        )
+
+
+@app.post("/api/cameras/{camera_index}/stop")
+async def stop_camera(
+    camera_index: int,
+    cam_manager: CameraManager = Depends(get_camera_manager),
+) -> Dict[str, str]:
+    """Stop streaming from a specific camera."""
+    cam_manager.stop_camera_stream(camera_index)
+    return {"message": f"Stopped camera {camera_index}"}
+
+
+@app.post("/api/cameras/start-selected")
+async def start_selected_cameras(
+    cam_manager: CameraManager = Depends(get_camera_manager),
+) -> Dict[str, Any]:
+    """Start streaming from all selected cameras."""
+    started = cam_manager.start_selected_cameras()
+    return {
+        "message": f"Started {len(started)} cameras",
+        "started_cameras": started,
+    }
+
+
+@app.post("/api/cameras/stop-all")
+async def stop_all_cameras(
+    cam_manager: CameraManager = Depends(get_camera_manager),
+) -> Dict[str, str]:
+    """Stop all camera streams."""
+    cam_manager.stop_all_cameras()
+    return {"message": "Stopped all cameras"}
+
+
+@app.get("/api/cameras/{camera_index}/stream")
+async def camera_stream(
+    camera_index: int,
+    cam_manager: CameraManager = Depends(get_camera_manager),
+) -> StreamingResponse:
+    """Stream live video from a camera."""
+
+    def generate_frames() -> Generator[bytes, None, None]:
+        while True:
+            frame_data = cam_manager.get_latest_frame(camera_index)
+            if frame_data:
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n" + frame_data + b"\r\n"
+                )
+            else:
+                # Return a placeholder if no frame available
+                yield (
+                    b"--frame\r\nContent-Type: text/plain\r\n\r\nNo frame available\r\n"
+                )
+
+    return StreamingResponse(
+        generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame"
+    )
 
 
 def simulate_sorting_machine() -> None:

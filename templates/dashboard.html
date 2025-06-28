@@ -68,6 +68,46 @@
                 </div>
             </section>
 
+            <section class="camera-panel">
+                <h2>Camera Management</h2>
+                <div class="camera-controls">
+                    <button id="detect-cameras-btn" class="btn btn-secondary">Detect Cameras</button>
+                    <button id="start-selected-btn" class="btn btn-primary">Start Selected</button>
+                    <button id="stop-all-btn" class="btn btn-danger">Stop All</button>
+                </div>
+                
+                <div class="camera-list" id="camera-list">
+                    {% if cameras %}
+                        {% for camera in cameras %}
+                        <div class="camera-item" data-camera-index="{{ camera.index }}">
+                            <div class="camera-info">
+                                <input type="checkbox" id="camera-{{ camera.index }}" 
+                                       class="camera-checkbox" 
+                                       data-camera-index="{{ camera.index }}"
+                                       {% if camera.is_selected %}checked{% endif %}>
+                                <label for="camera-{{ camera.index }}">
+                                    <strong>{{ camera.name }}</strong>
+                                    <span class="camera-resolution">{{ camera.resolution[0] }}x{{ camera.resolution[1] }}</span>
+                                </label>
+                                <span class="camera-status status-{{ 'active' if camera.is_active else 'inactive' }}">
+                                    {{ 'Active' if camera.is_active else 'Inactive' }}
+                                </span>
+                            </div>
+                            {% if camera.is_active %}
+                            <div class="camera-feed">
+                                <img src="/api/cameras/{{ camera.index }}/stream" 
+                                     alt="Camera {{ camera.index }} feed"
+                                     class="camera-stream">
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="no-cameras">No cameras detected. Click "Detect Cameras" to search for available cameras.</p>
+                    {% endif %}
+                </div>
+            </section>
+
             <section class="jobs-panel">
                 <h2>Recent Jobs</h2>
                 <div class="jobs-list">
