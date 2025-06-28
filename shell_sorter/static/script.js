@@ -450,10 +450,39 @@ document.addEventListener('DOMContentLoaded', function() {
         showOverlayCheckbox.addEventListener('change', function() {
             toggleRegionOverlays(this.checked);
         });
+        
+        // Initialize overlay state on page load
+        initializeOverlayCheckbox();
+    }
+    
+    function initializeOverlayCheckbox() {
+        const overlays = document.querySelectorAll('.camera-region-overlay');
+        
+        // If there are overlays available, ensure the checkbox works properly
+        if (overlays.length > 0) {
+            // Check if any overlays are currently visible to set initial checkbox state
+            const visibleOverlays = Array.from(overlays).some(overlay => 
+                overlay.style.display !== 'none' && overlay.style.display !== ''
+            );
+            
+            if (showOverlayCheckbox) {
+                showOverlayCheckbox.checked = visibleOverlays;
+            }
+        }
     }
     
     function toggleRegionOverlays(show) {
         const overlays = document.querySelectorAll('.camera-region-overlay');
+        
+        // If no overlays exist yet, show a message and uncheck the checkbox
+        if (overlays.length === 0 && show) {
+            showToast('No camera regions selected yet. Set up regions first.', 'info');
+            if (showOverlayCheckbox) {
+                showOverlayCheckbox.checked = false;
+            }
+            return;
+        }
+        
         overlays.forEach(overlay => {
             if (show) {
                 updateOverlayPosition(overlay);
