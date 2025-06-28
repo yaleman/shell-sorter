@@ -124,8 +124,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Auto-refresh status every 5 seconds
-    setInterval(async function() {
+    // Auto-refresh status every 25 seconds
+    let statusInterval = setInterval(async function() {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2500);
@@ -144,6 +144,16 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error fetching status:', error);
         }
     }, 25000);
+    
+    // Clean up intervals when page unloads
+    window.addEventListener('beforeunload', function() {
+        if (statusInterval) {
+            clearInterval(statusInterval);
+        }
+        if (currentCameraPollInterval) {
+            clearInterval(currentCameraPollInterval);
+        }
+    });
 
     // Camera management functions
     if (detectCamerasBtn) {
@@ -389,12 +399,19 @@ document.addEventListener('DOMContentLoaded', function() {
         return null;
     }
     
+    let currentCameraPollInterval = null;
+    
     function pollForCameraUpdates() {
+        // Clear any existing polling first
+        if (currentCameraPollInterval) {
+            clearInterval(currentCameraPollInterval);
+        }
+        
         console.log('Starting camera status polling...');
         let pollCount = 0;
         const maxPolls = 12; // Poll for up to 60 seconds (12 * 5s)
         
-        const pollInterval = setInterval(async () => {
+        currentCameraPollInterval = setInterval(async () => {
             pollCount++;
             console.log(`Camera status poll ${pollCount}/${maxPolls}`);
             
@@ -409,7 +426,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Stop polling if all selected cameras are active or we've reached max polls
                 if (selectedActive.length === selectedTotal.length || pollCount >= maxPolls) {
-                    clearInterval(pollInterval);
+                    clearInterval(currentCameraPollInterval);
+                    currentCameraPollInterval = null;
                     if (selectedActive.length === selectedTotal.length) {
                         console.log('All selected cameras are now active');
                     } else {
