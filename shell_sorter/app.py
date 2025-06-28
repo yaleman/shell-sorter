@@ -418,13 +418,9 @@ async def camera_stream(
     )
 
 
-def simulate_sorting_machine() -> None:
+def main() -> None:
     print("Shell Sorter Machine Control Panel")
     print(f"Web interface available at: http://{settings.host}:{settings.port}")
-
-
-def main() -> None:
-    simulate_sorting_machine()
     uvicorn.run(app, host=settings.host, port=settings.port)
 
 

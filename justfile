@@ -17,4 +17,5 @@ fmt:
 
 # Run the application
 run:
+    killall shell-sorter || true
     uv run shell-sorter
