@@ -663,6 +663,11 @@ async def capture_images() -> Dict[str, Any]:
                         "camera_index": camera.index,
                         "filename": filename,
                         "camera_name": camera.name,
+                        "view_type": camera.view_type,
+                        "region_x": camera.region_x,
+                        "region_y": camera.region_y,
+                        "region_width": camera.region_width,
+                        "region_height": camera.region_height,
                     }
                 )
 
@@ -674,6 +679,12 @@ async def capture_images() -> Dict[str, Any]:
         raise HTTPException(
             status_code=400, detail="No images could be captured from selected cameras"
         )
+
+    # Save capture metadata for later use during shell data saving
+    metadata_path = images_dir / f"{session_id}_metadata.json"
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        import json
+        json.dump(captured_images, f, indent=2)
 
     logger.info("Captured %d images for session %s", len(captured_images), session_id)
 
@@ -800,12 +811,26 @@ async def save_shell_data(
                 status_code=400, detail="image_filenames must be a non-empty list"
             )
 
+        # Load capture metadata if available
+        captured_images_data = None
+        try:
+            metadata_path = Path("images") / f"{session_id}_metadata.json"
+            if metadata_path.exists():
+                with open(metadata_path, "r", encoding="utf-8") as f:
+                    metadata = json.load(f)
+                    # Convert to CapturedImage objects
+                    from .shell import CapturedImage
+                    captured_images_data = [CapturedImage(**img_data) for img_data in metadata]
+        except Exception as e:
+            logger.warning("Could not load capture metadata for session %s: %s", session_id, e)
+
         # Create Shell object
         shell = Shell(
             date_captured=datetime.now(),
             brand=brand,
             shell_type=shell_type,
             image_filenames=filenames_list,
+            captured_images=captured_images_data,
         )
 
         # Create data directory if it doesn't exist
@@ -955,7 +980,7 @@ async def generate_composite_images(
                 # Generate composite image
                 session_id = json_file.stem
                 composite_path = await _generate_composite_image(
-                    session_id, shell_data["image_filenames"], composites_dir
+                    session_id, shell_data, composites_dir
                 )
 
                 if composite_path:
@@ -980,9 +1005,9 @@ async def generate_composite_images(
 
 
 async def _generate_composite_image(
-    session_id: str, image_filenames: List[str], output_dir: Path
+    session_id: str, shell_data: Dict[str, Any], output_dir: Path
 ) -> Optional[Path]:
-    """Generate a composite image from multiple shell images."""
+    """Generate a composite image from multiple shell images using region data."""
     if cv2 is None or np is None:
         logger.error("OpenCV or NumPy not available for composite image generation")
         return None
@@ -990,14 +1015,26 @@ async def _generate_composite_image(
     try:
         images_dir = Path("images")
         composite_path = output_dir / f"{session_id}_composite.jpg"
+        image_filenames = shell_data.get("image_filenames", [])
+        captured_images = shell_data.get("captured_images", [])
+        
+        # Create a lookup for region data by filename
+        region_lookup = {}
+        if captured_images:
+            for img_info in captured_images:
+                region_lookup[img_info["filename"]] = img_info
 
-        # Load all images
+        # Load all images and apply region processing
         loaded_images = []
         for filename in image_filenames:
             image_path = images_dir / filename
             if image_path.exists():
                 img = cv2.imread(str(image_path))
                 if img is not None:
+                    # Apply region cropping if available
+                    if filename in region_lookup:
+                        img = _apply_region_processing(img, region_lookup[filename])
+                    
                     # Resize to standard size
                     img = cv2.resize(img, (200, 200))
                     loaded_images.append(img)
@@ -1040,6 +1077,105 @@ async def _generate_composite_image(
     except Exception as e:
         logger.error("Error creating composite image for %s: %s", session_id, e)
         return None
+
+
+def _apply_region_processing(img: Any, region_info: Dict[str, Any]) -> Any:
+    """Apply region processing to an image based on camera view type and region data."""
+    if cv2 is None or np is None:
+        return img
+    
+    view_type = region_info.get("view_type")
+    region_x = region_info.get("region_x")
+    region_y = region_info.get("region_y")
+    region_width = region_info.get("region_width")
+    region_height = region_info.get("region_height")
+    
+    # If region data is available, crop to region
+    if all(x is not None for x in [region_x, region_y, region_width, region_height]):
+        h, w = img.shape[:2]
+        
+        # Convert to int (we know they're not None due to the check above)
+        assert region_x is not None
+        assert region_y is not None
+        assert region_width is not None
+        assert region_height is not None
+        region_x_int = int(region_x)
+        region_y_int = int(region_y)
+        region_width_int = int(region_width)
+        region_height_int = int(region_height)
+        
+        # Ensure region is within image bounds
+        x1 = max(0, min(region_x_int, w))
+        y1 = max(0, min(region_y_int, h))
+        x2 = max(0, min(region_x_int + region_width_int, w))
+        y2 = max(0, min(region_y_int + region_height_int, h))
+        
+        if x2 > x1 and y2 > y1:
+            img = img[y1:y2, x1:x2]
+    
+    # Apply view-specific processing
+    if view_type == "tail_view":
+        # For tail view, try to detect and focus on circular features
+        img = _apply_tail_view_processing(img)
+    
+    return img
+
+
+def _apply_tail_view_processing(img: Any) -> Any:
+    """Apply circular detection and filtering for tail view cameras."""
+    if cv2 is None or np is None:
+        return img
+    
+    try:
+        # Convert to grayscale for circle detection
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Apply Gaussian blur to reduce noise
+        blurred = cv2.GaussianBlur(gray, (9, 9), 2)
+        
+        # Detect circles using HoughCircles
+        circles = cv2.HoughCircles(
+            blurred,
+            cv2.HOUGH_GRADIENT,
+            dp=1,
+            minDist=30,
+            param1=50,
+            param2=30,
+            minRadius=10,
+            maxRadius=min(img.shape[:2]) // 2
+        )
+        
+        if circles is not None:
+            circles = np.round(circles[0, :]).astype("int")
+            
+            # Find the largest circle (likely the case end)
+            largest_circle = max(circles, key=lambda c: c[2])
+            x, y, r = largest_circle
+            
+            # Create a mask for the circular region
+            mask = np.zeros(gray.shape, dtype=np.uint8)
+            cv2.circle(mask, (x, y), r, 255, -1)
+            
+            # Apply the mask to the original image
+            result = cv2.bitwise_and(img, img, mask=mask)
+            
+            # Crop to the circle bounding box with some padding
+            padding = 10
+            x1 = max(0, x - r - padding)
+            y1 = max(0, y - r - padding)
+            x2 = min(img.shape[1], x + r + padding)
+            y2 = min(img.shape[0], y + r + padding)
+            
+            result = result[y1:y2, x1:x2]
+            
+            # If the result is too small, return the original
+            if result.shape[0] > 20 and result.shape[1] > 20:
+                return result
+    
+    except Exception as e:
+        logger.debug("Tail view processing failed, using original image: %s", e)
+    
+    return img
 
 
 def signal_handler(signum: int, _frame: Any) -> None:
