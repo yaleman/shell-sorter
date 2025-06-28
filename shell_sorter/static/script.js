@@ -45,76 +45,12 @@ function removeToast(toast) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    const startForm = document.getElementById('start-form');
-    const stopBtn = document.getElementById('stop-btn');
-
     // Camera management elements
     const detectCamerasBtn = document.getElementById('detect-cameras-btn');
     const startSelectedBtn = document.getElementById('start-selected-btn');
     const stopAllBtn = document.getElementById('stop-all-btn');
     const captureImagesBtn = document.getElementById('capture-images-btn');
     const nextCaseBtn = document.getElementById('next-case-btn');
-
-    if (startForm) {
-        startForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-
-            const formData = new FormData(startForm);
-
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 1500);
-
-                const response = await fetch('/api/start-sorting', {
-                    method: 'POST',
-                    body: formData,
-                    signal: controller.signal
-                });
-
-                clearTimeout(timeoutId);
-
-                if (response.ok) {
-                    const result = await response.json();
-                    showToast(result.message, 'success');
-                    location.reload();
-                } else {
-                    showToast('Error starting sorting job', 'error');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                showToast('Error starting sorting job', 'error');
-            }
-        });
-    }
-
-    if (stopBtn) {
-        stopBtn.addEventListener('click', async function() {
-            if (confirm('Are you sure you want to stop the current sorting job?')) {
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 2500);
-
-                    const response = await fetch('/api/stop-sorting', {
-                        method: 'POST',
-                        signal: controller.signal
-                    });
-
-                    clearTimeout(timeoutId);
-
-                    if (response.ok) {
-                        const result = await response.json();
-                        showToast(result.message, 'success');
-                        location.reload();
-                    } else {
-                        showToast('Error stopping sorting job', 'error');
-                    }
-                } catch (error) {
-                    console.error('Error:', error);
-                    showToast('Error stopping sorting job', 'error');
-                }
-            }
-        });
-    }
 
     if (captureImagesBtn) {
         captureImagesBtn.addEventListener('click', async function() {

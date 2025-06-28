@@ -19,43 +19,9 @@
             <section class="control-panel">
                 <h2>Machine Control</h2>
                 
-                {% if machine_status.status == "idle" %}
-                <form id="start-form" class="sorting-form">
-                    <div class="form-group">
-                        <label for="case_type">Case Type:</label>
-                        <select name="case_type" id="case_type" required>
-                            <option value="">Select case type</option>
-                            {% for case_type in supported_case_types %}
-                            <option value="{{ case_type }}">{{ case_type }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="quantity">Quantity:</label>
-                        <input type="number" name="quantity" id="quantity" min="1" max="10000" required>
-                    </div>
-                    
-                    <button type="submit" class="btn btn-primary">Start Sorting</button>
-                </form>
-                
                 <div class="manual-controls">
-                    <h3>Manual Controls</h3>
                     <button id="next-case-btn" class="btn btn-secondary">Next Case</button>
                 </div>
-                {% else %}
-                <div class="current-job">
-                    <h3>Current Job</h3>
-                    <p><strong>Case Type:</strong> {{ machine_status.current_job.case_type }}</p>
-                    <p><strong>Quantity:</strong> {{ machine_status.current_job.quantity }}</p>
-                    <p><strong>Started:</strong> {{ machine_status.current_job.started_at }}</p>
-                </div>
-                
-                <div class="job-controls">
-                    <button id="stop-btn" class="btn btn-danger">Stop Sorting</button>
-                    <button id="next-case-btn" class="btn btn-secondary">Next Case</button>
-                </div>
-                {% endif %}
             </section>
 
             <section class="status-panel">
