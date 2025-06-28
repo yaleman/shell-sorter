@@ -7,6 +7,8 @@ This application controls an ammunition shell case sorting machine that uses com
 - It is mandatory that 'just check' finishes without warnings or errors before considering a task complete
 - It is mandatory that the final step in completing a task is that all changes are commited to git
 - Any time the design or implementation changes, CLAUDE.md must be updated
+- Never allow a bare "type: ignore" comment
+- Never use global variables
 
 ## Architecture
 
