@@ -84,7 +84,11 @@
                                 {% endif %}
                             </div>
                             {% if camera.is_active %}
-                            <div class="camera-feed" data-camera-index="{{ camera.index }}">
+                            <div class="camera-feed" 
+                                 data-camera-index="{{ camera.index }}"
+                                 {% if camera.region_x is not none %}
+                                 data-region='{"x": {{ camera.region_x }}, "y": {{ camera.region_y }}, "width": {{ camera.region_width }}, "height": {{ camera.region_height }}}'
+                                 {% endif %}>
                                 <img src="/api/cameras/{{ camera.index }}/stream" 
                                      alt="Camera {{ camera.index }} feed"
                                      class="camera-stream">

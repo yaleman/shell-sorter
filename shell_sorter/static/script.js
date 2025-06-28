@@ -549,34 +549,57 @@ document.addEventListener('DOMContentLoaded', function() {
                 return; // Already has overlay
             }
             
-            // Look for region info in the same camera item
-            const cameraItem = feed.closest('.camera-item');
-            const regionInfo = cameraItem?.querySelector('.region-info');
+            // Check for JSON region data in data-region attribute
+            const regionData = feed.dataset.region;
+            console.log(`Camera feed ${index} region data:`, regionData || 'none');
             
-            console.log(`Camera feed ${index} region info:`, regionInfo?.textContent?.trim() || 'none');
-            
-            if (regionInfo && regionInfo.textContent.trim()) {
-                // Parse region info from the text (format: "x,y (widthxheight)")
-                const text = regionInfo.textContent.trim();
-                const match = text.match(/(\d+),(\d+)\s*\((\d+)x(\d+)\)/);
-                
-                if (match) {
-                    const [, x, y, width, height] = match;
+            if (regionData) {
+                try {
+                    const region = JSON.parse(regionData);
+                    const { x, y, width, height } = region;
                     
                     // Create overlay element
                     const overlay = document.createElement('div');
                     overlay.className = 'camera-region-overlay';
-                    overlay.dataset.regionX = x;
-                    overlay.dataset.regionY = y;
-                    overlay.dataset.regionWidth = width;
-                    overlay.dataset.regionHeight = height;
+                    overlay.dataset.regionX = x.toString();
+                    overlay.dataset.regionY = y.toString();
+                    overlay.dataset.regionWidth = width.toString();
+                    overlay.dataset.regionHeight = height.toString();
                     overlay.style.display = 'none';
                     
                     feed.appendChild(overlay);
                     overlaysCreated++;
                     console.log(`Created overlay for camera ${index} with region ${x},${y} (${width}x${height})`);
-                } else {
-                    console.warn(`Could not parse region info for camera ${index}:`, text);
+                } catch (error) {
+                    console.error(`Failed to parse region JSON for camera ${index}:`, error, regionData);
+                }
+            } else {
+                // Fallback: try parsing from UI text if JSON not available
+                const cameraItem = feed.closest('.camera-item');
+                const regionInfo = cameraItem?.querySelector('.region-info');
+                
+                if (regionInfo && regionInfo.textContent.trim()) {
+                    console.log(`Falling back to text parsing for camera ${index}`);
+                    const text = regionInfo.textContent.trim();
+                    const match = text.match(/(\d+),(\d+)\s*\((\d+)x(\d+)\)/);
+                    
+                    if (match) {
+                        const [, x, y, width, height] = match;
+                        
+                        const overlay = document.createElement('div');
+                        overlay.className = 'camera-region-overlay';
+                        overlay.dataset.regionX = x;
+                        overlay.dataset.regionY = y;
+                        overlay.dataset.regionWidth = width;
+                        overlay.dataset.regionHeight = height;
+                        overlay.style.display = 'none';
+                        
+                        feed.appendChild(overlay);
+                        overlaysCreated++;
+                        console.log(`Created overlay via fallback for camera ${index} with region ${x},${y} (${width}x${height})`);
+                    } else {
+                        console.warn(`Could not parse region info for camera ${index}:`, text);
+                    }
                 }
             }
         });
