@@ -147,6 +147,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Camera management functions
     if (detectCamerasBtn) {
         detectCamerasBtn.addEventListener('click', async function() {
+            // Show immediate notification that detection is starting
+            showToast('Detecting cameras...', 'info');
+            
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 seconds for camera detection
@@ -460,6 +463,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // If no cameras are detected, automatically trigger detection
                 if (cameras.length === 0) {
                     console.log('No cameras detected, auto-detecting...');
+                    showToast('No cameras found, automatically detecting...', 'info');
                     
                     const detectResponse = await fetch('/api/cameras/detect', {
                         signal: AbortSignal.timeout(10000)
@@ -475,9 +479,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             setTimeout(() => location.reload(), 1000);
                         } else {
                             console.log('No cameras found during auto-detection');
+                            showToast('No cameras found on this system', 'warning');
                         }
                     } else {
                         console.log('Auto-detection failed');
+                        showToast('Auto-detection failed', 'error');
                     }
                 } else {
                     console.log(`${cameras.length} cameras already detected`);
