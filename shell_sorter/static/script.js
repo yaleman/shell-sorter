@@ -126,6 +126,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const captureImagesBtn = document.getElementById('capture-images-btn');
     const nextCaseBtn = document.getElementById('next-case-btn');
     const mlTrainingBtn = document.getElementById('ml-training-btn');
+    const configBtn = document.getElementById('config-btn');
     const showOverlayCheckbox = document.getElementById('show-overlay-checkbox');
 
     if (captureImagesBtn) {
@@ -195,6 +196,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (mlTrainingBtn) {
         mlTrainingBtn.addEventListener('click', function() {
             window.location.href = '/ml-training';
+        });
+    }
+
+    if (configBtn) {
+        configBtn.addEventListener('click', function() {
+            window.location.href = '/config';
         });
     }
 

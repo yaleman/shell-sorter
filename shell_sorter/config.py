@@ -154,3 +154,7 @@ class UserConfig(BaseModel):
         """Clear configuration for a camera by name."""
         if camera_name in self.camera_configs:
             del self.camera_configs[camera_name]
+    
+    def remove_camera_config(self, camera_name: str) -> None:
+        """Remove configuration for a camera by name (alias for clear_camera_config)."""
+        self.clear_camera_config(camera_name)

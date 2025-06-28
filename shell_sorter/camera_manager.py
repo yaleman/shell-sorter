@@ -43,6 +43,7 @@ class CameraManager:
         self.latest_frames: Dict[int, Optional[bytes]] = {}
         self._lock = threading.Lock()
         self.settings = settings
+        self.auto_start_cameras: bool = False
 
     def _get_camera_device_name(self, camera_index: int) -> str:
         """Get the actual device name/model for a camera."""
@@ -521,3 +522,101 @@ class CameraManager:
         except Exception as e:
             logger.error("Failed to save camera config for %s: %s", 
                         camera_info.name, e)
+    
+    def remove_camera(self, camera_index: int) -> bool:
+        """Remove a camera from the configuration."""
+        try:
+            if camera_index not in self.cameras:
+                logger.warning("Camera %d not found for removal", camera_index)
+                return False
+            
+            # Stop camera if it's active
+            self.stop_camera_stream(camera_index)
+            
+            # Remove from cameras dict
+            camera_info = self.cameras[camera_index]
+            del self.cameras[camera_index]
+            
+            # Remove from user config if settings available
+            if self.settings:
+                try:
+                    from .config import UserConfig
+                    user_config_data = self.settings.load_user_config()
+                    user_config = UserConfig(**user_config_data)
+                    user_config.remove_camera_config(camera_info.name)
+                    self.settings.save_user_config(user_config.model_dump())
+                except Exception as e:
+                    logger.warning("Failed to remove camera from user config: %s", e)
+            
+            logger.info("Removed camera %d (%s) from configuration", camera_index, camera_info.name)
+            return True
+            
+        except Exception as e:
+            logger.error("Error removing camera %d: %s", camera_index, e)
+            return False
+    
+    def clear_cameras(self) -> None:
+        """Clear all cameras from configuration."""
+        try:
+            # Stop all active cameras
+            self.stop_all_cameras()
+            
+            # Clear cameras dict
+            camera_names = [cam.name for cam in self.cameras.values()]
+            self.cameras.clear()
+            
+            # Clear user config if settings available
+            if self.settings:
+                try:
+                    from .config import UserConfig
+                    user_config_data = self.settings.load_user_config()
+                    user_config = UserConfig(**user_config_data)
+                    for camera_name in camera_names:
+                        user_config.remove_camera_config(camera_name)
+                    self.settings.save_user_config(user_config.model_dump())
+                except Exception as e:
+                    logger.warning("Failed to clear cameras from user config: %s", e)
+            
+            logger.info("Cleared all cameras from configuration")
+            
+        except Exception as e:
+            logger.error("Error clearing cameras: %s", e)
+    
+    def reset_to_defaults(self) -> None:
+        """Reset camera manager to default settings."""
+        try:
+            # Stop all cameras and clear
+            self.clear_cameras()
+            
+            # Reset settings
+            self.auto_start_cameras = False
+            
+            # Clear user config entirely if settings available
+            if self.settings:
+                try:
+                    from .config import UserConfig
+                    default_config = UserConfig()
+                    self.settings.save_user_config(default_config.model_dump())
+                except Exception as e:
+                    logger.warning("Failed to reset user config: %s", e)
+            
+            logger.info("Reset camera manager to defaults")
+            
+        except Exception as e:
+            logger.error("Error resetting to defaults: %s", e)
+    
+    def save_config(self) -> None:
+        """Save current configuration including auto-start setting."""
+        try:
+            if not self.settings:
+                logger.warning("No settings available to save config")
+                return
+            
+            # Save all current camera configs
+            for camera in self.cameras.values():
+                self._save_camera_config(camera)
+            
+            logger.info("Saved camera manager configuration")
+            
+        except Exception as e:
+            logger.error("Error saving config: %s", e)

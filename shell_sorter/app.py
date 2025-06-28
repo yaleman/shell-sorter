@@ -205,6 +205,21 @@ async def dashboard(
     )
 
 
+@app.get("/config", response_class=HTMLResponse)
+async def config_page(
+    request: Request,
+    app_settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    """Render the configuration page."""
+    return templates.TemplateResponse(
+        "config.html",
+        {
+            "request": request,
+            "cameras": camera_manager.get_cameras(),
+        },
+    )
+
+
 @app.get("/api/status")
 async def get_status(
     controller: MachineController = Depends(get_machine_controller),
@@ -861,6 +876,110 @@ async def save_shell_data(
 
     except Exception as e:
         logger.error("Error saving shell data: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# Configuration Management Endpoints
+
+
+@app.get("/api/config")
+async def get_configuration() -> Dict[str, Any]:
+    """Get current system configuration."""
+    try:
+        config_data = {
+            "auto_start_cameras": getattr(camera_manager, 'auto_start_cameras', False),
+            "cameras": [
+                {
+                    "index": cam.index,
+                    "name": cam.name,
+                    "resolution": cam.resolution,
+                    "is_active": cam.is_active,
+                    "is_selected": cam.is_selected,
+                    "view_type": cam.view_type,
+                    "region_x": cam.region_x,
+                    "region_y": cam.region_y,
+                    "region_width": cam.region_width,
+                    "region_height": cam.region_height,
+                }
+                for cam in camera_manager.get_cameras()
+            ]
+        }
+        return config_data
+    except Exception as e:
+        logger.error("Error getting configuration: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/config")
+async def save_configuration(config: Dict[str, Any]) -> Dict[str, str]:
+    """Save system configuration."""
+    try:
+        # Save auto-start setting
+        if "auto_start_cameras" in config:
+            camera_manager.auto_start_cameras = config["auto_start_cameras"]
+        
+        # Save configuration to file
+        camera_manager.save_config()
+        
+        logger.info("Configuration saved successfully")
+        return {"message": "Configuration saved successfully"}
+    except Exception as e:
+        logger.error("Error saving configuration: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.delete("/api/config/cameras/{camera_index}")
+async def delete_camera_config(camera_index: int) -> Dict[str, str]:
+    """Delete a specific camera from configuration."""
+    try:
+        # Remove camera from manager
+        removed = camera_manager.remove_camera(camera_index)
+        
+        if removed:
+            # Save updated configuration
+            camera_manager.save_config()
+            logger.info("Deleted camera %d from configuration", camera_index)
+            return {"message": f"Camera {camera_index} deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error deleting camera %d: %s", camera_index, e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.delete("/api/config/cameras")
+async def clear_all_cameras() -> Dict[str, str]:
+    """Clear all cameras from configuration."""
+    try:
+        # Clear all cameras
+        camera_manager.clear_cameras()
+        
+        # Save configuration
+        camera_manager.save_config()
+        
+        logger.info("Cleared all cameras from configuration")
+        return {"message": "All cameras cleared successfully"}
+    except Exception as e:
+        logger.error("Error clearing cameras: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/config/reset")
+async def reset_configuration() -> Dict[str, str]:
+    """Reset configuration to defaults."""
+    try:
+        # Reset camera manager to defaults
+        camera_manager.reset_to_defaults()
+        
+        # Save default configuration
+        camera_manager.save_config()
+        
+        logger.info("Configuration reset to defaults")
+        return {"message": "Configuration reset to defaults"}
+    except Exception as e:
+        logger.error("Error resetting configuration: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

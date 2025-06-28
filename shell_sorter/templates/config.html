@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration - Shell Sorter</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="icon" type="image/svg+xml" sizes="32x32" href="/static/favicon-32x32.svg">
+    <link rel="icon" type="image/svg+xml" sizes="16x16" href="/static/favicon-16x16.svg">
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚙️ Configuration</h1>
+            <div class="header-right">
+                <button id="back-to-dashboard-btn" class="btn btn-info">Back to Dashboard</button>
+            </div>
+        </header>
+
+        <main class="config-main">
+            <section class="config-section">
+                <h2>System Settings</h2>
+                <div class="config-form">
+                    <div class="form-group">
+                        <label for="auto-start-cameras">
+                            <input type="checkbox" id="auto-start-cameras">
+                            Auto-start cameras on detection
+                        </label>
+                        <small class="form-help">Automatically start cameras as soon as they are detected on startup</small>
+                    </div>
+                </div>
+            </section>
+
+            <section class="config-section">
+                <h2>Camera Management</h2>
+                <div class="camera-config-controls">
+                    <button id="refresh-cameras-btn" class="btn btn-secondary">Refresh Camera List</button>
+                    <button id="clear-all-cameras-btn" class="btn btn-danger">Clear All Cameras</button>
+                </div>
+                
+                <div class="cameras-config-list" id="cameras-config-list">
+                    {% if cameras %}
+                        {% for camera in cameras %}
+                        <div class="camera-config-item" data-camera-index="{{ camera.index }}">
+                            <div class="camera-config-info">
+                                <div class="camera-config-header">
+                                    <h3>{{ camera.name }}</h3>
+                                    <span class="camera-status status-{{ 'active' if camera.is_active else 'inactive' }}">
+                                        {{ 'Active' if camera.is_active else 'Inactive' }}
+                                    </span>
+                                </div>
+                                <div class="camera-config-details">
+                                    <span class="camera-detail">Index: {{ camera.index }}</span>
+                                    <span class="camera-detail">Resolution: {{ camera.resolution }}</span>
+                                    {% if camera.view_type %}
+                                    <span class="camera-detail">View: {{ camera.view_type }}</span>
+                                    {% endif %}
+                                    {% if camera.region_x is not none %}
+                                    <span class="camera-detail">Region: {{ camera.region_x }},{{ camera.region_y }} ({{ camera.region_width }}x{{ camera.region_height }})</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="camera-config-actions">
+                                <button class="btn btn-sm btn-danger delete-camera-btn" data-camera-index="{{ camera.index }}">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="no-cameras-config">
+                            <p>No cameras configured. Use "Detect Cameras" from the dashboard to add cameras.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="config-section">
+                <h2>Actions</h2>
+                <div class="config-actions">
+                    <button id="save-config-btn" class="btn btn-primary">Save Configuration</button>
+                    <button id="reset-config-btn" class="btn btn-secondary">Reset to Defaults</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast notification container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/script.js"></script>
+    <script src="/static/config.js"></script>
+</body>
+</html>

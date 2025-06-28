@@ -935,3 +935,147 @@ select:focus, input:focus {
         grid-template-columns: 1fr;
     }
 }
+
+/* Configuration Interface Styles */
+
+.config-main {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+.config-section {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.config-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-group label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    color: #333;
+    cursor: pointer;
+}
+
+.form-group input[type="checkbox"] {
+    transform: scale(1.2);
+}
+
+.form-help {
+    display: block;
+    margin-top: 5px;
+    margin-left: 30px;
+    color: #666;
+    font-size: 0.9rem;
+    font-style: italic;
+}
+
+.camera-config-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.cameras-config-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.camera-config-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border: 2px solid #ddd;
+    border-radius: 10px;
+    background-color: #f8f9fa;
+}
+
+.camera-config-info {
+    flex-grow: 1;
+}
+
+.camera-config-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 10px;
+}
+
+.camera-config-header h3 {
+    margin: 0;
+    color: #333;
+    font-size: 1.2rem;
+}
+
+.camera-config-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.camera-detail {
+    font-size: 0.9rem;
+    color: #666;
+    background-color: #e9ecef;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.camera-config-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.no-cameras-config {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+    font-style: italic;
+}
+
+.config-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+    .config-main {
+        gap: 20px;
+    }
+    
+    .camera-config-item {
+        flex-direction: column;
+        gap: 15px;
+        align-items: stretch;
+    }
+    
+    .camera-config-header {
+        justify-content: space-between;
+    }
+    
+    .camera-config-details {
+        justify-content: center;
+    }
+    
+    .camera-config-actions {
+        justify-content: center;
+    }
+    
+    .config-actions {
+        flex-direction: column;
+    }
+}
