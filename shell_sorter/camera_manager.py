@@ -6,6 +6,9 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import logging
 import concurrent.futures
+import subprocess
+import platform
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +35,108 @@ class CameraManager:
         self.latest_frames: Dict[int, Optional[bytes]] = {}
         self._lock = threading.Lock()
 
+    def _get_camera_device_name(self, camera_index: int) -> str:
+        """Get the actual device name/model for a camera."""
+        try:
+            system = platform.system()
+            
+            if system == "Linux":
+                # Try to get device name from v4l2
+                try:
+                    result = subprocess.run(
+                        ["v4l2-ctl", "--device", f"/dev/video{camera_index}", "--info"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        lines = result.stdout.split('\n')
+                        for line in lines:
+                            if 'Card type' in line or 'Device name' in line:
+                                # Extract device name after the colon
+                                name = line.split(':', 1)[-1].strip()
+                                if name:
+                                    return name
+                except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+                    pass
+                
+                # Fallback: try to read from udev
+                try:
+                    result = subprocess.run(
+                        ["udevadm", "info", "--name", f"/dev/video{camera_index}", "--query=property"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        lines = result.stdout.split('\n')
+                        for line in lines:
+                            if line.startswith('ID_MODEL='):
+                                model = line.split('=', 1)[-1].strip().replace('_', ' ')
+                                if model:
+                                    return model
+                            elif line.startswith('ID_V4L_PRODUCT='):
+                                product = line.split('=', 1)[-1].strip()
+                                if product:
+                                    return product
+                except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+                    pass
+                    
+            elif system == "Darwin":  # macOS
+                # Try to get device name from system_profiler
+                try:
+                    result = subprocess.run(
+                        ["system_profiler", "SPCameraDataType", "-json"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    if result.returncode == 0:
+                        import json
+                        data = json.loads(result.stdout)
+                        cameras = data.get('SPCameraDataType', [])
+                        if camera_index < len(cameras):
+                            camera_info = cameras[camera_index]
+                            name = camera_info.get('_name', '')
+                            if name:
+                                return name
+                except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
+                    pass
+                    
+            elif system == "Windows":
+                # Try to get device name from DirectShow
+                try:
+                    result = subprocess.run(
+                        ["powershell", "-Command", 
+                         "Get-CimInstance -ClassName Win32_PnPEntity | Where-Object {$_.Name -like '*camera*' -or $_.Name -like '*webcam*'} | Select-Object Name"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    if result.returncode == 0:
+                        lines = result.stdout.split('\n')
+                        camera_names = [line.strip() for line in lines if line.strip() and 'Name' not in line and '----' not in line]
+                        if camera_index < len(camera_names):
+                            return camera_names[camera_index]
+                except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+                    pass
+            
+            # Try OpenCV backend info if available
+            cap = cv2.VideoCapture(camera_index)
+            if cap.isOpened():
+                # Try to get backend info
+                backend = cap.getBackendName()
+                if backend:
+                    cap.release()
+                    return f"Camera {camera_index} ({backend})"
+                cap.release()
+                    
+        except Exception as e:
+            logger.debug("Error getting camera device name for camera %d: %s", camera_index, e)
+        
+        # Final fallback
+        return f"Camera {camera_index}"
+
     def detect_cameras(self) -> List[CameraInfo]:
         """Detect all available cameras."""
         cameras = []
@@ -44,8 +149,11 @@ class CameraManager:
                 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+                # Get actual device name/model
+                camera_name = self._get_camera_device_name(i)
+                
                 camera_info = CameraInfo(
-                    index=i, name=f"Camera {i}", resolution=(width, height), is_selected=True
+                    index=i, name=camera_name, resolution=(width, height), is_selected=True
                 )
                 cameras.append(camera_info)
                 self.cameras[i] = camera_info

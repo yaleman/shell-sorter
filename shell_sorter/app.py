@@ -1,3 +1,6 @@
+"""Main application module for the Shell Sorter Control Panel."""
+
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Generator, Callable, Awaitable
 from datetime import datetime
@@ -5,7 +8,16 @@ import logging
 import signal
 import sys
 import uuid
-from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, Depends, BackgroundTasks
+from fastapi import (
+    FastAPI,
+    Request,
+    Form,
+    File,
+    UploadFile,
+    HTTPException,
+    Depends,
+    BackgroundTasks,
+)
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -27,6 +39,7 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
+        """Process request and add no-cache headers to prevent browser caching."""
         response = await call_next(request)
 
         # Add no-cache headers for all responses
@@ -48,16 +61,36 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         return response
 
 
+@dataclass
+class Status:
+    """Data class to represent the status of the sorting machine."""
+
+    status: str = "idle"
+    last_update: str = datetime.now().isoformat()
+
+    def set_running(self) -> bool:
+        """Set the status to running and update the last update time.
+        Returns:
+            bool: True if status was changed, False if already running.
+        """
+        if self.status == "running":
+            return False
+        self.status = "running"
+        self.last_update = datetime.now().isoformat()
+        return True
+
+    def stop_sorting(self) -> None:
+        """Stop the sorting process and set status to idle."""
+        self.status = "idle"
+        self.last_update = datetime.now().isoformat()
+
+
 class MachineController:
     """Controls the sorting machine state and job management."""
 
     def __init__(self) -> None:
-        self.machine_status: Dict[str, Any] = {
-            "status": "idle",
-            "current_job": None,
-            "total_sorted": 0,
-            "last_update": datetime.now().isoformat(),
-        }
+        self.machine_status: Status = Status()
+
         self.sorting_jobs: List[Dict[str, Any]] = []
 
     def get_status(self) -> Dict[str, Any]:
@@ -72,47 +105,14 @@ class MachineController:
         """Get recent jobs in reverse chronological order."""
         return self.sorting_jobs[-limit:][::-1]
 
-    def start_sorting(self, case_type: str, quantity: int) -> Dict[str, Any]:
+    def start_sorting(self) -> Dict[str, Any]:
         """Start a new sorting job."""
-        job_id = len(self.sorting_jobs) + 1
-        new_job: Dict[str, Any] = {
-            "id": job_id,
-            "case_type": case_type,
-            "quantity": quantity,
-            "status": "running",
-            "started_at": datetime.now().isoformat(),
-            "completed_at": None,
-        }
-
-        self.sorting_jobs.append(new_job)
-        self.machine_status.update(
-            {
-                "status": "running",
-                "current_job": new_job,
-                "last_update": datetime.now().isoformat(),
-            }
-        )
-
-        return new_job
+        self.machine_status.set_running()
 
     def stop_sorting(self) -> None:
         """Stop the current sorting job."""
-        if self.machine_status["current_job"]:
-            current_job = self.machine_status["current_job"]
-            if isinstance(current_job, dict) and "id" in current_job:
-                for job in self.sorting_jobs:
-                    if job["id"] == current_job["id"]:
-                        job["status"] = "stopped"
-                        job["completed_at"] = datetime.now().isoformat()
-                        break
 
-        self.machine_status.update(
-            {
-                "status": "idle",
-                "current_job": None,
-                "last_update": datetime.now().isoformat(),
-            }
-        )
+        self.machine_status.stop_sorting()
 
 
 # Initialize settings on startup
@@ -133,8 +133,8 @@ hardware_controller = HardwareController()
 # Setup logging with timestamps including milliseconds
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
@@ -182,6 +182,7 @@ async def dashboard(
     controller: MachineController = Depends(get_machine_controller),
     app_settings: Settings = Depends(get_settings),
 ) -> HTMLResponse:
+    """Render the main dashboard page with machine status and camera information."""
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -197,6 +198,7 @@ async def dashboard(
 async def get_status(
     controller: MachineController = Depends(get_machine_controller),
 ) -> Dict[str, Any]:
+    """Get the current machine status."""
     return controller.get_status()
 
 
@@ -206,6 +208,7 @@ async def start_sorting(
     quantity: int = Form(...),
     controller: MachineController = Depends(get_machine_controller),
 ) -> Dict[str, Any]:
+    """Start a sorting job for the specified case type and quantity."""
     new_job = controller.start_sorting(case_type, quantity)
     return {"message": f"Started sorting {quantity} {case_type} cases", "job": new_job}
 
@@ -214,6 +217,7 @@ async def start_sorting(
 async def stop_sorting(
     controller: MachineController = Depends(get_machine_controller),
 ) -> Dict[str, str]:
+    """Stop the current sorting job."""
     controller.stop_sorting()
     return {"message": "Sorting stopped"}
 
@@ -222,6 +226,7 @@ async def stop_sorting(
 async def get_jobs(
     controller: MachineController = Depends(get_machine_controller),
 ) -> List[Dict[str, Any]]:
+    """Get a list of all sorting jobs."""
     return controller.get_jobs()
 
 
@@ -408,10 +413,8 @@ async def start_camera(
 ) -> Dict[str, str]:
     """Start streaming from a specific camera."""
     if camera_index not in camera_manager.cameras:
-        raise HTTPException(
-            status_code=400, detail=f"Camera {camera_index} not found"
-        )
-    
+        raise HTTPException(status_code=400, detail=f"Camera {camera_index} not found")
+
     background_tasks.add_task(start_camera_background, camera_index)
     return {"message": f"Starting camera {camera_index} in background"}
 
@@ -438,10 +441,10 @@ async def start_selected_cameras(background_tasks: BackgroundTasks) -> Dict[str,
     selected_cameras = camera_manager.get_selected_cameras()
     if not selected_cameras:
         raise HTTPException(status_code=400, detail="No cameras selected")
-    
+
     camera_indices = [cam.index for cam in selected_cameras]
     background_tasks.add_task(start_selected_cameras_background)
-    
+
     return {
         "message": f"Starting {len(selected_cameras)} selected cameras in background",
         "selected_cameras": camera_indices,
@@ -464,14 +467,18 @@ async def trigger_next_case() -> Dict[str, str]:
     try:
         # Run the complete next case sequence
         success = await hardware_controller.run_next_case_sequence()
-        
+
         if success:
             logger.info("Next case sequence completed successfully")
-            return {"message": "Next case sequence completed - case advanced to camera position"}
+            return {
+                "message": "Next case sequence completed - case advanced to camera position"
+            }
         else:
             logger.warning("Next case sequence failed")
-            raise HTTPException(status_code=500, detail="Failed to complete next case sequence")
-        
+            raise HTTPException(
+                status_code=500, detail="Failed to complete next case sequence"
+            )
+
     except Exception as e:
         logger.error("Error triggering next case: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -485,7 +492,7 @@ async def get_sensor_status() -> Dict[str, Any]:
         return {
             "case_ready_to_feed": sensors.get("case_ready", False),
             "case_in_camera_view": sensors.get("case_in_camera", False),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
     except Exception as e:
         logger.error("Error getting sensor status: %s", e)
@@ -498,11 +505,11 @@ async def get_hardware_status() -> Dict[str, Any]:
     try:
         connection_ok = await hardware_controller.test_connection()
         device_info = await hardware_controller.get_device_info()
-        
+
         return {
             "connected": connection_ok,
             "device_info": device_info,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
     except Exception as e:
         logger.error("Error getting hardware status: %s", e)
@@ -535,22 +542,20 @@ async def camera_stream(
 
 
 @app.post("/api/cameras/capture")
-async def capture_images(
-    app_settings: Settings = Depends(get_settings),
-) -> Dict[str, Any]:
+async def capture_images() -> Dict[str, Any]:
     """Capture images from all selected cameras and return capture session ID."""
     selected_cameras = camera_manager.get_selected_cameras()
     if not selected_cameras:
         raise HTTPException(status_code=400, detail="No cameras selected")
-    
+
     # Generate unique session ID
     session_id = str(uuid.uuid4())
     captured_images = []
-    
+
     # Create images directory if it doesn't exist
     images_dir = Path("images")
     images_dir.mkdir(exist_ok=True)
-    
+
     for camera in selected_cameras:
         if camera.is_active:
             # Get the latest frame from the camera
@@ -559,29 +564,33 @@ async def capture_images(
                 # Save image with camera index in filename
                 filename = f"{session_id}_camera_{camera.index}.jpg"
                 image_path = images_dir / filename
-                
+
                 with open(image_path, "wb") as f:
                     f.write(frame_data)
-                
-                captured_images.append({
-                    "camera_index": camera.index,
-                    "filename": filename,
-                    "camera_name": camera.name
-                })
-                
+
+                captured_images.append(
+                    {
+                        "camera_index": camera.index,
+                        "filename": filename,
+                        "camera_name": camera.name,
+                    }
+                )
+
                 logger.info("Captured image from camera %d: %s", camera.index, filename)
             else:
                 logger.warning("No frame available from camera %d", camera.index)
-    
+
     if not captured_images:
-        raise HTTPException(status_code=400, detail="No images could be captured from selected cameras")
-    
+        raise HTTPException(
+            status_code=400, detail="No images could be captured from selected cameras"
+        )
+
     logger.info("Captured %d images for session %s", len(captured_images), session_id)
-    
+
     return {
         "session_id": session_id,
         "captured_images": captured_images,
-        "message": f"Captured {len(captured_images)} images from selected cameras"
+        "message": f"Captured {len(captured_images)} images from selected cameras",
     }
 
 
@@ -595,22 +604,32 @@ async def tagging_page(
     # Find captured images for this session
     images_dir = Path("images")
     captured_images = []
-    
+
     if images_dir.exists():
         for image_file in images_dir.glob(f"{session_id}_camera_*.jpg"):
             # Extract camera index from filename
             filename_parts = image_file.stem.split("_")
             if len(filename_parts) >= 3:
-                camera_index = filename_parts[2]
-                captured_images.append({
-                    "filename": image_file.name,
-                    "camera_index": camera_index,
-                    "camera_name": f"Camera {camera_index}"
-                })
-    
+                camera_index = int(filename_parts[2])
+
+                # Try to get the camera name from the camera manager
+                camera_name = f"Camera {camera_index}"
+                if camera_index in camera_manager.cameras:
+                    camera_name = camera_manager.cameras[camera_index].name
+
+                captured_images.append(
+                    {
+                        "filename": image_file.name,
+                        "camera_index": str(camera_index),
+                        "camera_name": camera_name,
+                    }
+                )
+
     if not captured_images:
-        raise HTTPException(status_code=404, detail="No captured images found for this session")
-    
+        raise HTTPException(
+            status_code=404, detail="No captured images found for this session"
+        )
+
     return templates.TemplateResponse(
         "tagging.html",
         {
@@ -633,9 +652,9 @@ async def save_shell_data(
         body = await request.json()
         session_id = body.get("session_id")
         brand = body.get("brand")
-        shell_type = body.get("shell_type") 
+        shell_type = body.get("shell_type")
         filenames_list = body.get("image_filenames")
-        
+
         # Validate required fields
         if not session_id:
             raise HTTPException(status_code=400, detail="session_id is required")
@@ -644,37 +663,44 @@ async def save_shell_data(
         if not shell_type:
             raise HTTPException(status_code=400, detail="shell_type is required")
         if not filenames_list or not isinstance(filenames_list, list):
-            raise HTTPException(status_code=400, detail="image_filenames must be a non-empty list")
-        
+            raise HTTPException(
+                status_code=400, detail="image_filenames must be a non-empty list"
+            )
+
         # Create Shell object
         shell = Shell(
             date_captured=datetime.now(),
             brand=brand,
             shell_type=shell_type,
-            image_filenames=filenames_list
+            image_filenames=filenames_list,
         )
-        
+
         # Create data directory if it doesn't exist
         data_dir = app_settings.data_directory
         data_dir.mkdir(exist_ok=True)
-        
+
         # Save shell data as JSON
         json_filename = f"{session_id}.json"
         json_path = data_dir / json_filename
-        
-        with open(json_path, "w") as f:
+
+        with open(json_path, "w", encoding="utf-8") as f:
             f.write(shell.model_dump_json(indent=2))
-        
-        logger.info("Saved shell data for session %s: brand=%s, type=%s, images=%d", 
-                   session_id, brand, shell_type, len(filenames_list))
-        
+
+        logger.info(
+            "Saved shell data for session %s: brand=%s, type=%s, images=%d",
+            session_id,
+            brand,
+            shell_type,
+            len(filenames_list),
+        )
+
         return {
             "message": "Shell data saved successfully",
             "session_id": session_id,
             "filename": json_filename,
-            "shell_data": shell.model_dump()
+            "shell_data": shell.model_dump(),
         }
-        
+
     except Exception as e:
         logger.error("Error saving shell data: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -688,6 +714,7 @@ def signal_handler(signum: int, _frame: Any) -> None:
 
 
 def main() -> None:
+    """Main application entry point - start the FastAPI server with graceful shutdown handling."""
     # Set up signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
