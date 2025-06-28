@@ -32,14 +32,20 @@ This application controls an ammunition shell case sorting machine that uses com
    - Model training coordination
    - Reference image management
 
-4. **Hardware Controller** (`shell_sorter/hardware_controller.py`)
+4. **Shell Data Models** (`shell_sorter/shell.py`)
+   - Shell model for training data with metadata
+   - CapturedImage model for camera and region information
+   - CameraRegion model for region coordinates and view types
+   - Support for region-based training data processing
+
+5. **Hardware Controller** (`shell_sorter/hardware_controller.py`)
    - ESPHome device communication via HTTP API
    - Sensor monitoring (case ready, case in camera view)
    - Servo control (case feeder, case positioning)
    - Vibration motor control for case advancement
    - Complete next-case sequence automation
 
-5. **ESPHome Controller** (`esphome-shell-sorter.yaml`)
+6. **ESPHome Controller** (`esphome-shell-sorter.yaml`)
    - ESP32-based hardware controller configuration
    - Two binary sensors for case detection
    - One manual trigger button for vibration motor
@@ -55,10 +61,15 @@ data/
 ├── models/          # Trained ML models
 ├── images/          # Training images organized by case type
 ├── references/      # Reference images for case types
+├── composites/      # Generated composite images for training
 └── temp/           # Temporary uploads
 
 images/              # Captured shell case images from cameras
-esphome-shell-sorter.yaml  # ESPHome hardware controller configuration
+├── *.jpg           # Camera capture images
+└── *_metadata.json # Camera region metadata for capture sessions
+
+~/.config/shell-sorter.json  # Camera configuration persistence
+esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
 ```
 
 ## System Capabilities
@@ -71,21 +82,27 @@ esphome-shell-sorter.yaml  # ESPHome hardware controller configuration
 - Real-time hardware status updates via web interface
 
 ### Machine Learning
-- Multiple camera setup for shell case imaging
+- Multiple camera setup for shell case imaging with view type classification
+- Camera view types: side_view (profile shots) and tail_view (case end shots)
+- Interactive region selection for each camera to focus on shell case areas
+- Region overlay display with toggle control for visual feedback
 - Case type identification through computer vision
 - Support for training custom models with annotated images
+- Composite image generation using selected regions for training data
+- Circular detection and processing for tail view cameras
 - Case types can be identified by:
   - Designation only (e.g., 9mm Parabellum, 38 Special)
   - Designation and brand combination
 
 ### Data Management
-- Capture images from multiple cameras simultaneously
-- Tag captured images with shell case metadata
+- Capture images from multiple cameras simultaneously with region metadata
+- Tag captured images with shell case metadata including camera regions
+- Store camera view types and region selections in training data
 - Upload and organize reference images
 - Manage training datasets per case type
 - Automatic model versioning
 - Training progress tracking
-- Save shell data as JSON with image references
+- Save shell data as JSON with image references and region information
 
 ## API Endpoints
 
@@ -96,19 +113,26 @@ esphome-shell-sorter.yaml  # ESPHome hardware controller configuration
 - `GET /api/machine/hardware-status` - Get ESPHome device status
 
 ### Camera Management
-- `GET /api/cameras` - Get detected cameras
+- `GET /api/cameras` - Get detected cameras with view types and regions
 - `GET /api/cameras/detect` - Detect available cameras
 - `POST /api/cameras/select` - Select cameras for use
 - `POST /api/cameras/start-selected` - Start selected camera streams
 - `POST /api/cameras/stop-all` - Stop all camera streams
-- `POST /api/cameras/capture` - Capture images from selected cameras
+- `POST /api/cameras/capture` - Capture images from selected cameras with region metadata
 - `GET /api/cameras/{index}/stream` - Live camera stream
+- `POST /api/cameras/{index}/view-type` - Set camera view type (side_view/tail_view)
+- `GET /region-selection/{index}` - Region selection interface for camera
+- `POST /api/cameras/{index}/region` - Save camera region selection
+- `DELETE /api/cameras/{index}/region` - Clear camera region selection
 
 ### Shell Data Management
 - `GET /tagging/{session_id}` - Shell tagging interface
 - `POST /api/shells/save` - Save tagged shell data
 
 ### ML Management
+- `GET /api/ml/shells` - Get all training shells with region data
+- `POST /api/ml/shells/{session_id}/toggle` - Toggle shell inclusion in training
+- `POST /api/ml/generate-composites` - Generate composite images using region processing
 - `GET /api/case-types` - List case types and training status
 - `POST /api/case-types` - Create new case type
 - `POST /api/case-types/{name}/reference-image` - Upload reference image
@@ -116,6 +140,21 @@ esphome-shell-sorter.yaml  # ESPHome hardware controller configuration
 - `POST /api/train-model` - Train ML model
 
 ## Configuration
+
+### Camera Setup and Region Configuration
+Cameras must be configured with view types and regions for optimal training data:
+
+1. **Camera Detection**: Use the "Detect Cameras" button to find available cameras
+2. **View Type Assignment**: Set each camera as either:
+   - `side_view`: For profile shots of shell cases showing the side/length
+   - `tail_view`: For end-on shots showing the case mouth/primer end
+3. **Region Selection**: Use the interactive region selection tool to:
+   - Draw rectangles around shell case areas to exclude background
+   - Ensure consistent framing across captures
+   - Focus training data on relevant case features
+4. **Region Overlays**: Toggle overlay display to verify region selections on live feeds
+
+Camera configurations are automatically saved to `~/.config/shell-sorter.json` and persist across sessions.
 
 ### Application Settings
 Settings can be configured via environment variables or `.env` file:
