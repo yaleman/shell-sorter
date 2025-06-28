@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const detectCamerasBtn = document.getElementById('detect-cameras-btn');
     const startSelectedBtn = document.getElementById('start-selected-btn');
     const stopAllBtn = document.getElementById('stop-all-btn');
+    const captureImagesBtn = document.getElementById('capture-images-btn');
 
     if (startForm) {
         startForm.addEventListener('submit', async function(e) {
@@ -109,6 +110,39 @@ document.addEventListener('DOMContentLoaded', function() {
                 } catch (error) {
                     console.error('Error:', error);
                     showToast('Error stopping sorting job', 'error');
+                }
+            }
+        });
+    }
+
+    if (captureImagesBtn) {
+        captureImagesBtn.addEventListener('click', async function() {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+                const response = await fetch('/api/cameras/capture', {
+                    method: 'POST',
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (response.ok) {
+                    const result = await response.json();
+                    showToast(result.message, 'success');
+                    // Redirect to tagging interface
+                    window.location.href = `/tagging/${result.session_id}`;
+                } else {
+                    const error = await response.text();
+                    showToast('Error capturing images: ' + error, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                if (error.name === 'AbortError') {
+                    showToast('Image capture timed out. Please try again.', 'warning');
+                } else {
+                    showToast('Error capturing images: ' + error.message, 'error');
                 }
             }
         });

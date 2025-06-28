@@ -4,6 +4,7 @@ from datetime import datetime
 import logging
 import signal
 import sys
+import uuid
 from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,6 +17,7 @@ import uvicorn
 from .config import Settings
 from .ml_trainer import MLTrainer
 from .camera_manager import CameraManager
+from .shell import Shell
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
@@ -152,6 +154,7 @@ static_dir = Path(__file__).parent / "static"
 
 templates = Jinja2Templates(directory=str(templates_dir))
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+app.mount("/images", StaticFiles(directory="images"), name="images")
 
 
 def get_machine_controller() -> MachineController:
@@ -472,6 +475,145 @@ async def camera_stream(
     return StreamingResponse(
         generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame"
     )
+
+
+@app.post("/api/cameras/capture")
+async def capture_images(
+    app_settings: Settings = Depends(get_settings),
+) -> Dict[str, Any]:
+    """Capture images from all selected cameras and return capture session ID."""
+    selected_cameras = camera_manager.get_selected_cameras()
+    if not selected_cameras:
+        raise HTTPException(status_code=400, detail="No cameras selected")
+    
+    # Generate unique session ID
+    session_id = str(uuid.uuid4())
+    captured_images = []
+    
+    # Create images directory if it doesn't exist
+    images_dir = Path("images")
+    images_dir.mkdir(exist_ok=True)
+    
+    for camera in selected_cameras:
+        if camera.is_active:
+            # Get the latest frame from the camera
+            frame_data = camera_manager.get_latest_frame(camera.index)
+            if frame_data:
+                # Save image with camera index in filename
+                filename = f"{session_id}_camera_{camera.index}.jpg"
+                image_path = images_dir / filename
+                
+                with open(image_path, "wb") as f:
+                    f.write(frame_data)
+                
+                captured_images.append({
+                    "camera_index": camera.index,
+                    "filename": filename,
+                    "camera_name": camera.name
+                })
+                
+                logger.info("Captured image from camera %d: %s", camera.index, filename)
+            else:
+                logger.warning("No frame available from camera %d", camera.index)
+    
+    if not captured_images:
+        raise HTTPException(status_code=400, detail="No images could be captured from selected cameras")
+    
+    logger.info("Captured %d images for session %s", len(captured_images), session_id)
+    
+    return {
+        "session_id": session_id,
+        "captured_images": captured_images,
+        "message": f"Captured {len(captured_images)} images from selected cameras"
+    }
+
+
+@app.get("/tagging/{session_id}", response_class=HTMLResponse)
+async def tagging_page(
+    request: Request,
+    session_id: str,
+    app_settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    """Display the tagging interface for captured images."""
+    # Find captured images for this session
+    images_dir = Path("images")
+    captured_images = []
+    
+    if images_dir.exists():
+        for image_file in images_dir.glob(f"{session_id}_camera_*.jpg"):
+            # Extract camera index from filename
+            filename_parts = image_file.stem.split("_")
+            if len(filename_parts) >= 3:
+                camera_index = filename_parts[2]
+                captured_images.append({
+                    "filename": image_file.name,
+                    "camera_index": camera_index,
+                    "camera_name": f"Camera {camera_index}"
+                })
+    
+    if not captured_images:
+        raise HTTPException(status_code=404, detail="No captured images found for this session")
+    
+    return templates.TemplateResponse(
+        "tagging.html",
+        {
+            "request": request,
+            "session_id": session_id,
+            "captured_images": captured_images,
+            "supported_case_types": app_settings.supported_case_types,
+        },
+    )
+
+
+@app.post("/api/shells/save")
+async def save_shell_data(
+    session_id: str = Form(...),
+    brand: str = Form(...),
+    shell_type: str = Form(...),
+    image_filenames: str = Form(...),
+    app_settings: Settings = Depends(get_settings),
+) -> Dict[str, Any]:
+    """Save tagged shell data to JSON file."""
+    try:
+        # Parse image filenames from JSON string
+        import json
+        filenames_list = json.loads(image_filenames)
+        
+        # Create Shell object
+        shell = Shell(
+            date_captured=datetime.now(),
+            brand=brand,
+            shell_type=shell_type,
+            image_filenames=filenames_list
+        )
+        
+        # Create data directory if it doesn't exist
+        data_dir = app_settings.data_directory
+        data_dir.mkdir(exist_ok=True)
+        
+        # Save shell data as JSON
+        json_filename = f"{session_id}.json"
+        json_path = data_dir / json_filename
+        
+        with open(json_path, "w") as f:
+            f.write(shell.model_dump_json(indent=2))
+        
+        logger.info("Saved shell data for session %s: brand=%s, type=%s, images=%d", 
+                   session_id, brand, shell_type, len(filenames_list))
+        
+        return {
+            "message": "Shell data saved successfully",
+            "session_id": session_id,
+            "filename": json_filename,
+            "shell_data": shell.model_dump()
+        }
+        
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse image filenames JSON: %s", e)
+        raise HTTPException(status_code=400, detail="Invalid image filenames format") from e
+    except Exception as e:
+        logger.error("Error saving shell data: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 def signal_handler(signum: int, _frame: Any) -> None:
