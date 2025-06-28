@@ -441,7 +441,7 @@ select:focus, input:focus {
 }
 
 .overlay-checkbox {
-    display: flex;
+    display: none; /* Hidden by default, shown by JavaScript when cameras are active */
     align-items: center;
     gap: 5px;
     font-size: 0.9rem;

@@ -465,6 +465,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
                 });
+                
+                // Update overlay checkbox visibility when camera status changes
+                updateOverlayCheckboxVisibility();
+                
                 return cameras;
             }
         } catch (error) {
@@ -522,6 +526,33 @@ document.addEventListener('DOMContentLoaded', function() {
                 cameraItem.classList.remove('selected');
             }
         });
+        
+        // Update overlay checkbox visibility
+        updateOverlayCheckboxVisibility();
+    }
+    
+    function updateOverlayCheckboxVisibility() {
+        const overlayCheckbox = document.querySelector('.overlay-checkbox');
+        if (!overlayCheckbox) return;
+        
+        // Check if any cameras are active
+        const activeCameras = document.querySelectorAll('.camera-status.status-active');
+        const hasActiveCameras = activeCameras.length > 0;
+        
+        if (hasActiveCameras) {
+            overlayCheckbox.style.display = 'flex';
+        } else {
+            overlayCheckbox.style.display = 'none';
+            // Also uncheck the checkbox when hiding it
+            const checkbox = document.getElementById('show-overlay-checkbox');
+            if (checkbox) {
+                checkbox.checked = false;
+                // Hide any visible overlays
+                toggleRegionOverlays(false);
+            }
+        }
+        
+        console.log(`Overlay checkbox ${hasActiveCameras ? 'shown' : 'hidden'} - active cameras: ${activeCameras.length}`);
     }
 
     function updateStatusDisplay(status) {
@@ -703,6 +734,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize camera selection display
     updateCameraSelection();
+    
+    // Initialize overlay checkbox visibility
+    updateOverlayCheckboxVisibility();
     
     // Sync region data with server and initialize overlays
     initializeRegionData();
