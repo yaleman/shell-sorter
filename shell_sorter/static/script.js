@@ -15,14 +15,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 500);
-                
+                const timeoutId = setTimeout(() => controller.abort(), 1500);
+
                 const response = await fetch('/api/start-sorting', {
                     method: 'POST',
                     body: formData,
                     signal: controller.signal
                 });
-                
+
                 clearTimeout(timeoutId);
 
                 if (response.ok) {
@@ -44,13 +44,13 @@ document.addEventListener('DOMContentLoaded', function() {
             if (confirm('Are you sure you want to stop the current sorting job?')) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 500);
-                    
+                    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
                     const response = await fetch('/api/stop-sorting', {
                         method: 'POST',
                         signal: controller.signal
                     });
-                    
+
                     clearTimeout(timeoutId);
 
                     if (response.ok) {
@@ -72,14 +72,14 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(async function() {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 500);
-            
+            const timeoutId = setTimeout(() => controller.abort(), 2500);
+
             const response = await fetch('/api/status', {
                 signal: controller.signal
             });
-            
+
             clearTimeout(timeoutId);
-            
+
             if (response.ok) {
                 const status = await response.json();
                 updateStatusDisplay(status);
@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             console.error('Error fetching status:', error);
         }
-    }, 5000);
+    }, 25000);
 
     // Camera management functions
     if (detectCamerasBtn) {
@@ -95,13 +95,13 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 seconds for camera detection
-                
+
                 const response = await fetch('/api/cameras/detect', {
                     signal: controller.signal
                 });
-                
+
                 clearTimeout(timeoutId);
-                
+
                 if (response.ok) {
                     const cameras = await response.json();
                     alert(`Detected ${cameras.length} cameras`);
@@ -124,15 +124,15 @@ document.addEventListener('DOMContentLoaded', function() {
         startSelectedBtn.addEventListener('click', async function() {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 500);
-                
+                const timeoutId = setTimeout(() => controller.abort(), 2500);
+
                 const response = await fetch('/api/cameras/start-selected', {
                     method: 'POST',
                     signal: controller.signal
                 });
-                
+
                 clearTimeout(timeoutId);
-                
+
                 if (response.ok) {
                     const result = await response.json();
                     alert(result.message);
@@ -153,15 +153,15 @@ document.addEventListener('DOMContentLoaded', function() {
             if (confirm('Are you sure you want to stop all cameras?')) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 500);
-                    
+                    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
                     const response = await fetch('/api/cameras/stop-all', {
                         method: 'POST',
                         signal: controller.signal
                     });
-                    
+
                     clearTimeout(timeoutId);
-                    
+
                     if (response.ok) {
                         const result = await response.json();
                         alert(result.message);
@@ -189,8 +189,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 500);
-                
+                const timeoutId = setTimeout(() => controller.abort(), 2500);
+
                 const response = await fetch('/api/cameras/select', {
                     method: 'POST',
                     headers: {
@@ -199,7 +199,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     body: JSON.stringify(selectedCameras),
                     signal: controller.signal
                 });
-                
+
                 clearTimeout(timeoutId);
 
                 if (response.ok) {
@@ -224,14 +224,14 @@ document.addEventListener('DOMContentLoaded', function() {
     async function updateCameraFeeds() {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 500);
-            
+            const timeoutId = setTimeout(() => controller.abort(), 2500);
+
             const response = await fetch('/api/cameras', {
                 signal: controller.signal
             });
-            
+
             clearTimeout(timeoutId);
-            
+
             if (response.ok) {
                 const cameras = await response.json();
                 console.debug('Updating camera feeds:', cameras); // Debug log

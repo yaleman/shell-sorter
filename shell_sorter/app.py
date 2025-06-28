@@ -5,15 +5,36 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Generator
+from typing import List, Dict, Any, Optional, Generator, Callable, Awaitable
 from datetime import datetime
 import logging
 import signal
 import sys
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from .config import Settings
 from .ml_trainer import MLTrainer
 from .camera_manager import CameraManager
+
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    """Middleware to add no-cache headers to prevent browser caching."""
+    
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+        response = await call_next(request)
+        
+        # Add no-cache headers for all responses
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        
+        # Additional headers for static files (JS, CSS, HTML)
+        if any(request.url.path.endswith(ext) for ext in ['.js', '.css', '.html', '.htm']):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0, private"
+            response.headers["ETag"] = f'"{datetime.now().timestamp()}"'
+        
+        return response
 
 
 class MachineController:
@@ -101,10 +122,13 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Shell Sorter Control Panel", version="1.0.0")
 
+# Add cache-busting middleware (add first to ensure it runs on all responses)
+app.add_middleware(NoCacheMiddleware)
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual origins
+    allow_origins=[settings.host],  # In production, specify actual origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -441,11 +465,11 @@ def main() -> None:
     # Set up signal handlers for graceful shutdown
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     print("Shell Sorter Machine Control Panel")
     print(f"Web interface available at: http://{settings.host}:{settings.port}")
     print("Press Ctrl+C to stop the server")
-    
+
     try:
         uvicorn.run(app, host=settings.host, port=settings.port)
     except KeyboardInterrupt:
