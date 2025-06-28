@@ -494,8 +494,11 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // If no overlays exist, try to create them from region buttons
         if (overlays.length === 0) {
-            createMissingOverlays();
+            const created = createMissingOverlays();
             overlays = document.querySelectorAll('.camera-region-overlay');
+            if (created > 0) {
+                console.log(`Successfully created ${created} overlays`);
+            }
         }
         
         // If still no overlays after trying to create them, only show message if truly no regions exist
@@ -510,12 +513,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (showOverlayCheckbox) {
                     showOverlayCheckbox.checked = false;
                 }
+                return;
+            } else {
+                // We have region data but couldn't create overlays - this is a bug, show error
+                console.error('Failed to create overlays despite having region data');
+                showToast('Could not create region overlays. Check console for details.', 'error');
+                if (showOverlayCheckbox) {
+                    showOverlayCheckbox.checked = false;
+                }
+                return;
             }
-            // If we have region data but couldn't create overlays, just silently fail and uncheck
-            else if (showOverlayCheckbox) {
-                showOverlayCheckbox.checked = false;
-            }
-            return;
         }
         
         overlays.forEach(overlay => {
@@ -529,16 +536,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function createMissingOverlays() {
+        let overlaysCreated = 0;
+        
         // Look for camera feeds that have region info but no overlay
         const cameraFeeds = document.querySelectorAll('.camera-feed');
+        console.log(`Checking ${cameraFeeds.length} camera feeds for missing overlays`);
         
-        cameraFeeds.forEach(feed => {
+        cameraFeeds.forEach((feed, index) => {
             const existing = feed.querySelector('.camera-region-overlay');
-            if (existing) return; // Already has overlay
+            if (existing) {
+                console.log(`Camera feed ${index} already has overlay`);
+                return; // Already has overlay
+            }
             
             // Look for region info in the same camera item
             const cameraItem = feed.closest('.camera-item');
             const regionInfo = cameraItem?.querySelector('.region-info');
+            
+            console.log(`Camera feed ${index} region info:`, regionInfo?.textContent?.trim() || 'none');
             
             if (regionInfo && regionInfo.textContent.trim()) {
                 // Parse region info from the text (format: "x,y (widthxheight)")
@@ -558,12 +573,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     overlay.style.display = 'none';
                     
                     feed.appendChild(overlay);
-                    console.log(`Created overlay for camera with region ${x},${y} (${width}x${height})`);
+                    overlaysCreated++;
+                    console.log(`Created overlay for camera ${index} with region ${x},${y} (${width}x${height})`);
                 } else {
-                    console.warn('Could not parse region info:', text);
+                    console.warn(`Could not parse region info for camera ${index}:`, text);
                 }
             }
         });
+        
+        console.log(`Created ${overlaysCreated} missing overlays`);
+        return overlaysCreated;
     }
     
     function updateOverlayPosition(overlay) {
