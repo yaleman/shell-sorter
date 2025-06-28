@@ -38,6 +38,11 @@
                     
                     <button type="submit" class="btn btn-primary">Start Sorting</button>
                 </form>
+                
+                <div class="manual-controls">
+                    <h3>Manual Controls</h3>
+                    <button id="next-case-btn" class="btn btn-secondary">Next Case</button>
+                </div>
                 {% else %}
                 <div class="current-job">
                     <h3>Current Job</h3>
@@ -46,7 +51,10 @@
                     <p><strong>Started:</strong> {{ machine_status.current_job.started_at }}</p>
                 </div>
                 
-                <button id="stop-btn" class="btn btn-danger">Stop Sorting</button>
+                <div class="job-controls">
+                    <button id="stop-btn" class="btn btn-danger">Stop Sorting</button>
+                    <button id="next-case-btn" class="btn btn-secondary">Next Case</button>
+                </div>
                 {% endif %}
             </section>
 
@@ -109,27 +117,6 @@
                 </div>
             </section>
 
-            <section class="jobs-panel">
-                <h2>Recent Jobs</h2>
-                <div class="jobs-list">
-                    {% if recent_jobs %}
-                        {% for job in recent_jobs %}
-                        <div class="job-item job-{{ job.status }}">
-                            <div class="job-header">
-                                <span class="job-id">Job #{{ job.id }}</span>
-                                <span class="job-status">{{ job.status.title() }}</span>
-                            </div>
-                            <div class="job-details">
-                                <span>{{ job.case_type }} - {{ job.quantity }} cases</span>
-                                <span>{{ job.started_at }}</span>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                        <p class="no-jobs">No recent jobs</p>
-                    {% endif %}
-                </div>
-            </section>
         </main>
     </div>
 

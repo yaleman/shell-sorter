@@ -183,7 +183,6 @@ async def dashboard(
         {
             "request": request,
             "machine_status": controller.get_status(),
-            "recent_jobs": controller.get_recent_jobs(),
             "supported_case_types": app_settings.supported_case_types,
             "cameras": camera_manager.get_cameras(),
         },
@@ -450,6 +449,27 @@ async def stop_all_cameras() -> Dict[str, str]:
     """Stop all camera streams."""
     camera_manager.stop_all_cameras()
     return {"message": "Stopped all cameras"}
+
+
+# Machine Control Endpoints
+
+
+@app.post("/api/machine/next-case")
+async def trigger_next_case() -> Dict[str, str]:
+    """Trigger vibration motor 1 to advance to next case."""
+    try:
+        # TODO: Implement actual motor control hardware interface
+        # For now, just log the action
+        logger.info("Next case triggered - vibration motor 1 activated")
+        
+        # Stub implementation - replace with actual motor control
+        # motor_controller.activate_vibration_motor_1()
+        
+        return {"message": "Next case triggered - vibration motor 1 activated"}
+        
+    except Exception as e:
+        logger.error("Error triggering next case: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/cameras/{camera_index}/stream")

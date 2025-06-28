@@ -53,6 +53,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const startSelectedBtn = document.getElementById('start-selected-btn');
     const stopAllBtn = document.getElementById('stop-all-btn');
     const captureImagesBtn = document.getElementById('capture-images-btn');
+    const nextCaseBtn = document.getElementById('next-case-btn');
 
     if (startForm) {
         startForm.addEventListener('submit', async function(e) {
@@ -148,6 +149,37 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    if (nextCaseBtn) {
+        nextCaseBtn.addEventListener('click', async function() {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                const response = await fetch('/api/machine/next-case', {
+                    method: 'POST',
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (response.ok) {
+                    const result = await response.json();
+                    showToast(result.message, 'success');
+                } else {
+                    const error = await response.text();
+                    showToast('Error triggering next case: ' + error, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                if (error.name === 'AbortError') {
+                    showToast('Next case request timed out', 'warning');
+                } else {
+                    showToast('Error triggering next case: ' + error.message, 'error');
+                }
+            }
+        });
+    }
+
     // Auto-refresh status every 5 seconds
     setInterval(async function() {
         try {
@@ -230,30 +262,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (stopAllBtn) {
         stopAllBtn.addEventListener('click', async function() {
-            if (confirm('Are you sure you want to stop all cameras?')) {
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 2500);
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-                    const response = await fetch('/api/cameras/stop-all', {
-                        method: 'POST',
-                        signal: controller.signal
-                    });
+                const response = await fetch('/api/cameras/stop-all', {
+                    method: 'POST',
+                    signal: controller.signal
+                });
 
-                    clearTimeout(timeoutId);
+                clearTimeout(timeoutId);
 
-                    if (response.ok) {
-                        const result = await response.json();
-                        showToast(result.message, 'success');
-                        // Update camera feeds without reloading
-                        await updateCameraFeeds();
-                    } else {
-                        showToast('Error stopping cameras', 'error');
-                    }
-                } catch (error) {
-                    console.error('Error:', error);
+                if (response.ok) {
+                    const result = await response.json();
+                    showToast(result.message, 'success');
+                    // Update camera feeds without reloading
+                    await updateCameraFeeds();
+                } else {
                     showToast('Error stopping cameras', 'error');
                 }
+            } catch (error) {
+                console.error('Error:', error);
+                showToast('Error stopping cameras', 'error');
             }
         });
     }
