@@ -480,19 +480,21 @@ document.addEventListener('DOMContentLoaded', function() {
             overlays = document.querySelectorAll('.camera-region-overlay');
         }
         
-        // If still no overlays after trying to create them, check for region data in UI
+        // If still no overlays after trying to create them, only show message if truly no regions exist
         if (overlays.length === 0 && show) {
             const regionsInUI = document.querySelectorAll('.region-info');
             const hasRegionData = Array.from(regionsInUI).some(regionInfo => 
                 regionInfo.textContent && regionInfo.textContent.trim() !== ''
             );
             
-            if (hasRegionData) {
-                showToast('Region data found but overlays could not be created. Try refreshing the page.', 'warning');
-            } else {
+            if (!hasRegionData) {
                 showToast('No camera regions selected yet. Set up regions first.', 'info');
+                if (showOverlayCheckbox) {
+                    showOverlayCheckbox.checked = false;
+                }
             }
-            if (showOverlayCheckbox) {
+            // If we have region data but couldn't create overlays, just silently fail and uncheck
+            else if (showOverlayCheckbox) {
                 showOverlayCheckbox.checked = false;
             }
             return;
@@ -538,6 +540,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     overlay.style.display = 'none';
                     
                     feed.appendChild(overlay);
+                    console.log(`Created overlay for camera with region ${x},${y} (${width}x${height})`);
+                } else {
+                    console.warn('Could not parse region info:', text);
                 }
             }
         });
