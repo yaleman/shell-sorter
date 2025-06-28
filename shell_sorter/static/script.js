@@ -406,4 +406,49 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize camera selection display
     updateCameraSelection();
+    
+    // Auto-detect cameras if none are currently detected
+    autoDetectCameras();
+    
+    async function autoDetectCameras() {
+        try {
+            // Check if we already have cameras detected
+            const response = await fetch('/api/cameras', {
+                signal: AbortSignal.timeout(2500)
+            });
+            
+            if (response.ok) {
+                const cameras = await response.json();
+                
+                // If no cameras are detected, automatically trigger detection
+                if (cameras.length === 0) {
+                    console.log('No cameras detected, auto-detecting...');
+                    
+                    const detectResponse = await fetch('/api/cameras/detect', {
+                        signal: AbortSignal.timeout(10000)
+                    });
+                    
+                    if (detectResponse.ok) {
+                        const detectedCameras = await detectResponse.json();
+                        console.log(`Auto-detected ${detectedCameras.length} cameras`);
+                        
+                        if (detectedCameras.length > 0) {
+                            showToast(`Auto-detected ${detectedCameras.length} cameras`, 'success');
+                            // Reload to show the detected cameras
+                            setTimeout(() => location.reload(), 1000);
+                        } else {
+                            console.log('No cameras found during auto-detection');
+                        }
+                    } else {
+                        console.log('Auto-detection failed');
+                    }
+                } else {
+                    console.log(`${cameras.length} cameras already detected`);
+                }
+            }
+        } catch (error) {
+            console.log('Auto-detection check failed:', error.message);
+            // Silently fail - don't show error toast for automatic detection
+        }
+    }
 });
