@@ -19,8 +19,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Extract camera index from URL
     const pathParts = window.location.pathname.split('/');
+    console.log('URL path parts:', pathParts);
     if (pathParts.length >= 3 && pathParts[1] === 'region-selection') {
         cameraIndex = parseInt(pathParts[2]);
+        console.log('Extracted camera index:', cameraIndex);
     }
     
     if (!cameraImage) {
@@ -33,8 +35,26 @@ document.addEventListener('DOMContentLoaded', function() {
         const scaleX = cameraImage.naturalWidth / cameraImage.clientWidth;
         const scaleY = cameraImage.naturalHeight / cameraImage.clientHeight;
         
+        console.log('Image dimensions:', {
+            naturalWidth: cameraImage.naturalWidth,
+            naturalHeight: cameraImage.naturalHeight,
+            clientWidth: cameraImage.clientWidth,
+            clientHeight: cameraImage.clientHeight,
+            scaleX,
+            scaleY
+        });
+        
         const x = Math.round((event.clientX - rect.left) * scaleX);
         const y = Math.round((event.clientY - rect.top) * scaleY);
+        
+        console.log('Mouse event coords:', {
+            clientX: event.clientX,
+            clientY: event.clientY,
+            rectLeft: rect.left,
+            rectTop: rect.top,
+            calculatedX: x,
+            calculatedY: y
+        });
         
         return { x, y };
     }
@@ -71,6 +91,7 @@ document.addEventListener('DOMContentLoaded', function() {
         sizeCoordsSpan.textContent = `${width} × ${height}`;
         
         currentSelection = { x: minX, y: minY, width, height };
+        console.log('Updated selection:', currentSelection);
         saveRegionBtn.disabled = false;
     }
     
@@ -138,6 +159,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Save region button
     if (saveRegionBtn) {
         saveRegionBtn.addEventListener('click', async function() {
+            console.log('Save region clicked:', {
+                currentSelection,
+                cameraIndex,
+                hasCurrentSelection: !!currentSelection,
+                hasCameraIndex: !!cameraIndex
+            });
+            
             if (!currentSelection || !cameraIndex) {
                 showToast('No region selected or camera index not found', 'error');
                 return;
