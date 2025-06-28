@@ -1,3 +1,49 @@
+// Toast notification system
+function showToast(message, type = 'info', duration = 5000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    
+    const icons = {
+        success: '✓',
+        error: '✗',
+        warning: '⚠',
+        info: 'ℹ'
+    };
+    
+    toast.innerHTML = `
+        <span class="toast-icon">${icons[type] || icons.info}</span>
+        <div class="toast-content">${message}</div>
+        <button class="toast-close">&times;</button>
+    `;
+    
+    container.appendChild(toast);
+    
+    // Show toast with animation
+    setTimeout(() => toast.classList.add('show'), 100);
+    
+    // Auto-remove after duration
+    const autoRemove = setTimeout(() => removeToast(toast), duration);
+    
+    // Manual close button
+    const closeBtn = toast.querySelector('.toast-close');
+    closeBtn.addEventListener('click', () => {
+        clearTimeout(autoRemove);
+        removeToast(toast);
+    });
+}
+
+function removeToast(toast) {
+    toast.classList.remove('show');
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+        }
+    }, 300);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const startForm = document.getElementById('start-form');
     const stopBtn = document.getElementById('stop-btn');
@@ -27,14 +73,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (response.ok) {
                     const result = await response.json();
-                    alert(result.message);
+                    showToast(result.message, 'success');
                     location.reload();
                 } else {
-                    alert('Error starting sorting job');
+                    showToast('Error starting sorting job', 'error');
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Error starting sorting job');
+                showToast('Error starting sorting job', 'error');
             }
         });
     }
@@ -55,14 +101,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     if (response.ok) {
                         const result = await response.json();
-                        alert(result.message);
+                        showToast(result.message, 'success');
                         location.reload();
                     } else {
-                        alert('Error stopping sorting job');
+                        showToast('Error stopping sorting job', 'error');
                     }
                 } catch (error) {
                     console.error('Error:', error);
-                    alert('Error stopping sorting job');
+                    showToast('Error stopping sorting job', 'error');
                 }
             }
         });
@@ -104,17 +150,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (response.ok) {
                     const cameras = await response.json();
-                    alert(`Detected ${cameras.length} cameras`);
+                    showToast(`Detected ${cameras.length} cameras`, 'success');
                     location.reload();
                 } else {
-                    alert('Error detecting cameras: Server returned an error');
+                    showToast('Error detecting cameras: Server returned an error', 'error');
                 }
             } catch (error) {
                 console.error('Error:', error);
                 if (error.name === 'AbortError') {
-                    alert('Camera detection timed out after 10 seconds. This may indicate no cameras are available or they are slow to respond.');
+                    showToast('Camera detection timed out after 10 seconds. This may indicate no cameras are available or they are slow to respond.', 'warning');
                 } else {
-                    alert('Error detecting cameras: ' + error.message);
+                    showToast('Error detecting cameras: ' + error.message, 'error');
                 }
             }
         });
@@ -135,15 +181,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (response.ok) {
                     const result = await response.json();
-                    alert(result.message);
+                    showToast(result.message, 'info');
                     // Cameras are starting in background, poll for updates
                     pollForCameraUpdates();
                 } else {
-                    alert('Error starting selected cameras');
+                    showToast('Error starting selected cameras', 'error');
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Error starting selected cameras');
+                showToast('Error starting selected cameras', 'error');
             }
         });
     }
@@ -164,15 +210,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     if (response.ok) {
                         const result = await response.json();
-                        alert(result.message);
+                        showToast(result.message, 'success');
                         // Update camera feeds without reloading
                         await updateCameraFeeds();
                     } else {
-                        alert('Error stopping cameras');
+                        showToast('Error stopping cameras', 'error');
                     }
                 } catch (error) {
                     console.error('Error:', error);
-                    alert('Error stopping cameras');
+                    showToast('Error stopping cameras', 'error');
                 }
             }
         });
@@ -210,12 +256,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     const error = await response.text();
                     console.error('Selection error:', error);
-                    alert('Error selecting cameras: ' + error);
+                    showToast('Error selecting cameras: ' + error, 'error');
                     checkbox.checked = !checkbox.checked; // Revert checkbox
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Error selecting cameras: ' + error.message);
+                showToast('Error selecting cameras: ' + error.message, 'error');
                 checkbox.checked = !checkbox.checked; // Revert checkbox
             }
         }
