@@ -159,9 +159,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     const result = await response.json();
                     showToast(result.message, 'success');
                     
-                    // Update the saved region display
+                    // Navigate back to dashboard after successful save
                     setTimeout(() => {
-                        location.reload();
+                        window.location.href = '/';
                     }, 1000);
                 } else {
                     const error = await response.text();

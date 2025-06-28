@@ -10,8 +10,11 @@
     <div class="container">
         <header>
             <h1>🔫 Shell Sorter Control Panel</h1>
-            <div class="status-indicator status-{{ machine_status.status }}">
-                Status: {{ machine_status.status.title() }}
+            <div class="header-right">
+                <button id="ml-training-btn" class="btn btn-info">ML Training</button>
+                <div class="status-indicator status-{{ machine_status.status }}">
+                    Status: {{ machine_status.status.title() }}
+                </div>
             </div>
         </header>
 
@@ -33,7 +36,10 @@
                     <button id="start-selected-btn" class="btn btn-primary">Start Selected</button>
                     <button id="stop-all-btn" class="btn btn-danger">Stop All</button>
                     <button id="capture-images-btn" class="btn btn-success">Capture & Tag Images</button>
-                    <button id="ml-training-btn" class="btn btn-info">ML Training</button>
+                    <label class="overlay-checkbox">
+                        <input type="checkbox" id="show-overlay-checkbox">
+                        Show Region Overlays
+                    </label>
                 </div>
                 
                 <div class="camera-list" id="camera-list">
@@ -62,7 +68,7 @@
                                         <option value="tail_view" {% if camera.view_type == 'tail_view' %}selected{% endif %}>Tail View</option>
                                     </select>
                                 </div>
-                                {% if camera.view_type == 'side_view' %}
+                                {% if camera.view_type in ['side_view', 'tail_view'] %}
                                 <div class="region-control">
                                     <button class="btn btn-sm btn-secondary region-select-btn" data-camera-index="{{ camera.index }}">
                                         {% if camera.region_x is not none %}Edit Region{% else %}Select Region{% endif %}
@@ -75,10 +81,19 @@
                                 {% endif %}
                             </div>
                             {% if camera.is_active %}
-                            <div class="camera-feed">
+                            <div class="camera-feed" data-camera-index="{{ camera.index }}">
                                 <img src="/api/cameras/{{ camera.index }}/stream" 
                                      alt="Camera {{ camera.index }} feed"
                                      class="camera-stream">
+                                {% if camera.region_x is not none %}
+                                <div class="camera-region-overlay" 
+                                     data-region-x="{{ camera.region_x }}"
+                                     data-region-y="{{ camera.region_y }}"
+                                     data-region-width="{{ camera.region_width }}"
+                                     data-region-height="{{ camera.region_height }}"
+                                     style="display: none;">
+                                </div>
+                                {% endif %}
                             </div>
                             {% endif %}
                         </div>

@@ -52,6 +52,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const captureImagesBtn = document.getElementById('capture-images-btn');
     const nextCaseBtn = document.getElementById('next-case-btn');
     const mlTrainingBtn = document.getElementById('ml-training-btn');
+    const showOverlayCheckbox = document.getElementById('show-overlay-checkbox');
 
     if (captureImagesBtn) {
         captureImagesBtn.addEventListener('click', async function() {
@@ -442,6 +443,56 @@ document.addEventListener('DOMContentLoaded', function() {
         if (totalSorted) {
             totalSorted.textContent = status.total_sorted;
         }
+    }
+
+    // Handle overlay checkbox
+    if (showOverlayCheckbox) {
+        showOverlayCheckbox.addEventListener('change', function() {
+            toggleRegionOverlays(this.checked);
+        });
+    }
+    
+    function toggleRegionOverlays(show) {
+        const overlays = document.querySelectorAll('.camera-region-overlay');
+        overlays.forEach(overlay => {
+            if (show) {
+                updateOverlayPosition(overlay);
+                overlay.style.display = 'block';
+            } else {
+                overlay.style.display = 'none';
+            }
+        });
+    }
+    
+    function updateOverlayPosition(overlay) {
+        const cameraFeed = overlay.parentElement;
+        const cameraImage = cameraFeed.querySelector('.camera-stream');
+        
+        if (!cameraImage) return;
+        
+        const regionX = parseInt(overlay.dataset.regionX);
+        const regionY = parseInt(overlay.dataset.regionY);
+        const regionWidth = parseInt(overlay.dataset.regionWidth);
+        const regionHeight = parseInt(overlay.dataset.regionHeight);
+        
+        // Wait for image to load if not loaded yet
+        if (cameraImage.naturalWidth === 0) {
+            cameraImage.addEventListener('load', () => updateOverlayPosition(overlay), { once: true });
+            return;
+        }
+        
+        const scaleX = cameraImage.clientWidth / cameraImage.naturalWidth;
+        const scaleY = cameraImage.clientHeight / cameraImage.naturalHeight;
+        
+        const overlayLeft = regionX * scaleX;
+        const overlayTop = regionY * scaleY;
+        const overlayWidth = regionWidth * scaleX;
+        const overlayHeight = regionHeight * scaleY;
+        
+        overlay.style.left = overlayLeft + 'px';
+        overlay.style.top = overlayTop + 'px';
+        overlay.style.width = overlayWidth + 'px';
+        overlay.style.height = overlayHeight + 'px';
     }
 
     // Initialize camera selection display

@@ -28,6 +28,12 @@ header {
     align-items: center;
 }
 
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
 header h1 {
     font-size: 2.5rem;
     font-weight: 300;
@@ -434,6 +440,27 @@ select:focus, input:focus {
     font-size: 0.8rem;
 }
 
+.overlay-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.9rem;
+    color: #333;
+    cursor: pointer;
+}
+
+.overlay-checkbox input[type="checkbox"] {
+    margin: 0;
+}
+
+.camera-region-overlay {
+    position: absolute;
+    border: 2px solid #ff0000;
+    background: rgba(255, 0, 0, 0.1);
+    pointer-events: none;
+    z-index: 10;
+}
+
 .status-active {
     background-color: #28a745;
     color: white;
@@ -453,6 +480,7 @@ select:focus, input:focus {
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
 }
 
 .camera-stream {
