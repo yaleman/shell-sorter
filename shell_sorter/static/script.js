@@ -456,6 +456,18 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (camera.is_active && !existingFeed) {
                             const feedDiv = document.createElement('div');
                             feedDiv.className = 'camera-feed';
+                            feedDiv.dataset.cameraIndex = camera.index.toString();
+                            
+                            // Add region data if available
+                            if (camera.region_x !== null && camera.region_x !== undefined) {
+                                feedDiv.dataset.region = JSON.stringify({
+                                    x: camera.region_x,
+                                    y: camera.region_y,
+                                    width: camera.region_width,
+                                    height: camera.region_height
+                                });
+                            }
+                            
                             feedDiv.innerHTML = `<img src="/api/cameras/${camera.index}/stream" 
                                                      alt="Camera ${camera.index} feed"
                                                      class="camera-stream">`;
@@ -653,7 +665,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 return; // Already has overlay
             }
             
-            const cameraIndex = parseInt(feed.dataset.cameraIndex);
+            const cameraIndexStr = feed.dataset.cameraIndex;
+            const cameraIndex = parseInt(cameraIndexStr);
+            
+            if (isNaN(cameraIndex)) {
+                console.warn(`Invalid camera index "${cameraIndexStr}" for feed:`, feed);
+                return;
+            }
+            
             console.log(`Checking camera ${cameraIndex} for region data`);
             
             // Try multiple sources for region data (in order of preference)
