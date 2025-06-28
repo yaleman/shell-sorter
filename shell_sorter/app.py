@@ -697,6 +697,36 @@ async def ml_training_page(
     )
 
 
+@app.get("/region-selection/{camera_index}", response_class=HTMLResponse)
+async def region_selection_page(
+    request: Request,
+    camera_index: int,
+) -> HTMLResponse:
+    """Display the region selection interface for a camera."""
+    if camera_index not in camera_manager.cameras:
+        raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
+    
+    camera = camera_manager.cameras[camera_index]
+    
+    return templates.TemplateResponse(
+        "region_selection.html",
+        {
+            "request": request,
+            "camera": {
+                "index": camera.index,
+                "name": camera.name,
+                "resolution": camera.resolution,
+                "is_active": camera.is_active,
+                "view_type": camera.view_type,
+                "region_x": camera.region_x,
+                "region_y": camera.region_y,
+                "region_width": camera.region_width,
+                "region_height": camera.region_height,
+            },
+        },
+    )
+
+
 @app.get("/tagging/{session_id}", response_class=HTMLResponse)
 async def tagging_page(
     request: Request,

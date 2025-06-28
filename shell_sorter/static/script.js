@@ -313,8 +313,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('click', async function(e) {
         if (e.target.classList.contains('region-select-btn')) {
             const cameraIndex = parseInt(e.target.dataset.cameraIndex);
-            showToast('Region selection UI not yet implemented', 'info');
-            // TODO: Implement region selection modal/overlay
+            window.location.href = `/region-selection/${cameraIndex}`;
         }
         else if (e.target.classList.contains('region-clear-btn')) {
             const cameraIndex = parseInt(e.target.dataset.cameraIndex);

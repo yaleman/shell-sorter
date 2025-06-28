@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Region Selection - {{ camera.name }}</title>
+    <link href="/static/style.css" rel="stylesheet">
+    <style>
+        .region-selection-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .camera-stream-container {
+            position: relative;
+            display: inline-block;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+        }
+        
+        .camera-stream-image {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            cursor: crosshair;
+        }
+        
+        .region-overlay {
+            position: absolute;
+            border: 2px solid #ff0000;
+            background: rgba(255, 0, 0, 0.1);
+            pointer-events: none;
+            display: none;
+        }
+        
+        .selection-info {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .coordinates {
+            font-family: monospace;
+            font-size: 14px;
+            margin: 5px 0;
+        }
+        
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .navigation {
+            margin-bottom: 20px;
+        }
+        
+        .instructions {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e3f2fd;
+            border-radius: 5px;
+            border-left: 4px solid #2196f3;
+        }
+    </style>
+</head>
+<body>
+    <div class="region-selection-container">
+        <div class="navigation">
+            <a href="/" class="btn btn-secondary">← Back to Dashboard</a>
+        </div>
+        
+        <header>
+            <h1>🎯 Region Selection</h1>
+            <h2>{{ camera.name }}</h2>
+        </header>
+
+        <div class="instructions">
+            <h3>How to select a region:</h3>
+            <ol>
+                <li>Ensure the camera is active and streaming</li>
+                <li>Click and drag on the camera image to select a rectangular region</li>
+                <li>The red overlay shows your selected region</li>
+                <li>Click "Save Region" to save your selection</li>
+                <li>Click "Clear Region" to remove the current selection</li>
+            </ol>
+        </div>
+
+        <div class="camera-info">
+            <p><strong>Camera Index:</strong> {{ camera.index }}</p>
+            <p><strong>Resolution:</strong> {{ camera.resolution[0] }}x{{ camera.resolution[1] }}</p>
+            <p><strong>View Type:</strong> {{ camera.view_type or 'Not set' }}</p>
+            <p><strong>Status:</strong> 
+                <span class="camera-status status-{{ 'active' if camera.is_active else 'inactive' }}">
+                    {{ 'Active' if camera.is_active else 'Inactive' }}
+                </span>
+            </p>
+        </div>
+
+        <div class="camera-stream-container" id="camera-container">
+            {% if camera.is_active %}
+                <img src="/api/cameras/{{ camera.index }}/stream" 
+                     alt="Camera {{ camera.index }} stream"
+                     class="camera-stream-image"
+                     id="camera-image">
+                <div class="region-overlay" id="region-overlay"></div>
+            {% else %}
+                <div class="no-stream">
+                    <p>Camera is not active. Please start the camera stream first.</p>
+                    <button id="start-camera-btn" class="btn btn-primary">Start Camera</button>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="selection-info" id="selection-info">
+            <h3>Current Selection</h3>
+            <div class="coordinates">
+                <div>Start: <span id="start-coords">Not selected</span></div>
+                <div>End: <span id="end-coords">Not selected</span></div>
+                <div>Size: <span id="size-coords">Not selected</span></div>
+            </div>
+            {% if camera.region_x is not none %}
+            <div class="coordinates">
+                <strong>Saved Region:</strong>
+                <div>Position: ({{ camera.region_x }}, {{ camera.region_y }})</div>
+                <div>Size: {{ camera.region_width }} × {{ camera.region_height }}</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="controls">
+            <button id="save-region-btn" class="btn btn-primary" disabled>Save Region</button>
+            <button id="clear-region-btn" class="btn btn-danger">Clear Region</button>
+            <button id="reset-selection-btn" class="btn btn-secondary">Reset Selection</button>
+        </div>
+    </div>
+
+    <!-- Toast notification container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/script.js"></script>
+    <script src="/static/region_selection.js"></script>
+</body>
+</html>
