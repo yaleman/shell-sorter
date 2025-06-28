@@ -98,7 +98,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (response.ok) {
                     const result = await response.json();
                     alert(result.message);
-                    location.reload();
+                    // Update camera feeds without reloading
+                    await updateCameraFeeds();
                 } else {
                     alert('Error starting selected cameras');
                 }
@@ -119,7 +120,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (response.ok) {
                         const result = await response.json();
                         alert(result.message);
-                        location.reload();
+                        // Update camera feeds without reloading
+                        await updateCameraFeeds();
                     } else {
                         alert('Error stopping cameras');
                     }
@@ -161,8 +163,46 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
+    async function updateCameraFeeds() {
+        try {
+            const response = await fetch('/api/cameras');
+            if (response.ok) {
+                const cameras = await response.json();
+                
+                cameras.forEach(camera => {
+                    const cameraItem = document.querySelector(`[data-camera-index="${camera.index}"]`);
+                    if (cameraItem) {
+                        const statusSpan = cameraItem.querySelector('.camera-status');
+                        const existingFeed = cameraItem.querySelector('.camera-feed');
+                        
+                        // Update status
+                        if (statusSpan) {
+                            statusSpan.className = `camera-status status-${camera.is_active ? 'active' : 'inactive'}`;
+                            statusSpan.textContent = camera.is_active ? 'Active' : 'Inactive';
+                        }
+                        
+                        // Add or remove camera feed
+                        if (camera.is_active && !existingFeed) {
+                            const feedDiv = document.createElement('div');
+                            feedDiv.className = 'camera-feed';
+                            feedDiv.innerHTML = `<img src="/api/cameras/${camera.index}/stream" 
+                                                     alt="Camera ${camera.index} feed"
+                                                     class="camera-stream">`;
+                            cameraItem.appendChild(feedDiv);
+                        } else if (!camera.is_active && existingFeed) {
+                            existingFeed.remove();
+                        }
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error updating camera feeds:', error);
+        }
+    }
+    
     function updateCameraSelection() {
-        cameraCheckboxes.forEach(checkbox => {
+        const checkboxes = document.querySelectorAll('.camera-checkbox');
+        checkboxes.forEach(checkbox => {
             const cameraItem = checkbox.closest('.camera-item');
             if (checkbox.checked) {
                 cameraItem.classList.add('selected');
