@@ -1,17 +1,17 @@
-import uvicorn
-from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, Depends
-from fastapi.responses import HTMLResponse, StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Generator, Callable, Awaitable
 from datetime import datetime
 import logging
 import signal
 import sys
+from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, Depends
+from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+import uvicorn
 
 from .config import Settings
 from .ml_trainer import MLTrainer
@@ -124,8 +124,12 @@ machine_controller = MachineController()
 # Initialize camera manager
 camera_manager = CameraManager()
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+# Setup logging with timestamps including milliseconds
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s.%(msecs)03d - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Shell Sorter Control Panel", version="1.0.0")
@@ -165,17 +169,11 @@ def get_settings() -> Settings:
     return settings
 
 
-def get_camera_manager() -> CameraManager:
-    """Dependency to get the camera manager instance."""
-    return camera_manager
-
-
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(
     request: Request,
     controller: MachineController = Depends(get_machine_controller),
     app_settings: Settings = Depends(get_settings),
-    cam_manager: CameraManager = Depends(get_camera_manager),
 ) -> HTMLResponse:
     return templates.TemplateResponse(
         "dashboard.html",
@@ -184,7 +182,7 @@ async def dashboard(
             "machine_status": controller.get_status(),
             "recent_jobs": controller.get_recent_jobs(),
             "supported_case_types": app_settings.supported_case_types,
-            "cameras": cam_manager.get_cameras(),
+            "cameras": camera_manager.get_cameras(),
         },
     )
 
@@ -279,7 +277,7 @@ async def upload_reference_image(
             raise HTTPException(status_code=400, detail="Failed to add reference image")
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/api/case-types/{case_type_name}/training-image")
@@ -311,7 +309,7 @@ async def upload_training_image(
             raise HTTPException(status_code=400, detail="Failed to add training image")
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/api/train-model")
@@ -327,18 +325,16 @@ async def train_model(
         else:
             raise HTTPException(status_code=400, detail=message)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # Camera Management Endpoints
 
 
 @app.get("/api/cameras/detect")
-async def detect_cameras(
-    cam_manager: CameraManager = Depends(get_camera_manager),
-) -> List[Dict[str, Any]]:
+async def detect_cameras() -> List[Dict[str, Any]]:
     """Detect all available cameras."""
-    cameras = cam_manager.detect_cameras()
+    cameras = camera_manager.detect_cameras()
     return [
         {
             "index": cam.index,
@@ -352,11 +348,9 @@ async def detect_cameras(
 
 
 @app.get("/api/cameras")
-async def get_cameras(
-    cam_manager: CameraManager = Depends(get_camera_manager),
-) -> List[Dict[str, Any]]:
+async def get_cameras() -> List[Dict[str, Any]]:
     """Get list of detected cameras."""
-    cameras = cam_manager.get_cameras()
+    cameras = camera_manager.get_cameras()
     return [
         {
             "index": cam.index,
@@ -372,13 +366,12 @@ async def get_cameras(
 @app.post("/api/cameras/select")
 async def select_cameras(
     request: Request,
-    cam_manager: CameraManager = Depends(get_camera_manager),
 ) -> Dict[str, Any]:
     """Select which cameras to use for sorting."""
     try:
         body = await request.json()
         camera_indices = body if isinstance(body, list) else []
-        success = cam_manager.select_cameras(camera_indices)
+        success = camera_manager.select_cameras(camera_indices)
         if success:
             return {
                 "message": f"Selected cameras: {camera_indices}",
@@ -387,16 +380,17 @@ async def select_cameras(
         else:
             raise HTTPException(status_code=400, detail="Failed to select cameras")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid request body: {str(e)}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid request body: {str(e)}"
+        ) from e
 
 
 @app.post("/api/cameras/{camera_index}/start")
 async def start_camera(
     camera_index: int,
-    cam_manager: CameraManager = Depends(get_camera_manager),
 ) -> Dict[str, str]:
     """Start streaming from a specific camera."""
-    success = cam_manager.start_camera_stream(camera_index)
+    success = camera_manager.start_camera_stream(camera_index)
     if success:
         return {"message": f"Started camera {camera_index}"}
     else:
@@ -408,19 +402,16 @@ async def start_camera(
 @app.post("/api/cameras/{camera_index}/stop")
 async def stop_camera(
     camera_index: int,
-    cam_manager: CameraManager = Depends(get_camera_manager),
 ) -> Dict[str, str]:
     """Stop streaming from a specific camera."""
-    cam_manager.stop_camera_stream(camera_index)
+    camera_manager.stop_camera_stream(camera_index)
     return {"message": f"Stopped camera {camera_index}"}
 
 
 @app.post("/api/cameras/start-selected")
-async def start_selected_cameras(
-    cam_manager: CameraManager = Depends(get_camera_manager),
-) -> Dict[str, Any]:
+async def start_selected_cameras() -> Dict[str, Any]:
     """Start streaming from all selected cameras."""
-    started = cam_manager.start_selected_cameras()
+    started = camera_manager.start_selected_cameras()
     logger.info("Starting selected cameras: %s", started)
     return {
         "message": f"Started {len(started)} cameras",
@@ -429,24 +420,21 @@ async def start_selected_cameras(
 
 
 @app.post("/api/cameras/stop-all")
-async def stop_all_cameras(
-    cam_manager: CameraManager = Depends(get_camera_manager),
-) -> Dict[str, str]:
+async def stop_all_cameras() -> Dict[str, str]:
     """Stop all camera streams."""
-    cam_manager.stop_all_cameras()
+    camera_manager.stop_all_cameras()
     return {"message": "Stopped all cameras"}
 
 
 @app.get("/api/cameras/{camera_index}/stream")
 async def camera_stream(
     camera_index: int,
-    cam_manager: CameraManager = Depends(get_camera_manager),
 ) -> StreamingResponse:
     """Stream live video from a camera."""
 
     def generate_frames() -> Generator[bytes, None, None]:
         while True:
-            frame_data = cam_manager.get_latest_frame(camera_index)
+            frame_data = camera_manager.get_latest_frame(camera_index)
             if frame_data:
                 yield (
                     b"--frame\r\n"
@@ -463,7 +451,7 @@ async def camera_stream(
     )
 
 
-def signal_handler(signum: int, frame: Any) -> None:
+def signal_handler(signum: int, _frame: Any) -> None:
     """Handle shutdown signals gracefully."""
     print(f"\nReceived signal {signum}, shutting down...")
     camera_manager.cleanup()
