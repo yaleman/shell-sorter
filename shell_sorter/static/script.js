@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', function() {
         startSelectedBtn.addEventListener('click', async function() {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds for starting cameras
+                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 seconds for API response
 
                 const response = await fetch('/api/cameras/start-selected', {
                     method: 'POST',
@@ -136,8 +136,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (response.ok) {
                     const result = await response.json();
                     alert(result.message);
-                    // Update camera feeds without reloading
-                    await updateCameraFeeds();
+                    // Cameras are starting in background, poll for updates
+                    pollForCameraUpdates();
                 } else {
                     alert('Error starting selected cameras');
                 }
@@ -260,10 +260,43 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
                 });
+                return cameras;
             }
         } catch (error) {
             console.error('Error updating camera feeds:', error);
         }
+        return null;
+    }
+    
+    function pollForCameraUpdates() {
+        console.log('Starting camera status polling...');
+        let pollCount = 0;
+        const maxPolls = 12; // Poll for up to 60 seconds (12 * 5s)
+        
+        const pollInterval = setInterval(async () => {
+            pollCount++;
+            console.log(`Camera status poll ${pollCount}/${maxPolls}`);
+            
+            const cameras = await updateCameraFeeds();
+            
+            // Check if any selected cameras are now active
+            if (cameras) {
+                const selectedActive = cameras.filter(cam => cam.is_selected && cam.is_active);
+                const selectedTotal = cameras.filter(cam => cam.is_selected);
+                
+                console.log(`Active cameras: ${selectedActive.length}/${selectedTotal.length}`);
+                
+                // Stop polling if all selected cameras are active or we've reached max polls
+                if (selectedActive.length === selectedTotal.length || pollCount >= maxPolls) {
+                    clearInterval(pollInterval);
+                    if (selectedActive.length === selectedTotal.length) {
+                        console.log('All selected cameras are now active');
+                    } else {
+                        console.log('Stopped polling - some cameras may have failed to start');
+                    }
+                }
+            }
+        }, 5000); // Poll every 5 seconds
     }
 
     function updateCameraSelection() {

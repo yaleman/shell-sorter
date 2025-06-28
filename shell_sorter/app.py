@@ -4,7 +4,7 @@ from datetime import datetime
 import logging
 import signal
 import sys
-from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, Depends
+from fastapi import FastAPI, Request, Form, File, UploadFile, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -385,18 +385,29 @@ async def select_cameras(
         ) from e
 
 
+def start_camera_background(camera_index: int) -> None:
+    """Background task to start a camera."""
+    logger.info("Starting camera %d in background", camera_index)
+    success = camera_manager.start_camera_stream(camera_index)
+    if success:
+        logger.info("Successfully started camera %d", camera_index)
+    else:
+        logger.error("Failed to start camera %d", camera_index)
+
+
 @app.post("/api/cameras/{camera_index}/start")
 async def start_camera(
     camera_index: int,
+    background_tasks: BackgroundTasks,
 ) -> Dict[str, str]:
     """Start streaming from a specific camera."""
-    success = camera_manager.start_camera_stream(camera_index)
-    if success:
-        return {"message": f"Started camera {camera_index}"}
-    else:
+    if camera_index not in camera_manager.cameras:
         raise HTTPException(
-            status_code=400, detail=f"Failed to start camera {camera_index}"
+            status_code=400, detail=f"Camera {camera_index} not found"
         )
+    
+    background_tasks.add_task(start_camera_background, camera_index)
+    return {"message": f"Starting camera {camera_index} in background"}
 
 
 @app.post("/api/cameras/{camera_index}/stop")
@@ -408,14 +419,26 @@ async def stop_camera(
     return {"message": f"Stopped camera {camera_index}"}
 
 
-@app.post("/api/cameras/start-selected")
-async def start_selected_cameras() -> Dict[str, Any]:
-    """Start streaming from all selected cameras."""
+def start_selected_cameras_background() -> None:
+    """Background task to start all selected cameras."""
+    logger.info("Starting selected cameras in background")
     started = camera_manager.start_selected_cameras()
-    logger.info("Starting selected cameras: %s", started)
+    logger.info("Background task completed - started cameras: %s", started)
+
+
+@app.post("/api/cameras/start-selected")
+async def start_selected_cameras(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+    """Start streaming from all selected cameras."""
+    selected_cameras = camera_manager.get_selected_cameras()
+    if not selected_cameras:
+        raise HTTPException(status_code=400, detail="No cameras selected")
+    
+    camera_indices = [cam.index for cam in selected_cameras]
+    background_tasks.add_task(start_selected_cameras_background)
+    
     return {
-        "message": f"Started {len(started)} cameras",
-        "started_cameras": started,
+        "message": f"Starting {len(selected_cameras)} selected cameras in background",
+        "selected_cameras": camera_indices,
     }
 
 
