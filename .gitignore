@@ -3,3 +3,4 @@ images/*.jpg
 *.pyc
 *.pyo
 */__pycache__/*
+data/*
