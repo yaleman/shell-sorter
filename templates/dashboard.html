@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shell Sorter Control Panel</title>
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔫 Shell Sorter Control Panel</h1>
+            <div class="status-indicator status-{{ machine_status.status }}">
+                Status: {{ machine_status.status.title() }}
+            </div>
+        </header>
+
+        <main>
+            <section class="control-panel">
+                <h2>Machine Control</h2>
+                
+                {% if machine_status.status == "idle" %}
+                <form id="start-form" class="sorting-form">
+                    <div class="form-group">
+                        <label for="case_type">Case Type:</label>
+                        <select name="case_type" id="case_type" required>
+                            <option value="">Select case type</option>
+                            {% for case_type in supported_case_types %}
+                            <option value="{{ case_type }}">{{ case_type }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="quantity">Quantity:</label>
+                        <input type="number" name="quantity" id="quantity" min="1" max="10000" required>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Start Sorting</button>
+                </form>
+                {% else %}
+                <div class="current-job">
+                    <h3>Current Job</h3>
+                    <p><strong>Case Type:</strong> {{ machine_status.current_job.case_type }}</p>
+                    <p><strong>Quantity:</strong> {{ machine_status.current_job.quantity }}</p>
+                    <p><strong>Started:</strong> {{ machine_status.current_job.started_at }}</p>
+                </div>
+                
+                <button id="stop-btn" class="btn btn-danger">Stop Sorting</button>
+                {% endif %}
+            </section>
+
+            <section class="status-panel">
+                <h2>Machine Status</h2>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <span class="label">Current Status:</span>
+                        <span class="value">{{ machine_status.status.title() }}</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Total Sorted:</span>
+                        <span class="value">{{ machine_status.total_sorted }}</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Last Update:</span>
+                        <span class="value">{{ machine_status.last_update }}</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="jobs-panel">
+                <h2>Recent Jobs</h2>
+                <div class="jobs-list">
+                    {% if recent_jobs %}
+                        {% for job in recent_jobs %}
+                        <div class="job-item job-{{ job.status }}">
+                            <div class="job-header">
+                                <span class="job-id">Job #{{ job.id }}</span>
+                                <span class="job-status">{{ job.status.title() }}</span>
+                            </div>
+                            <div class="job-details">
+                                <span>{{ job.case_type }} - {{ job.quantity }} cases</span>
+                                <span>{{ job.started_at }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="no-jobs">No recent jobs</p>
+                    {% endif %}
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
