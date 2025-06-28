@@ -44,6 +44,80 @@ function removeToast(toast) {
     }, 300);
 }
 
+// Region data management with localStorage
+const RegionStorage = {
+    STORAGE_KEY: 'shell-sorter-regions',
+    
+    // Load region data from localStorage
+    load() {
+        try {
+            const data = localStorage.getItem(this.STORAGE_KEY);
+            return data ? JSON.parse(data) : {};
+        } catch (error) {
+            console.warn('Failed to load region data from localStorage:', error);
+            return {};
+        }
+    },
+    
+    // Save region data to localStorage
+    save(regions) {
+        try {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(regions));
+            console.log('Saved region data to localStorage:', regions);
+        } catch (error) {
+            console.error('Failed to save region data to localStorage:', error);
+        }
+    },
+    
+    // Get region for specific camera
+    getRegion(cameraIndex) {
+        const regions = this.load();
+        return regions[cameraIndex] || null;
+    },
+    
+    // Set region for specific camera
+    setRegion(cameraIndex, regionData) {
+        const regions = this.load();
+        regions[cameraIndex] = regionData;
+        this.save(regions);
+    },
+    
+    // Remove region for specific camera
+    removeRegion(cameraIndex) {
+        const regions = this.load();
+        delete regions[cameraIndex];
+        this.save(regions);
+    },
+    
+    // Sync with server data (called on page load)
+    syncWithServer(cameraData) {
+        const regions = this.load();
+        let updated = false;
+        
+        cameraData.forEach(camera => {
+            if (camera.region_x !== null && camera.region_x !== undefined) {
+                const serverRegion = {
+                    x: camera.region_x,
+                    y: camera.region_y,
+                    width: camera.region_width,
+                    height: camera.region_height
+                };
+                
+                // Update localStorage if server has newer data
+                if (!regions[camera.index] || JSON.stringify(regions[camera.index]) !== JSON.stringify(serverRegion)) {
+                    regions[camera.index] = serverRegion;
+                    updated = true;
+                }
+            }
+        });
+        
+        if (updated) {
+            this.save(regions);
+            console.log('Synced region data with server');
+        }
+    }
+};
+
 document.addEventListener('DOMContentLoaded', function() {
     // Camera management elements
     const detectCamerasBtn = document.getElementById('detect-cameras-btn');
@@ -542,65 +616,53 @@ document.addEventListener('DOMContentLoaded', function() {
         const cameraFeeds = document.querySelectorAll('.camera-feed');
         console.log(`Checking ${cameraFeeds.length} camera feeds for missing overlays`);
         
-        cameraFeeds.forEach((feed, index) => {
+        cameraFeeds.forEach((feed) => {
             const existing = feed.querySelector('.camera-region-overlay');
             if (existing) {
-                console.log(`Camera feed ${index} already has overlay`);
                 return; // Already has overlay
             }
             
-            // Check for JSON region data in data-region attribute
-            const regionData = feed.dataset.region;
-            console.log(`Camera feed ${index} region data:`, regionData || 'none');
+            const cameraIndex = parseInt(feed.dataset.cameraIndex);
+            console.log(`Checking camera ${cameraIndex} for region data`);
             
-            if (regionData) {
+            // Try multiple sources for region data (in order of preference)
+            let region = null;
+            
+            // 1. localStorage (most reliable)
+            region = RegionStorage.getRegion(cameraIndex);
+            if (region) {
+                console.log(`Found region data in localStorage for camera ${cameraIndex}:`, region);
+            }
+            
+            // 2. Template JSON data attribute
+            if (!region && feed.dataset.region) {
                 try {
-                    const region = JSON.parse(regionData);
-                    const { x, y, width, height } = region;
-                    
-                    // Create overlay element
-                    const overlay = document.createElement('div');
-                    overlay.className = 'camera-region-overlay';
-                    overlay.dataset.regionX = x.toString();
-                    overlay.dataset.regionY = y.toString();
-                    overlay.dataset.regionWidth = width.toString();
-                    overlay.dataset.regionHeight = height.toString();
-                    overlay.style.display = 'none';
-                    
-                    feed.appendChild(overlay);
-                    overlaysCreated++;
-                    console.log(`Created overlay for camera ${index} with region ${x},${y} (${width}x${height})`);
+                    region = JSON.parse(feed.dataset.region);
+                    console.log(`Found region data in template for camera ${cameraIndex}:`, region);
+                    // Store in localStorage for future use
+                    RegionStorage.setRegion(cameraIndex, region);
                 } catch (error) {
-                    console.error(`Failed to parse region JSON for camera ${index}:`, error, regionData);
+                    console.error(`Failed to parse template region JSON for camera ${cameraIndex}:`, error);
                 }
-            } else {
-                // Fallback: try parsing from UI text if JSON not available
-                const cameraItem = feed.closest('.camera-item');
-                const regionInfo = cameraItem?.querySelector('.region-info');
+            }
+            
+            if (region) {
+                const { x, y, width, height } = region;
                 
-                if (regionInfo && regionInfo.textContent.trim()) {
-                    console.log(`Falling back to text parsing for camera ${index}`);
-                    const text = regionInfo.textContent.trim();
-                    const match = text.match(/(\d+),(\d+)\s*\((\d+)x(\d+)\)/);
-                    
-                    if (match) {
-                        const [, x, y, width, height] = match;
-                        
-                        const overlay = document.createElement('div');
-                        overlay.className = 'camera-region-overlay';
-                        overlay.dataset.regionX = x;
-                        overlay.dataset.regionY = y;
-                        overlay.dataset.regionWidth = width;
-                        overlay.dataset.regionHeight = height;
-                        overlay.style.display = 'none';
-                        
-                        feed.appendChild(overlay);
-                        overlaysCreated++;
-                        console.log(`Created overlay via fallback for camera ${index} with region ${x},${y} (${width}x${height})`);
-                    } else {
-                        console.warn(`Could not parse region info for camera ${index}:`, text);
-                    }
-                }
+                // Create overlay element
+                const overlay = document.createElement('div');
+                overlay.className = 'camera-region-overlay';
+                overlay.dataset.regionX = x.toString();
+                overlay.dataset.regionY = y.toString();
+                overlay.dataset.regionWidth = width.toString();
+                overlay.dataset.regionHeight = height.toString();
+                overlay.style.display = 'none';
+                
+                feed.appendChild(overlay);
+                overlaysCreated++;
+                console.log(`Created overlay for camera ${cameraIndex} with region ${x},${y} (${width}x${height})`);
+            } else {
+                console.log(`No region data found for camera ${cameraIndex}`);
             }
         });
         
@@ -642,8 +704,31 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize camera selection display
     updateCameraSelection();
     
+    // Sync region data with server and initialize overlays
+    initializeRegionData();
+    
     // Auto-detect cameras if none are currently detected
     autoDetectCameras();
+    
+    async function initializeRegionData() {
+        try {
+            // Fetch current camera data from server
+            const response = await fetch('/api/cameras');
+            if (response.ok) {
+                const cameras = await response.json();
+                
+                // Sync localStorage with server data
+                RegionStorage.syncWithServer(cameras);
+                
+                // Create any missing overlays now that we have the data
+                createMissingOverlays();
+            }
+        } catch (error) {
+            console.warn('Failed to initialize region data:', error);
+            // Still try to create overlays from template data
+            createMissingOverlays();
+        }
+    }
     
     async function autoDetectCameras() {
         try {
