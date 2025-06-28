@@ -41,6 +41,7 @@ This application controls an ammunition shell case sorting machine that uses com
 5. **ESPHome Controller** (`esphome-shell-sorter.yaml`)
    - ESP32-based hardware controller configuration
    - Two binary sensors for case detection
+   - One manual trigger button for vibration motor
    - Two servo controls for case manipulation
    - One switch for vibration motor control
    - Web server with HTTP API for remote control
@@ -134,6 +135,7 @@ The hardware controller requires an ESP32 device flashed with the provided ESPHo
 - GPIO18: Case ready sensor (binary sensor with pullup)
 - GPIO19: Case in camera view sensor (binary sensor with pullup)
 - GPIO21: Vibration motor control (digital output)
+- GPIO22: Manual vibration trigger button (binary sensor with pullup)
 - GPIO16: Case feeder servo (PWM output)
 - GPIO17: Case positioning servo (PWM output)
 
@@ -152,7 +154,22 @@ uv sync
 just check
 
 # Start the application
-python main.py
-# or
-uv run python main.py
+just run
 ```
+
+## ESPHome Hardware Setup
+
+```bash
+# Start ESPHome dashboard for configuration and monitoring
+just esphome
+# Dashboard will be available at http://localhost:6052
+
+# Flash configuration to ESP32 device (replace /dev/ttyUSB0 with your device)
+just esphome-flash /dev/ttyUSB0
+```
+
+The ESPHome dashboard allows you to:
+- Edit and validate the configuration
+- View device logs in real-time
+- Monitor sensor states and control outputs
+- Update firmware over-the-air (OTA)

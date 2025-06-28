@@ -83,6 +83,27 @@ binary_sensor:
       then:
         - logger.log: "Case removed from camera view"
 
+  # Manual vibration motor trigger button
+  - platform: gpio
+    pin:
+      number: GPIO22
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    name: "Manual Vibration Trigger"
+    id: manual_vibration_button
+    filters:
+      - delayed_on: 50ms
+      - delayed_off: 200ms
+    on_press:
+      then:
+        - logger.log: "Manual vibration trigger pressed"
+        - switch.turn_on: vibration_motor
+        - delay: 1s
+        - switch.turn_off: vibration_motor
+        - logger.log: "Manual vibration sequence completed"
+
 # Switches for motor and servo control
 switch:
   # Vibration motor control
