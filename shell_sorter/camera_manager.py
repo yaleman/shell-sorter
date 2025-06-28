@@ -2,7 +2,6 @@
 
 import cv2  # type: ignore[import-not-found]
 import threading
-import time
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import logging
@@ -167,24 +166,30 @@ class CameraManager:
         cap = self.active_captures[camera_index]
         stop_event = self.stop_streaming[camera_index]
         
+        logger.info(f"Started streaming thread for camera {camera_index}")
+        
         while not stop_event.is_set():
             try:
                 ret, frame = cap.read()
                 if not ret:
                     logger.warning(f"Failed to read frame from camera {camera_index}")
-                    time.sleep(0.1)
+                    if stop_event.wait(0.1):  # Wait with timeout for responsive shutdown
+                        break
                     continue
                 
                 # Encode frame as JPEG
                 _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                 self.latest_frames[camera_index] = buffer.tobytes()
                 
-                # Small delay to limit CPU usage
-                time.sleep(1/30)  # ~30 FPS
+                # Small delay to limit CPU usage, but check for stop signal
+                if stop_event.wait(1/30):  # ~30 FPS but responsive to stop
+                    break
                 
             except Exception as e:
                 logger.error(f"Error in camera {camera_index} stream: {e}")
                 break
+        
+        logger.info(f"Stopped streaming thread for camera {camera_index}")
     
     def get_latest_frame(self, camera_index: int) -> Optional[bytes]:
         """Get the latest frame from a camera as JPEG bytes."""
@@ -206,4 +211,22 @@ class CameraManager:
     
     def cleanup(self) -> None:
         """Clean up all camera resources."""
+        logger.info("Cleaning up camera resources...")
         self.stop_all_cameras()
+        
+        # Wait for all threads to finish
+        for camera_index, thread in list(self.streaming_threads.items()):
+            if thread.is_alive():
+                logger.info(f"Waiting for camera {camera_index} thread to finish...")
+                thread.join(timeout=2.0)
+                if thread.is_alive():
+                    logger.warning(f"Camera {camera_index} thread did not finish cleanly")
+        
+        # Clear all data structures
+        self.cameras.clear()
+        self.active_captures.clear()
+        self.streaming_threads.clear()
+        self.stop_streaming.clear()
+        self.latest_frames.clear()
+        
+        logger.info("Camera cleanup completed")

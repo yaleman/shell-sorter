@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Generator
 from datetime import datetime
 import logging
+import signal
+import sys
 
 from .config import Settings
 from .ml_trainer import MLTrainer
@@ -418,10 +420,28 @@ async def camera_stream(
     )
 
 
+def signal_handler(signum: int, frame: Any) -> None:
+    """Handle shutdown signals gracefully."""
+    print(f"\nReceived signal {signum}, shutting down...")
+    camera_manager.cleanup()
+    sys.exit(0)
+
+
 def main() -> None:
+    # Set up signal handlers for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     print("Shell Sorter Machine Control Panel")
     print(f"Web interface available at: http://{settings.host}:{settings.port}")
-    uvicorn.run(app, host=settings.host, port=settings.port)
+    print("Press Ctrl+C to stop the server")
+    
+    try:
+        uvicorn.run(app, host=settings.host, port=settings.port)
+    except KeyboardInterrupt:
+        print("\nKeyboard interrupt received, shutting down...")
+        camera_manager.cleanup()
+        sys.exit(0)
 
 
 if __name__ == "__main__":
