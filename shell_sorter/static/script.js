@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', function() {
         detectCamerasBtn.addEventListener('click', async function() {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 500);
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 seconds for camera detection
                 
                 const response = await fetch('/api/cameras/detect', {
                     signal: controller.signal
@@ -107,11 +107,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     alert(`Detected ${cameras.length} cameras`);
                     location.reload();
                 } else {
-                    alert('Error detecting cameras');
+                    alert('Error detecting cameras: Server returned an error');
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Error detecting cameras');
+                if (error.name === 'AbortError') {
+                    alert('Camera detection timed out after 10 seconds. This may indicate no cameras are available or they are slow to respond.');
+                } else {
+                    alert('Error detecting cameras: ' + error.message);
+                }
             }
         });
     }
