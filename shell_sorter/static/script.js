@@ -472,11 +472,26 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function toggleRegionOverlays(show) {
-        const overlays = document.querySelectorAll('.camera-region-overlay');
+        let overlays = document.querySelectorAll('.camera-region-overlay');
         
-        // If no overlays exist yet, show a message and uncheck the checkbox
+        // If no overlays exist, try to create them from region buttons
+        if (overlays.length === 0) {
+            createMissingOverlays();
+            overlays = document.querySelectorAll('.camera-region-overlay');
+        }
+        
+        // If still no overlays after trying to create them, check for region data in UI
         if (overlays.length === 0 && show) {
-            showToast('No camera regions selected yet. Set up regions first.', 'info');
+            const regionsInUI = document.querySelectorAll('.region-info');
+            const hasRegionData = Array.from(regionsInUI).some(regionInfo => 
+                regionInfo.textContent && regionInfo.textContent.trim() !== ''
+            );
+            
+            if (hasRegionData) {
+                showToast('Region data found but overlays could not be created. Try refreshing the page.', 'warning');
+            } else {
+                showToast('No camera regions selected yet. Set up regions first.', 'info');
+            }
             if (showOverlayCheckbox) {
                 showOverlayCheckbox.checked = false;
             }
@@ -489,6 +504,41 @@ document.addEventListener('DOMContentLoaded', function() {
                 overlay.style.display = 'block';
             } else {
                 overlay.style.display = 'none';
+            }
+        });
+    }
+    
+    function createMissingOverlays() {
+        // Look for camera feeds that have region info but no overlay
+        const cameraFeeds = document.querySelectorAll('.camera-feed');
+        
+        cameraFeeds.forEach(feed => {
+            const existing = feed.querySelector('.camera-region-overlay');
+            if (existing) return; // Already has overlay
+            
+            // Look for region info in the same camera item
+            const cameraItem = feed.closest('.camera-item');
+            const regionInfo = cameraItem?.querySelector('.region-info');
+            
+            if (regionInfo && regionInfo.textContent.trim()) {
+                // Parse region info from the text (format: "x,y (widthxheight)")
+                const text = regionInfo.textContent.trim();
+                const match = text.match(/(\d+),(\d+)\s*\((\d+)x(\d+)\)/);
+                
+                if (match) {
+                    const [, x, y, width, height] = match;
+                    
+                    // Create overlay element
+                    const overlay = document.createElement('div');
+                    overlay.className = 'camera-region-overlay';
+                    overlay.dataset.regionX = x;
+                    overlay.dataset.regionY = y;
+                    overlay.dataset.regionWidth = width;
+                    overlay.dataset.regionHeight = height;
+                    overlay.style.display = 'none';
+                    
+                    feed.appendChild(overlay);
+                }
             }
         });
     }
