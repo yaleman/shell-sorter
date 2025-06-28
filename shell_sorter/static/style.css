@@ -63,6 +63,15 @@ main {
 
 .control-panel {
     grid-column: 1 / -1;
+    padding: 15px 30px !important;
+}
+
+.control-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
 }
 
 section {

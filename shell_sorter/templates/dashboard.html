@@ -17,15 +17,12 @@
 
         <main>
             <section class="control-panel">
-                <h2>Machine Control</h2>
-                
-                <div class="manual-controls">
+                <div class="control-row">
+                    <div class="last-updated">
+                        <span class="label">Last Updated:</span>
+                        <span class="value">{{ machine_status.last_update }}</span>
+                    </div>
                     <button id="next-case-btn" class="btn btn-secondary">Next Case</button>
-                </div>
-                
-                <div class="last-updated">
-                    <span class="label">Last Updated:</span>
-                    <span class="value">{{ machine_status.last_update }}</span>
                 </div>
             </section>
 
