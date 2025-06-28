@@ -18,6 +18,7 @@ from .config import Settings
 from .ml_trainer import MLTrainer
 from .camera_manager import CameraManager
 from .shell import Shell
+from .hardware_controller import HardwareController
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
@@ -125,6 +126,9 @@ machine_controller = MachineController()
 
 # Initialize camera manager
 camera_manager = CameraManager()
+
+# Initialize hardware controller
+hardware_controller = HardwareController()
 
 # Setup logging with timestamps including milliseconds
 logging.basicConfig(
@@ -456,19 +460,52 @@ async def stop_all_cameras() -> Dict[str, str]:
 
 @app.post("/api/machine/next-case")
 async def trigger_next_case() -> Dict[str, str]:
-    """Trigger vibration motor 1 to advance to next case."""
+    """Trigger next case sequence via ESPHome hardware controller."""
     try:
-        # TODO: Implement actual motor control hardware interface
-        # For now, just log the action
-        logger.info("Next case triggered - vibration motor 1 activated")
+        # Run the complete next case sequence
+        success = await hardware_controller.run_next_case_sequence()
         
-        # Stub implementation - replace with actual motor control
-        # motor_controller.activate_vibration_motor_1()
-        
-        return {"message": "Next case triggered - vibration motor 1 activated"}
+        if success:
+            logger.info("Next case sequence completed successfully")
+            return {"message": "Next case sequence completed - case advanced to camera position"}
+        else:
+            logger.warning("Next case sequence failed")
+            raise HTTPException(status_code=500, detail="Failed to complete next case sequence")
         
     except Exception as e:
         logger.error("Error triggering next case: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get("/api/machine/sensors")
+async def get_sensor_status() -> Dict[str, Any]:
+    """Get current status of hardware sensors."""
+    try:
+        sensors = await hardware_controller.get_sensor_states()
+        return {
+            "case_ready_to_feed": sensors.get("case_ready", False),
+            "case_in_camera_view": sensors.get("case_in_camera", False),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error("Error getting sensor status: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get("/api/machine/hardware-status")
+async def get_hardware_status() -> Dict[str, Any]:
+    """Get ESPHome device status and connection info."""
+    try:
+        connection_ok = await hardware_controller.test_connection()
+        device_info = await hardware_controller.get_device_info()
+        
+        return {
+            "connected": connection_ok,
+            "device_info": device_info,
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error("Error getting hardware status: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 

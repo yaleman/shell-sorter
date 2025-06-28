@@ -1,0 +1,238 @@
+esphome:
+  name: shell-sorter-controller
+  friendly_name: Shell Sorter Controller
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "YOUR_ENCRYPTION_KEY_HERE"
+
+# Enable over-the-air updates
+ota:
+  - platform: esphome
+    password: "YOUR_OTA_PASSWORD_HERE"
+
+# WiFi configuration
+wifi:
+  ssid: "YOUR_WIFI_SSID"
+  password: "YOUR_WIFI_PASSWORD"
+  
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Shell-Sorter-Fallback"
+    password: "shellsorter123"
+
+captive_portal:
+
+# Enable web server for HTTP API access
+web_server:
+  port: 80
+  auth:
+    username: admin
+    password: shellsorter
+
+# Binary sensors for case detection
+binary_sensor:
+  # Sensor to detect case in "ready to feed" position
+  - platform: gpio
+    pin:
+      number: GPIO18
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    name: "Case Ready to Feed"
+    id: case_ready_sensor
+    device_class: occupancy
+    filters:
+      - delayed_on: 50ms
+      - delayed_off: 100ms
+    on_press:
+      then:
+        - logger.log: "Case detected in ready-to-feed position"
+    on_release:
+      then:
+        - logger.log: "Case removed from ready-to-feed position"
+
+  # Sensor to detect case in camera view
+  - platform: gpio
+    pin:
+      number: GPIO19
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    name: "Case in Camera View"
+    id: case_camera_sensor
+    device_class: occupancy
+    filters:
+      - delayed_on: 50ms
+      - delayed_off: 100ms
+    on_press:
+      then:
+        - logger.log: "Case detected in camera view"
+    on_release:
+      then:
+        - logger.log: "Case removed from camera view"
+
+# Switches for motor and servo control
+switch:
+  # Vibration motor control
+  - platform: gpio
+    pin: GPIO21
+    name: "Vibration Motor"
+    id: vibration_motor
+    icon: mdi:vibrate
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      then:
+        - logger.log: "Vibration motor activated"
+    on_turn_off:
+      then:
+        - logger.log: "Vibration motor deactivated"
+
+# Servo controls
+servo:
+  # Servo 1 - Case feeder servo
+  - id: case_feeder_servo
+    output: servo_1_output
+    auto_detach_time: 2s
+    transition_length: 1s
+
+  # Servo 2 - Case positioning servo
+  - id: case_position_servo
+    output: servo_2_output
+    auto_detach_time: 2s
+    transition_length: 1s
+
+# PWM outputs for servos
+output:
+  - platform: ledc
+    id: servo_1_output
+    pin: GPIO16
+    frequency: 50 Hz
+
+  - platform: ledc
+    id: servo_2_output
+    pin: GPIO17
+    frequency: 50 Hz
+
+  # Template switches to control servos with predefined positions
+  # Case feeder servo control
+  - platform: template
+    name: "Case Feeder Servo - Home Position"
+    id: feeder_servo_home
+    icon: mdi:home
+    turn_on_action:
+      - servo.write:
+          id: case_feeder_servo
+          level: 0%  # 0 degrees
+    turn_off_action:
+      - servo.write:
+          id: case_feeder_servo
+          level: 50%  # 90 degrees (neutral)
+
+  - platform: template
+    name: "Case Feeder Servo - Feed Position"
+    id: feeder_servo_feed
+    icon: mdi:arrow-right
+    turn_on_action:
+      - servo.write:
+          id: case_feeder_servo
+          level: 100%  # 180 degrees
+    turn_off_action:
+      - servo.write:
+          id: case_feeder_servo
+          level: 50%  # 90 degrees (neutral)
+
+  # Case positioning servo control
+  - platform: template
+    name: "Case Position Servo - Camera Position"
+    id: position_servo_camera
+    icon: mdi:camera
+    turn_on_action:
+      - servo.write:
+          id: case_position_servo
+          level: 25%  # 45 degrees
+    turn_off_action:
+      - servo.write:
+          id: case_position_servo
+          level: 50%  # 90 degrees (neutral)
+
+  - platform: template
+    name: "Case Position Servo - Drop Position"
+    id: position_servo_drop
+    icon: mdi:arrow-down
+    turn_on_action:
+      - servo.write:
+          id: case_position_servo
+          level: 75%  # 135 degrees
+    turn_off_action:
+      - servo.write:
+          id: case_position_servo
+          level: 50%  # 90 degrees (neutral)
+
+# Numbers for fine servo control (optional)
+number:
+  - platform: template
+    name: "Case Feeder Servo Position"
+    id: feeder_servo_position
+    min_value: 0
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    mode: slider
+    set_action:
+      then:
+        - servo.write:
+            id: case_feeder_servo
+            level: !lambda 'return x / 100.0;'
+
+  - platform: template
+    name: "Case Position Servo Position"
+    id: position_servo_position
+    min_value: 0
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    mode: slider
+    set_action:
+      then:
+        - servo.write:
+            id: case_position_servo
+            level: !lambda 'return x / 100.0;'
+
+# Status LED (optional)
+light:
+  - platform: status_led
+    name: "Status LED"
+    pin: GPIO2
+
+# Button for manual testing (optional)
+button:
+  - platform: template
+    name: "Test Sequence"
+    icon: mdi:play
+    on_press:
+      then:
+        - logger.log: "Starting test sequence"
+        - switch.turn_on: vibration_motor
+        - delay: 2s
+        - switch.turn_off: vibration_motor
+        - delay: 1s
+        - switch.turn_on: feeder_servo_feed
+        - delay: 2s
+        - switch.turn_off: feeder_servo_feed
+        - delay: 1s
+        - switch.turn_on: position_servo_camera
+        - delay: 2s
+        - switch.turn_off: position_servo_camera
+        - logger.log: "Test sequence complete"

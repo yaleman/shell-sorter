@@ -18,6 +18,7 @@ This application controls an ammunition shell case sorting machine that uses com
    - REST API for machine control and monitoring
    - Web dashboard for user interaction
    - Image upload and case type management endpoints
+   - Hardware controller integration
 
 2. **Configuration Management** (`shell_sorter/config.py`)
    - Pydantic Settings for environment-based configuration
@@ -30,6 +31,21 @@ This application controls an ammunition shell case sorting machine that uses com
    - Model training coordination
    - Reference image management
 
+4. **Hardware Controller** (`shell_sorter/hardware_controller.py`)
+   - ESPHome device communication via HTTP API
+   - Sensor monitoring (case ready, case in camera view)
+   - Servo control (case feeder, case positioning)
+   - Vibration motor control for case advancement
+   - Complete next-case sequence automation
+
+5. **ESPHome Controller** (`esphome-shell-sorter.yaml`)
+   - ESP32-based hardware controller configuration
+   - Two binary sensors for case detection
+   - Two servo controls for case manipulation
+   - One switch for vibration motor control
+   - Web server with HTTP API for remote control
+   - Network communication over WiFi
+
 ### Directory Structure
 
 ```
@@ -38,14 +54,19 @@ data/
 ├── images/          # Training images organized by case type
 ├── references/      # Reference images for case types
 └── temp/           # Temporary uploads
+
+images/              # Captured shell case images from cameras
+esphome-shell-sorter.yaml  # ESPHome hardware controller configuration
 ```
 
 ## System Capabilities
 
 ### Machine Control
-- Start/stop sorting operations
-- Monitor machine status and job progress
-- Real-time status updates via web interface
+- Next case advancement via ESPHome controller
+- Hardware sensor monitoring (case detection)
+- Servo control for case positioning and feeding
+- Vibration motor control for case advancement
+- Real-time hardware status updates via web interface
 
 ### Machine Learning
 - Multiple camera setup for shell case imaging
@@ -56,19 +77,34 @@ data/
   - Designation and brand combination
 
 ### Data Management
+- Capture images from multiple cameras simultaneously
+- Tag captured images with shell case metadata
 - Upload and organize reference images
 - Manage training datasets per case type
 - Automatic model versioning
 - Training progress tracking
+- Save shell data as JSON with image references
 
 ## API Endpoints
 
 ### Machine Control
 - `GET /` - Web dashboard
-- `GET /api/status` - Machine status
-- `POST /api/start-sorting` - Start sorting job
-- `POST /api/stop-sorting` - Stop current job
-- `GET /api/jobs` - List recent jobs
+- `POST /api/machine/next-case` - Trigger next case sequence
+- `GET /api/machine/sensors` - Get hardware sensor status
+- `GET /api/machine/hardware-status` - Get ESPHome device status
+
+### Camera Management
+- `GET /api/cameras` - Get detected cameras
+- `GET /api/cameras/detect` - Detect available cameras
+- `POST /api/cameras/select` - Select cameras for use
+- `POST /api/cameras/start-selected` - Start selected camera streams
+- `POST /api/cameras/stop-all` - Stop all camera streams
+- `POST /api/cameras/capture` - Capture images from selected cameras
+- `GET /api/cameras/{index}/stream` - Live camera stream
+
+### Shell Data Management
+- `GET /tagging/{session_id}` - Shell tagging interface
+- `POST /api/shells/save` - Save tagged shell data
 
 ### ML Management
 - `GET /api/case-types` - List case types and training status
@@ -79,6 +115,7 @@ data/
 
 ## Configuration
 
+### Application Settings
 Settings can be configured via environment variables or `.env` file:
 
 ```bash
@@ -89,6 +126,21 @@ SHELL_SORTER_ML_ENABLED=true
 SHELL_SORTER_CONFIDENCE_THRESHOLD=0.8
 SHELL_SORTER_CAMERA_COUNT=4
 ```
+
+### ESPHome Hardware Configuration
+The hardware controller requires an ESP32 device flashed with the provided ESPHome configuration:
+
+**Hardware Connections:**
+- GPIO18: Case ready sensor (binary sensor with pullup)
+- GPIO19: Case in camera view sensor (binary sensor with pullup)
+- GPIO21: Vibration motor control (digital output)
+- GPIO16: Case feeder servo (PWM output)
+- GPIO17: Case positioning servo (PWM output)
+
+**Network Setup:**
+- Device hostname: `shell-sorter-controller.local`
+- Web server on port 80 with basic auth (admin/shellsorter)
+- WiFi with fallback AP mode for initial configuration
 
 ## Running the Application
 
