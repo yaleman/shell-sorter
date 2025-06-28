@@ -133,11 +133,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Handle camera selection
-    cameraCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', async function() {
+    // Handle camera selection using event delegation
+    document.addEventListener('change', async function(e) {
+        if (e.target.classList.contains('camera-checkbox')) {
+            const checkbox = e.target;
             const selectedCameras = Array.from(document.querySelectorAll('.camera-checkbox:checked'))
                 .map(cb => parseInt(cb.dataset.cameraIndex));
+            
+            console.log('Selected cameras:', selectedCameras); // Debug log
             
             try {
                 const response = await fetch('/api/cameras/select', {
@@ -149,18 +152,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 
                 if (response.ok) {
+                    const result = await response.json();
+                    console.log('Selection result:', result); // Debug log
                     // Update UI to show selection
                     updateCameraSelection();
                 } else {
-                    alert('Error selecting cameras');
+                    const error = await response.text();
+                    console.error('Selection error:', error);
+                    alert('Error selecting cameras: ' + error);
                     checkbox.checked = !checkbox.checked; // Revert checkbox
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Error selecting cameras');
+                alert('Error selecting cameras: ' + error.message);
                 checkbox.checked = !checkbox.checked; // Revert checkbox
             }
-        });
+        }
     });
     
     async function updateCameraFeeds() {

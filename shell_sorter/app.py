@@ -327,18 +327,23 @@ async def get_cameras(
 
 @app.post("/api/cameras/select")
 async def select_cameras(
-    camera_indices: List[int],
+    request: Request,
     cam_manager: CameraManager = Depends(get_camera_manager),
 ) -> Dict[str, Any]:
     """Select which cameras to use for sorting."""
-    success = cam_manager.select_cameras(camera_indices)
-    if success:
-        return {
-            "message": f"Selected cameras: {camera_indices}",
-            "selected_cameras": camera_indices,
-        }
-    else:
-        raise HTTPException(status_code=400, detail="Failed to select cameras")
+    try:
+        body = await request.json()
+        camera_indices = body if isinstance(body, list) else []
+        success = cam_manager.select_cameras(camera_indices)
+        if success:
+            return {
+                "message": f"Selected cameras: {camera_indices}",
+                "selected_cameras": camera_indices,
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Failed to select cameras")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid request body: {str(e)}")
 
 
 @app.post("/api/cameras/{camera_index}/start")
