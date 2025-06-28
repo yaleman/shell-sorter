@@ -567,17 +567,27 @@ async def tagging_page(
 
 @app.post("/api/shells/save")
 async def save_shell_data(
-    session_id: str = Form(...),
-    brand: str = Form(...),
-    shell_type: str = Form(...),
-    image_filenames: str = Form(...),
+    request: Request,
     app_settings: Settings = Depends(get_settings),
 ) -> Dict[str, Any]:
     """Save tagged shell data to JSON file."""
     try:
-        # Parse image filenames from JSON string
-        import json
-        filenames_list = json.loads(image_filenames)
+        # Parse JSON body
+        body = await request.json()
+        session_id = body.get("session_id")
+        brand = body.get("brand")
+        shell_type = body.get("shell_type") 
+        filenames_list = body.get("image_filenames")
+        
+        # Validate required fields
+        if not session_id:
+            raise HTTPException(status_code=400, detail="session_id is required")
+        if not brand:
+            raise HTTPException(status_code=400, detail="brand is required")
+        if not shell_type:
+            raise HTTPException(status_code=400, detail="shell_type is required")
+        if not filenames_list or not isinstance(filenames_list, list):
+            raise HTTPException(status_code=400, detail="image_filenames must be a non-empty list")
         
         # Create Shell object
         shell = Shell(
@@ -608,9 +618,6 @@ async def save_shell_data(
             "shell_data": shell.model_dump()
         }
         
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse image filenames JSON: %s", e)
-        raise HTTPException(status_code=400, detail="Invalid image filenames format") from e
     except Exception as e:
         logger.error("Error saving shell data: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
