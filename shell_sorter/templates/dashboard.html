@@ -77,7 +77,7 @@
                                         {% if camera.region_x is not none %}Edit Region{% else %}Select Region{% endif %}
                                     </button>
                                     {% if camera.region_x is not none %}
-                                    <span class="region-info">{{ camera.region_x }},{{ camera.region_y }} ({{ camera.region_width }}×{{ camera.region_height }})</span>
+                                    <span class="region-info">{{ camera.region_x }},{{ camera.region_y }} ({{ camera.region_width }}x{{ camera.region_height }})</span>
                                     <button class="btn btn-sm btn-danger region-clear-btn" data-camera-index="{{ camera.index }}">Clear</button>
                                     {% endif %}
                                 </div>
