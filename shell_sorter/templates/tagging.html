@@ -34,7 +34,7 @@
                 <h2>Shell Information</h2>
                 <form id="tagging-form" class="tagging-form">
                     <input type="hidden" name="session_id" value="{{ session_id }}">
-                    <input type="hidden" name="image_filenames" value="{{ captured_images | map(attribute='filename') | list | tojson }}">
+                    <input type="hidden" name="image_filenames" value="{{ (captured_images | map(attribute='filename') | list) | tojson | e }}">
                     
                     <div class="form-group">
                         <label for="brand">Brand:</label>

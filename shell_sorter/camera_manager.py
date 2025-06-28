@@ -45,7 +45,7 @@ class CameraManager:
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
                 camera_info = CameraInfo(
-                    index=i, name=f"Camera {i}", resolution=(width, height)
+                    index=i, name=f"Camera {i}", resolution=(width, height), is_selected=True
                 )
                 cameras.append(camera_info)
                 self.cameras[i] = camera_info
