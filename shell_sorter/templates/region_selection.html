@@ -62,10 +62,24 @@
         
         .instructions {
             margin: 20px 0;
-            padding: 15px;
+            padding: 10px 15px;
             background: #e3f2fd;
             border-radius: 5px;
             border-left: 4px solid #2196f3;
+        }
+        
+        .instructions h3 {
+            margin: 0 0 10px 0;
+            font-size: 1rem;
+        }
+        
+        .instructions ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        
+        .instructions li {
+            margin-bottom: 5px;
         }
     </style>
 </head>
@@ -79,17 +93,6 @@
             <h1>🎯 Region Selection</h1>
             <h2>{{ camera.name }}</h2>
         </header>
-
-        <div class="instructions">
-            <h3>How to select a region:</h3>
-            <ol>
-                <li>Ensure the camera is active and streaming</li>
-                <li>Click and drag on the camera image to select a rectangular region</li>
-                <li>The red overlay shows your selected region</li>
-                <li>Click "Save Region" to save your selection</li>
-                <li>Click "Clear Region" to remove the current selection</li>
-            </ol>
-        </div>
 
         <div class="camera-info">
             <p><strong>Camera Index:</strong> {{ camera.index }}</p>
@@ -137,6 +140,17 @@
             <button id="save-region-btn" class="btn btn-primary" disabled>Save Region</button>
             <button id="clear-region-btn" class="btn btn-danger">Clear Region</button>
             <button id="reset-selection-btn" class="btn btn-secondary">Reset Selection</button>
+        </div>
+
+        <div class="instructions">
+            <h3>How to select a region:</h3>
+            <ol>
+                <li>Ensure the camera is active and streaming</li>
+                <li>Click and drag on the camera image to select a rectangular region</li>
+                <li>The red overlay shows your selected region</li>
+                <li>Click "Save Region" to save your selection</li>
+                <li>Click "Clear Region" to remove the current selection</li>
+            </ol>
         </div>
     </div>
 
