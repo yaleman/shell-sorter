@@ -4,10 +4,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Generator, Callable, Awaitable
 from datetime import datetime
+import json
 import logging
 import signal
 import sys
 import uuid
+
+try:
+    import cv2  # type: ignore[import-not-found]
+    import numpy as np  # type: ignore[import-not-found]
+except ImportError:
+    cv2 = None
+    np = None
 from fastapi import (
     FastAPI,
     Request,
@@ -95,7 +103,10 @@ class MachineController:
 
     def get_status(self) -> Dict[str, Any]:
         """Get current machine status."""
-        return self.machine_status
+        return {
+            "status": self.machine_status.status,
+            "last_update": self.machine_status.last_update,
+        }
 
     def get_jobs(self) -> List[Dict[str, Any]]:
         """Get all sorting jobs."""
@@ -105,13 +116,12 @@ class MachineController:
         """Get recent jobs in reverse chronological order."""
         return self.sorting_jobs[-limit:][::-1]
 
-    def start_sorting(self) -> Dict[str, Any]:
+    def start_sorting(self) -> None:
         """Start a new sorting job."""
         self.machine_status.set_running()
 
     def stop_sorting(self) -> None:
         """Stop the current sorting job."""
-
         self.machine_status.stop_sorting()
 
 
@@ -159,6 +169,7 @@ static_dir = Path(__file__).parent / "static"
 templates = Jinja2Templates(directory=str(templates_dir))
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 app.mount("/images", StaticFiles(directory="images"), name="images")
+app.mount("/data", StaticFiles(directory=str(settings.data_directory)), name="data")
 
 
 def get_machine_controller() -> MachineController:
@@ -207,10 +218,10 @@ async def start_sorting(
     case_type: str = Form(...),
     quantity: int = Form(...),
     controller: MachineController = Depends(get_machine_controller),
-) -> Dict[str, Any]:
+) -> Dict[str, str]:
     """Start a sorting job for the specified case type and quantity."""
-    new_job = controller.start_sorting(case_type, quantity)
-    return {"message": f"Started sorting {quantity} {case_type} cases", "job": new_job}
+    controller.start_sorting()
+    return {"message": f"Started sorting {quantity} {case_type} cases"}
 
 
 @app.post("/api/stop-sorting")
@@ -284,8 +295,7 @@ async def upload_reference_image(
         success = trainer.add_reference_image(case_type_name, temp_path)
         if success:
             return {"message": f"Reference image uploaded for {case_type_name}"}
-        else:
-            raise HTTPException(status_code=400, detail="Failed to add reference image")
+        raise HTTPException(status_code=400, detail="Failed to add reference image")
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -316,8 +326,7 @@ async def upload_training_image(
         success = trainer.add_training_image(case_type_name, temp_path)
         if success:
             return {"message": f"Training image uploaded for {case_type_name}"}
-        else:
-            raise HTTPException(status_code=400, detail="Failed to add training image")
+        raise HTTPException(status_code=400, detail="Failed to add training image")
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -333,8 +342,7 @@ async def train_model(
         success, message = trainer.train_model(case_types)
         if success:
             return {"message": message, "success": True}
-        else:
-            raise HTTPException(status_code=400, detail=message)
+        raise HTTPException(status_code=400, detail=message)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -388,8 +396,7 @@ async def select_cameras(
                 "message": f"Selected cameras: {camera_indices}",
                 "selected_cameras": camera_indices,
             }
-        else:
-            raise HTTPException(status_code=400, detail="Failed to select cameras")
+        raise HTTPException(status_code=400, detail="Failed to select cameras")
     except Exception as e:
         raise HTTPException(
             status_code=400, detail=f"Invalid request body: {str(e)}"
@@ -473,11 +480,10 @@ async def trigger_next_case() -> Dict[str, str]:
             return {
                 "message": "Next case sequence completed - case advanced to camera position"
             }
-        else:
-            logger.warning("Next case sequence failed")
-            raise HTTPException(
-                status_code=500, detail="Failed to complete next case sequence"
-            )
+        logger.warning("Next case sequence failed")
+        raise HTTPException(
+            status_code=500, detail="Failed to complete next case sequence"
+        )
 
     except Exception as e:
         logger.error("Error triggering next case: %s", e)
@@ -594,6 +600,19 @@ async def capture_images() -> Dict[str, Any]:
     }
 
 
+@app.get("/ml-training", response_class=HTMLResponse)
+async def ml_training_page(
+    request: Request,
+) -> HTMLResponse:
+    """Display the ML training interface."""
+    return templates.TemplateResponse(
+        "ml_training.html",
+        {
+            "request": request,
+        },
+    )
+
+
 @app.get("/tagging/{session_id}", response_class=HTMLResponse)
 async def tagging_page(
     request: Request,
@@ -704,6 +723,209 @@ async def save_shell_data(
     except Exception as e:
         logger.error("Error saving shell data: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+# ML Training Endpoints
+
+
+@app.get("/api/ml/shells")
+async def get_training_shells(
+    app_settings: Settings = Depends(get_settings),
+) -> Dict[str, Any]:
+    """Load all Shell objects from the data directory for training."""
+    try:
+        shells = []
+        data_dir = app_settings.data_directory
+
+        if not data_dir.exists():
+            return {"shells": [], "summary": {"total": 0, "included": 0, "unique_types": 0}}
+
+        # Load all JSON files in data directory
+        for json_file in data_dir.glob("*.json"):
+            # Skip the case_types.json file
+            if json_file.name == "case_types.json":
+                continue
+
+            try:
+                with open(json_file, "r", encoding="utf-8") as f:
+                    shell_data = json.load(f)
+                    shell = Shell(**shell_data)
+
+                    # Add session_id from filename
+                    shell_dict = shell.model_dump()
+                    shell_dict["session_id"] = json_file.stem
+                    shells.append(shell_dict)
+
+            except Exception as e:
+                logger.warning("Error loading shell data from %s: %s", json_file, e)
+                continue
+
+        # Calculate summary statistics
+        included_shells = [s for s in shells if s.get("include", True)]
+        unique_types = len(set(f"{s['brand']}_{s['shell_type']}" for s in shells))
+
+        summary = {
+            "total": len(shells),
+            "included": len(included_shells),
+            "unique_types": unique_types
+        }
+
+        return {"shells": shells, "summary": summary}
+
+    except Exception as e:
+        logger.error("Error loading training shells: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/ml/shells/{session_id}/toggle")
+async def toggle_shell_include(
+    session_id: str,
+    app_settings: Settings = Depends(get_settings),
+) -> Dict[str, Any]:
+    """Toggle the include flag for a shell in training."""
+    try:
+        data_dir = app_settings.data_directory
+        json_file = data_dir / f"{session_id}.json"
+
+        if not json_file.exists():
+            raise HTTPException(status_code=404, detail="Shell data not found")
+
+        # Load shell data
+        with open(json_file, "r", encoding="utf-8") as f:
+            shell_data = json.load(f)
+
+        # Toggle include flag
+        shell_data["include"] = not shell_data.get("include", True)
+
+        # Save updated data
+        with open(json_file, "w", encoding="utf-8") as f:
+            json.dump(shell_data, f, indent=2)
+
+        return {
+            "session_id": session_id,
+            "include": shell_data["include"],
+            "message": f"Shell {'included' if shell_data['include'] else 'excluded'} from training"
+        }
+
+    except Exception as e:
+        logger.error("Error toggling shell include: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/ml/generate-composites")
+async def generate_composite_images(
+    app_settings: Settings = Depends(get_settings),
+) -> Dict[str, Any]:
+    """Generate composite images for all included shells."""
+    try:
+        data_dir = app_settings.data_directory
+        composites_dir = data_dir / "composites"
+        composites_dir.mkdir(exist_ok=True)
+
+        generated_count = 0
+        error_count = 0
+
+        # Process all shell files
+        for json_file in data_dir.glob("*.json"):
+            if json_file.name == "case_types.json":
+                continue
+
+            try:
+                with open(json_file, "r", encoding="utf-8") as f:
+                    shell_data = json.load(f)
+
+                # Skip if not included in training
+                if not shell_data.get("include", True):
+                    continue
+
+                # Generate composite image
+                session_id = json_file.stem
+                composite_path = await _generate_composite_image(
+                    session_id, shell_data["image_filenames"], composites_dir
+                )
+
+                if composite_path:
+                    generated_count += 1
+                else:
+                    error_count += 1
+
+            except Exception as e:
+                logger.warning("Error processing shell %s: %s", json_file, e)
+                error_count += 1
+                continue
+
+        return {
+            "generated": generated_count,
+            "errors": error_count,
+            "message": f"Generated {generated_count} composite images ({error_count} errors)"
+        }
+
+    except Exception as e:
+        logger.error("Error generating composite images: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+async def _generate_composite_image(
+    session_id: str, image_filenames: List[str], output_dir: Path
+) -> Optional[Path]:
+    """Generate a composite image from multiple shell images."""
+    if cv2 is None or np is None:
+        logger.error("OpenCV or NumPy not available for composite image generation")
+        return None
+
+    try:
+        images_dir = Path("images")
+        composite_path = output_dir / f"{session_id}_composite.jpg"
+
+        # Load all images
+        loaded_images = []
+        for filename in image_filenames:
+            image_path = images_dir / filename
+            if image_path.exists():
+                img = cv2.imread(str(image_path))
+                if img is not None:
+                    # Resize to standard size
+                    img = cv2.resize(img, (200, 200))
+                    loaded_images.append(img)
+
+        if not loaded_images:
+            return None
+
+        # Create composite layout
+        if len(loaded_images) == 1:
+            composite = loaded_images[0]
+        elif len(loaded_images) == 2:
+            composite = np.hstack(loaded_images)
+        elif len(loaded_images) == 3:
+            top = loaded_images[0]
+            bottom = np.hstack(loaded_images[1:3])
+            # Pad bottom if needed
+            if bottom.shape[1] > top.shape[1]:
+                pad_width = (bottom.shape[1] - top.shape[1]) // 2
+                top = cv2.copyMakeBorder(
+                    top, 0, 0, pad_width, pad_width, cv2.BORDER_CONSTANT
+                )
+            composite = np.vstack([top, bottom])
+        else:
+            # 4+ images: create 2x2 grid
+            rows = []
+            for i in range(0, len(loaded_images), 2):
+                row_images = loaded_images[i:i+2]
+                if len(row_images) == 1:
+                    # Pad with blank image
+                    blank = np.zeros_like(row_images[0])
+                    row_images.append(blank)
+                row = np.hstack(row_images)
+                rows.append(row)
+            composite = np.vstack(rows)
+
+        # Save composite image
+        cv2.imwrite(str(composite_path), composite)
+        return composite_path
+
+    except Exception as e:
+        logger.error("Error creating composite image for %s: %s", session_id, e)
+        return None
 
 
 def signal_handler(signum: int, _frame: Any) -> None:

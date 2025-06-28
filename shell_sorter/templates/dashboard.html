@@ -22,23 +22,10 @@
                 <div class="manual-controls">
                     <button id="next-case-btn" class="btn btn-secondary">Next Case</button>
                 </div>
-            </section>
-
-            <section class="status-panel">
-                <h2>Machine Status</h2>
-                <div class="status-grid">
-                    <div class="status-item">
-                        <span class="label">Current Status:</span>
-                        <span class="value">{{ machine_status.status.title() }}</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="label">Total Sorted:</span>
-                        <span class="value">{{ machine_status.total_sorted }}</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="label">Last Update:</span>
-                        <span class="value">{{ machine_status.last_update }}</span>
-                    </div>
+                
+                <div class="last-updated">
+                    <span class="label">Last Updated:</span>
+                    <span class="value">{{ machine_status.last_update }}</span>
                 </div>
             </section>
 
@@ -49,6 +36,7 @@
                     <button id="start-selected-btn" class="btn btn-primary">Start Selected</button>
                     <button id="stop-all-btn" class="btn btn-danger">Stop All</button>
                     <button id="capture-images-btn" class="btn btn-success">Capture & Tag Images</button>
+                    <button id="ml-training-btn" class="btn btn-info">ML Training</button>
                 </div>
                 
                 <div class="camera-list" id="camera-list">

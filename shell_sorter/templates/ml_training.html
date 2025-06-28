@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Training - Shell Sorter</title>
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 Machine Learning Training</h1>
+            <div class="header-actions">
+                <a href="/" class="btn btn-secondary">← Back to Dashboard</a>
+                <div class="training-status status-idle">
+                    Ready for Training
+                </div>
+            </div>
+        </header>
+
+        <main class="ml-training-main">
+            <section class="training-control-panel">
+                <h2>Training Controls</h2>
+                
+                <div class="training-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Total Shells:</span>
+                        <span class="stat-value" id="total-shells">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Included in Training:</span>
+                        <span class="stat-value" id="included-shells">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Unique Types:</span>
+                        <span class="stat-value" id="unique-types">0</span>
+                    </div>
+                </div>
+
+                <div class="training-actions">
+                    <button id="load-shells-btn" class="btn btn-primary">Load Shell Data</button>
+                    <button id="generate-composites-btn" class="btn btn-info" disabled>Generate Composite Images</button>
+                    <button id="start-training-btn" class="btn btn-success" disabled>Start Training</button>
+                </div>
+
+                <div class="training-progress" id="training-progress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <div class="progress-text" id="progress-text">Preparing training data...</div>
+                </div>
+            </section>
+
+            <section class="shell-data-panel">
+                <h2>Shell Training Data</h2>
+                
+                <div class="filter-controls">
+                    <div class="filter-group">
+                        <label for="filter-brand">Filter by Brand:</label>
+                        <select id="filter-brand" class="filter-select">
+                            <option value="">All Brands</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="filter-type">Filter by Type:</label>
+                        <select id="filter-type" class="filter-select">
+                            <option value="">All Types</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="filter-include">Filter by Include:</label>
+                        <select id="filter-include" class="filter-select">
+                            <option value="">All</option>
+                            <option value="true">Included</option>
+                            <option value="false">Excluded</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="shell-list" id="shell-list">
+                    <div class="loading-message">Click "Load Shell Data" to view training data</div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast notification container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/ml_training.js"></script>
+</body>
+</html>

@@ -92,14 +92,13 @@ class CameraManager:
                         timeout=10
                     )
                     if result.returncode == 0:
-                        import json
                         data = json.loads(result.stdout)
                         cameras = data.get('SPCameraDataType', [])
                         if camera_index < len(cameras):
                             camera_info = cameras[camera_index]
                             name = camera_info.get('_name', '')
                             if name:
-                                return name
+                                return str(name)
                 except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
                     pass
                     

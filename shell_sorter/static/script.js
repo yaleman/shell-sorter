@@ -51,6 +51,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const stopAllBtn = document.getElementById('stop-all-btn');
     const captureImagesBtn = document.getElementById('capture-images-btn');
     const nextCaseBtn = document.getElementById('next-case-btn');
+    const mlTrainingBtn = document.getElementById('ml-training-btn');
 
     if (captureImagesBtn) {
         captureImagesBtn.addEventListener('click', async function() {
@@ -113,6 +114,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     showToast('Error triggering next case: ' + error.message, 'error');
                 }
             }
+        });
+    }
+
+    if (mlTrainingBtn) {
+        mlTrainingBtn.addEventListener('click', function() {
+            window.location.href = '/ml-training';
         });
     }
 
