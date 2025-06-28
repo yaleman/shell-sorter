@@ -231,9 +231,44 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Handle camera selection using event delegation
+    // Handle view type selection
     document.addEventListener('change', async function(e) {
-        if (e.target.classList.contains('camera-checkbox')) {
+        if (e.target.classList.contains('view-type-select')) {
+            const select = e.target;
+            const cameraIndex = parseInt(select.dataset.cameraIndex);
+            const viewType = select.value || null;
+
+            try {
+                const formData = new FormData();
+                if (viewType) {
+                    formData.append('view_type', viewType);
+                }
+
+                const response = await fetch(`/api/cameras/${cameraIndex}/view-type`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    showToast(result.message, 'success');
+                    // Reload to update UI (region controls visibility)
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    const error = await response.text();
+                    showToast('Error setting view type: ' + error, 'error');
+                    // Revert selection
+                    select.value = select.dataset.previousValue || '';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showToast('Error setting view type: ' + error.message, 'error');
+                // Revert selection
+                select.value = select.dataset.previousValue || '';
+            }
+        }
+        // Handle camera selection using event delegation
+        else if (e.target.classList.contains('camera-checkbox')) {
             const checkbox = e.target;
             const selectedCameras = Array.from(document.querySelectorAll('.camera-checkbox:checked'))
                 .map(cb => parseInt(cb.dataset.cameraIndex));
@@ -270,6 +305,36 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error:', error);
                 showToast('Error selecting cameras: ' + error.message, 'error');
                 checkbox.checked = !checkbox.checked; // Revert checkbox
+            }
+        }
+    });
+
+    // Handle region selection buttons
+    document.addEventListener('click', async function(e) {
+        if (e.target.classList.contains('region-select-btn')) {
+            const cameraIndex = parseInt(e.target.dataset.cameraIndex);
+            showToast('Region selection UI not yet implemented', 'info');
+            // TODO: Implement region selection modal/overlay
+        }
+        else if (e.target.classList.contains('region-clear-btn')) {
+            const cameraIndex = parseInt(e.target.dataset.cameraIndex);
+            
+            try {
+                const response = await fetch(`/api/cameras/${cameraIndex}/region`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    showToast(result.message, 'success');
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    const error = await response.text();
+                    showToast('Error clearing region: ' + error, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showToast('Error clearing region: ' + error.message, 'error');
             }
         }
     });

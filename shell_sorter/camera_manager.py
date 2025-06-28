@@ -2,7 +2,7 @@
 
 import cv2  # type: ignore[import-not-found]
 import threading
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Literal
 from dataclasses import dataclass
 import logging
 import concurrent.futures
@@ -22,6 +22,11 @@ class CameraInfo:
     resolution: Tuple[int, int]
     is_active: bool = False
     is_selected: bool = False
+    view_type: Optional[Literal["side_view", "tail_view"]] = None
+    region_x: Optional[int] = None
+    region_y: Optional[int] = None
+    region_width: Optional[int] = None
+    region_height: Optional[int] = None
 
 
 class CameraManager:
@@ -193,6 +198,50 @@ class CameraManager:
     def get_selected_cameras(self) -> List[CameraInfo]:
         """Get list of selected cameras."""
         return [cam for cam in self.cameras.values() if cam.is_selected]
+
+    def set_camera_view_type(
+        self, camera_index: int, view_type: Optional[Literal["side_view", "tail_view"]]
+    ) -> bool:
+        """Set the view type for a camera."""
+        if camera_index not in self.cameras:
+            logger.warning("Camera %d not found", camera_index)
+            return False
+        
+        self.cameras[camera_index].view_type = view_type
+        logger.info("Set camera %d view type to %s", camera_index, view_type)
+        return True
+
+    def set_camera_region(
+        self, camera_index: int, x: int, y: int, width: int, height: int
+    ) -> bool:
+        """Set the region of interest for a camera."""
+        if camera_index not in self.cameras:
+            logger.warning("Camera %d not found", camera_index)
+            return False
+        
+        camera = self.cameras[camera_index]
+        camera.region_x = x
+        camera.region_y = y
+        camera.region_width = width
+        camera.region_height = height
+        
+        logger.info("Set camera %d region to (%d,%d) %dx%d", camera_index, x, y, width, height)
+        return True
+
+    def clear_camera_region(self, camera_index: int) -> bool:
+        """Clear the region of interest for a camera."""
+        if camera_index not in self.cameras:
+            logger.warning("Camera %d not found", camera_index)
+            return False
+        
+        camera = self.cameras[camera_index]
+        camera.region_x = None
+        camera.region_y = None
+        camera.region_width = None
+        camera.region_height = None
+        
+        logger.info("Cleared camera %d region", camera_index)
+        return True
 
     def _open_camera_with_timeout(
         self, camera_index: int, timeout: float = 3.0

@@ -56,6 +56,27 @@
                                     {{ 'Active' if camera.is_active else 'Inactive' }}
                                 </span>
                             </div>
+                            <div class="camera-settings">
+                                <div class="view-type-control">
+                                    <label>View Type:</label>
+                                    <select class="view-type-select" data-camera-index="{{ camera.index }}">
+                                        <option value="">Select type...</option>
+                                        <option value="side_view" {% if camera.view_type == 'side_view' %}selected{% endif %}>Side View</option>
+                                        <option value="tail_view" {% if camera.view_type == 'tail_view' %}selected{% endif %}>Tail View</option>
+                                    </select>
+                                </div>
+                                {% if camera.view_type == 'side_view' %}
+                                <div class="region-control">
+                                    <button class="btn btn-sm btn-secondary region-select-btn" data-camera-index="{{ camera.index }}">
+                                        {% if camera.region_x is not none %}Edit Region{% else %}Select Region{% endif %}
+                                    </button>
+                                    {% if camera.region_x is not none %}
+                                    <span class="region-info">{{ camera.region_x }},{{ camera.region_y }} ({{ camera.region_width }}×{{ camera.region_height }})</span>
+                                    <button class="btn btn-sm btn-danger region-clear-btn" data-camera-index="{{ camera.index }}">Clear</button>
+                                    {% endif %}
+                                </div>
+                                {% endif %}
+                            </div>
                             {% if camera.is_active %}
                             <div class="camera-feed">
                                 <img src="/api/cameras/{{ camera.index }}/stream" 

@@ -380,6 +380,51 @@ select:focus, input:focus {
     text-transform: uppercase;
 }
 
+.camera-settings {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+}
+
+.view-type-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.view-type-control label {
+    margin-bottom: 0;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.view-type-select {
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-size: 0.9rem;
+}
+
+.region-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.region-info {
+    font-size: 0.8rem;
+    color: #666;
+    font-family: monospace;
+}
+
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 0.8rem;
+}
+
 .status-active {
     background-color: #28a745;
     color: white;

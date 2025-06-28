@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Generator, Callable, Awaitable
+from typing import List, Dict, Any, Optional, Generator, Callable, Awaitable, Literal
 from datetime import datetime
 import json
 import logging
@@ -361,6 +361,11 @@ async def detect_cameras() -> List[Dict[str, Any]]:
             "resolution": cam.resolution,
             "is_active": cam.is_active,
             "is_selected": cam.is_selected,
+            "view_type": cam.view_type,
+            "region_x": cam.region_x,
+            "region_y": cam.region_y,
+            "region_width": cam.region_width,
+            "region_height": cam.region_height,
         }
         for cam in cameras
     ]
@@ -377,6 +382,11 @@ async def get_cameras() -> List[Dict[str, Any]]:
             "resolution": cam.resolution,
             "is_active": cam.is_active,
             "is_selected": cam.is_selected,
+            "view_type": cam.view_type,
+            "region_x": cam.region_x,
+            "region_y": cam.region_y,
+            "region_width": cam.region_width,
+            "region_height": cam.region_height,
         }
         for cam in cameras
     ]
@@ -463,6 +473,80 @@ async def stop_all_cameras() -> Dict[str, str]:
     """Stop all camera streams."""
     camera_manager.stop_all_cameras()
     return {"message": "Stopped all cameras"}
+
+
+@app.post("/api/cameras/{camera_index}/view-type")
+async def set_camera_view_type(
+    camera_index: int,
+    view_type: Optional[str] = Form(None),
+) -> Dict[str, Any]:
+    """Set the view type for a camera."""
+    # Validate and cast view_type
+    if view_type == "side_view":
+        validated_view_type: Optional[Literal["side_view", "tail_view"]] = "side_view"
+    elif view_type == "tail_view":
+        validated_view_type = "tail_view"
+    elif view_type is None or view_type == "":
+        validated_view_type = None
+    else:
+        raise HTTPException(
+            status_code=400, 
+            detail="Invalid view type. Must be 'side_view', 'tail_view', or empty"
+        )
+    
+    success = camera_manager.set_camera_view_type(camera_index, validated_view_type)
+    if success:
+        return {
+            "message": f"Set camera {camera_index} view type to {validated_view_type}",
+            "camera_index": camera_index,
+            "view_type": validated_view_type,
+        }
+    raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
+
+
+@app.post("/api/cameras/{camera_index}/region")
+async def set_camera_region(
+    camera_index: int,
+    x: int = Form(...),
+    y: int = Form(...),
+    width: int = Form(...),
+    height: int = Form(...),
+) -> Dict[str, Any]:
+    """Set the region of interest for a camera."""
+    # Validate region parameters
+    if width <= 0 or height <= 0:
+        raise HTTPException(
+            status_code=400, 
+            detail="Width and height must be positive values"
+        )
+    if x < 0 or y < 0:
+        raise HTTPException(
+            status_code=400, 
+            detail="X and Y coordinates must be non-negative"
+        )
+    
+    success = camera_manager.set_camera_region(camera_index, x, y, width, height)
+    if success:
+        return {
+            "message": f"Set camera {camera_index} region to ({x},{y}) {width}x{height}",
+            "camera_index": camera_index,
+            "region": {"x": x, "y": y, "width": width, "height": height},
+        }
+    raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
+
+
+@app.delete("/api/cameras/{camera_index}/region")
+async def clear_camera_region(
+    camera_index: int,
+) -> Dict[str, Any]:
+    """Clear the region of interest for a camera."""
+    success = camera_manager.clear_camera_region(camera_index)
+    if success:
+        return {
+            "message": f"Cleared camera {camera_index} region",
+            "camera_index": camera_index,
+        }
+    raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
 
 
 # Machine Control Endpoints
