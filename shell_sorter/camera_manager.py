@@ -2,13 +2,16 @@
 
 import cv2  # type: ignore[import-not-found]
 import threading
-from typing import Dict, List, Optional, Tuple, Literal
+from typing import Dict, List, Optional, Tuple, Literal, TYPE_CHECKING
 from dataclasses import dataclass
 import logging
 import concurrent.futures
 import subprocess
 import platform
 import json
+
+if TYPE_CHECKING:
+    from .config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +35,14 @@ class CameraInfo:
 class CameraManager:
     """Manages camera detection, selection, and streaming."""
 
-    def __init__(self) -> None:
+    def __init__(self, settings: Optional['Settings'] = None) -> None:
         self.cameras: Dict[int, CameraInfo] = {}
         self.active_captures: Dict[int, cv2.VideoCapture] = {}
         self.streaming_threads: Dict[int, threading.Thread] = {}
         self.stop_streaming: Dict[int, threading.Event] = {}
         self.latest_frames: Dict[int, Optional[bytes]] = {}
         self._lock = threading.Lock()
+        self.settings = settings
 
     def _get_camera_device_name(self, camera_index: int) -> str:
         """Get the actual device name/model for a camera."""
@@ -159,6 +163,11 @@ class CameraManager:
                 camera_info = CameraInfo(
                     index=i, name=camera_name, resolution=(width, height), is_selected=True
                 )
+                
+                # Load camera configuration from user config if available
+                if self.settings:
+                    self._load_camera_config(camera_info)
+                
                 cameras.append(camera_info)
                 self.cameras[i] = camera_info
 
@@ -207,8 +216,14 @@ class CameraManager:
             logger.warning("Camera %d not found", camera_index)
             return False
         
-        self.cameras[camera_index].view_type = view_type
+        camera = self.cameras[camera_index]
+        camera.view_type = view_type
         logger.info("Set camera %d view type to %s", camera_index, view_type)
+        
+        # Save to user config
+        if self.settings:
+            self._save_camera_config(camera)
+        
         return True
 
     def set_camera_region(
@@ -226,6 +241,11 @@ class CameraManager:
         camera.region_height = height
         
         logger.info("Set camera %d region to (%d,%d) %dx%d", camera_index, x, y, width, height)
+        
+        # Save to user config
+        if self.settings:
+            self._save_camera_config(camera)
+        
         return True
 
     def clear_camera_region(self, camera_index: int) -> bool:
@@ -241,6 +261,11 @@ class CameraManager:
         camera.region_height = None
         
         logger.info("Cleared camera %d region", camera_index)
+        
+        # Save to user config
+        if self.settings:
+            self._save_camera_config(camera)
+        
         return True
 
     def _open_camera_with_timeout(
@@ -436,3 +461,63 @@ class CameraManager:
         self.latest_frames.clear()
 
         logger.info("Camera cleanup completed")
+    
+    def _load_camera_config(self, camera_info: CameraInfo) -> None:
+        """Load camera configuration from user config."""
+        if not self.settings:
+            return
+            
+        try:
+            from .config import UserConfig
+            
+            user_config_data = self.settings.load_user_config()
+            user_config = UserConfig(**user_config_data)
+            
+            camera_config = user_config.get_camera_config(camera_info.name)
+            
+            # Apply saved configuration
+            camera_info.view_type = camera_config.view_type
+            camera_info.region_x = camera_config.region_x
+            camera_info.region_y = camera_config.region_y
+            camera_info.region_width = camera_config.region_width
+            camera_info.region_height = camera_config.region_height
+            
+            if camera_config.view_type:
+                logger.info("Loaded camera %s config: view_type=%s", 
+                           camera_info.name, camera_config.view_type)
+            
+        except Exception as e:
+            logger.warning("Failed to load camera config for %s: %s", 
+                          camera_info.name, e)
+    
+    def _save_camera_config(self, camera_info: CameraInfo) -> None:
+        """Save camera configuration to user config."""
+        if not self.settings:
+            return
+            
+        try:
+            from .config import UserConfig, CameraConfig
+            
+            # Load current user config
+            user_config_data = self.settings.load_user_config()
+            user_config = UserConfig(**user_config_data)
+            
+            # Update camera configuration
+            camera_config = CameraConfig(
+                view_type=camera_info.view_type,
+                region_x=camera_info.region_x,
+                region_y=camera_info.region_y,
+                region_width=camera_info.region_width,
+                region_height=camera_info.region_height
+            )
+            
+            user_config.set_camera_config(camera_info.name, camera_config)
+            
+            # Save to file
+            success = self.settings.save_user_config(user_config.model_dump())
+            if success:
+                logger.info("Saved camera %s config to user config", camera_info.name)
+            
+        except Exception as e:
+            logger.error("Failed to save camera config for %s: %s", 
+                        camera_info.name, e)

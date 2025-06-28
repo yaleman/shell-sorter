@@ -135,7 +135,7 @@ ml_trainer = MLTrainer(settings)
 machine_controller = MachineController()
 
 # Initialize camera manager
-camera_manager = CameraManager()
+camera_manager = CameraManager(settings)
 
 # Initialize hardware controller
 hardware_controller = HardwareController()

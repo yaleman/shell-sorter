@@ -1,7 +1,11 @@
 from pathlib import Path
-from typing import Optional, Any
-from pydantic import Field
+from typing import Optional, Any, Dict, Literal
+import json
+import logging
+from pydantic import Field, BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict  # type: ignore
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):  # type: ignore
@@ -68,6 +72,43 @@ class Settings(BaseSettings):  # type: ignore
         description="Supported ammunition case types",
     )
 
+    def get_config_path(self) -> Path:
+        """Get the path to the user config file."""
+        config_dir = Path.home() / ".config"
+        config_dir.mkdir(exist_ok=True)
+        return config_dir / "shell-sorter.json"
+
+    def load_user_config(self) -> Dict[str, Any]:
+        """Load user configuration from shell-sorter.json."""
+        config_path = self.get_config_path()
+        if not config_path.exists():
+            return {}
+        
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config_data: Dict[str, Any] = json.load(f)
+                return config_data
+        except Exception as e:
+            logger.warning("Failed to load user config from %s: %s", config_path, e)
+            return {}
+
+    def save_user_config(self, config_data: Dict[str, Any]) -> bool:
+        """Save user configuration to shell-sorter.json."""
+        config_path = self.get_config_path()
+        
+        try:
+            # Ensure directory exists
+            config_path.parent.mkdir(exist_ok=True)
+            
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, indent=2)
+            
+            logger.info("Saved user config to %s", config_path)
+            return True
+        except Exception as e:
+            logger.error("Failed to save user config to %s: %s", config_path, e)
+            return False
+
     @classmethod
     def new(cls, **kwargs: Any) -> "Settings":
         """Create a new instance of Settings with the provided keyword arguments."""
@@ -86,3 +127,30 @@ class Settings(BaseSettings):  # type: ignore
                 directory.mkdir(parents=True, exist_ok=True)
 
         return retval  # type: ignore
+
+
+class CameraConfig(BaseModel):
+    """Configuration for a specific camera."""
+    view_type: Optional[Literal["side_view", "tail_view"]] = None
+    region_x: Optional[int] = None
+    region_y: Optional[int] = None
+    region_width: Optional[int] = None
+    region_height: Optional[int] = None
+
+
+class UserConfig(BaseModel):
+    """User configuration that persists across application restarts."""
+    camera_configs: Dict[str, CameraConfig] = Field(default_factory=dict)
+    
+    def get_camera_config(self, camera_name: str) -> CameraConfig:
+        """Get configuration for a camera by name."""
+        return self.camera_configs.get(camera_name, CameraConfig())
+    
+    def set_camera_config(self, camera_name: str, config: CameraConfig) -> None:
+        """Set configuration for a camera by name."""
+        self.camera_configs[camera_name] = config
+    
+    def clear_camera_config(self, camera_name: str) -> None:
+        """Clear configuration for a camera by name."""
+        if camera_name in self.camera_configs:
+            del self.camera_configs[camera_name]
