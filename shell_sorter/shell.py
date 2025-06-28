@@ -8,4 +8,4 @@ class Shell(BaseModel):
     date_captured: datetime
     brand: str
     shell_type: str
-    image_filename: list[str]
+    image_filenames: list[str]
