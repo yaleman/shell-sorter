@@ -20,20 +20,28 @@ from .camera_manager import CameraManager
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
     """Middleware to add no-cache headers to prevent browser caching."""
-    
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         response = await call_next(request)
-        
+
         # Add no-cache headers for all responses
-        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Cache-Control"] = (
+            "no-cache, no-store, must-revalidate, max-age=0"
+        )
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
-        
+
         # Additional headers for static files (JS, CSS, HTML)
-        if any(request.url.path.endswith(ext) for ext in ['.js', '.css', '.html', '.htm']):
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0, private"
+        if any(
+            request.url.path.endswith(ext) for ext in [".js", ".css", ".html", ".htm"]
+        ):
+            response.headers["Cache-Control"] = (
+                "no-cache, no-store, must-revalidate, max-age=0, private"
+            )
             response.headers["ETag"] = f'"{datetime.now().timestamp()}"'
-        
+
         return response
 
 
@@ -413,6 +421,7 @@ async def start_selected_cameras(
 ) -> Dict[str, Any]:
     """Start streaming from all selected cameras."""
     started = cam_manager.start_selected_cameras()
+    logger.info("Starting selected cameras: %s", started)
     return {
         "message": f"Started {len(started)} cameras",
         "started_cameras": started,

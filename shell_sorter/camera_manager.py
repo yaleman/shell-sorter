@@ -5,6 +5,7 @@ import threading
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 import logging
+import concurrent.futures
 
 logger = logging.getLogger(__name__)
 
@@ -85,20 +86,39 @@ class CameraManager:
         """Get list of selected cameras."""
         return [cam for cam in self.cameras.values() if cam.is_selected]
     
+    def _open_camera_with_timeout(self, camera_index: int, timeout: float = 3.0) -> Optional[cv2.VideoCapture]:
+        """Open camera with timeout to prevent hanging."""
+        def open_camera() -> Optional[cv2.VideoCapture]:
+            cap = cv2.VideoCapture(camera_index)
+            if cap.isOpened():
+                return cap
+            cap.release()
+            return None
+        
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(open_camera)
+            try:
+                return future.result(timeout=timeout)
+            except concurrent.futures.TimeoutError:
+                logger.warning(f"Camera {camera_index} open timed out after {timeout}s")
+                return None
+    
     def start_camera_stream(self, camera_index: int) -> bool:
         """Start streaming from a specific camera."""
         try:
             if camera_index not in self.cameras:
+                logger.warning(f"Camera {camera_index} not found in detected cameras")
                 return False
             
             with self._lock:
                 # Stop existing stream if running
                 self.stop_camera_stream(camera_index)
                 
-                # Create new capture
-                cap = cv2.VideoCapture(camera_index)
-                if not cap.isOpened():
-                    logger.error(f"Failed to open camera {camera_index}")
+                # Create new capture with timeout
+                logger.info(f"Opening camera {camera_index}...")
+                cap = self._open_camera_with_timeout(camera_index, timeout=3.0)
+                if cap is None:
+                    logger.error(f"Failed to open camera {camera_index} within timeout")
                     return False
                 
                 # Set camera properties for better performance
@@ -197,10 +217,29 @@ class CameraManager:
     
     def start_selected_cameras(self) -> List[int]:
         """Start streaming from all selected cameras."""
+        selected_cameras = self.get_selected_cameras()
+        if not selected_cameras:
+            logger.warning("No cameras selected for streaming")
+            return []
+        
+        logger.info(f"Attempting to start {len(selected_cameras)} selected cameras: {[c.index for c in selected_cameras]}")
+        
         started = []
-        for camera in self.get_selected_cameras():
+        failed = []
+        
+        for camera in selected_cameras:
+            logger.info(f"Starting camera {camera.index}...")
             if self.start_camera_stream(camera.index):
                 started.append(camera.index)
+                logger.info(f"Successfully started camera {camera.index}")
+            else:
+                failed.append(camera.index)
+                logger.error(f"Failed to start camera {camera.index}")
+        
+        if failed:
+            logger.warning(f"Failed to start cameras: {failed}")
+        
+        logger.info(f"Started {len(started)} out of {len(selected_cameras)} cameras")
         return started
     
     def stop_all_cameras(self) -> None:

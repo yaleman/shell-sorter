@@ -124,7 +124,7 @@ document.addEventListener('DOMContentLoaded', function() {
         startSelectedBtn.addEventListener('click', async function() {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2500);
+                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds for starting cameras
 
                 const response = await fetch('/api/cameras/start-selected', {
                     method: 'POST',
