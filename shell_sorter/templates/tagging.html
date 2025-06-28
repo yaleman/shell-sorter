@@ -34,7 +34,7 @@
                 <h2>Shell Information</h2>
                 <form id="tagging-form" class="tagging-form">
                     <input type="hidden" id="session_id" value="{{ session_id }}">
-                    <input type="hidden" id="image_filenames" value="{{ (captured_images | map(attribute='filename') | list) | tojson | e }}">
+                    <input type="hidden" id="image_filenames" value="{{ captured_images | map(attribute='filename') | join(',') }}">
                     
                     <div class="form-group">
                         <label for="brand">Brand:</label>
@@ -93,15 +93,8 @@
                         return;
                     }
                     
-                    // Parse image filenames
-                    let imageFilenames;
-                    try {
-                        imageFilenames = JSON.parse(imageFilenamesInput);
-                    } catch (error) {
-                        console.error('Error parsing image filenames:', error);
-                        showToast('Error with image data. Please try capturing again.', 'error');
-                        return;
-                    }
+                    // Parse image filenames from comma-delimited string
+                    const imageFilenames = imageFilenamesInput.split(',').filter(name => name.trim());
                     
                     // Prepare JSON payload
                     const payload = {
