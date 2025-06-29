@@ -1,6 +1,5 @@
 """Camera management for shell sorting machine."""
 
-import cv2  # type: ignore[import-not-found]
 import threading
 from typing import Dict, List, Optional, Tuple, Literal, TYPE_CHECKING, Any
 from dataclasses import dataclass
@@ -10,9 +9,10 @@ import subprocess
 import platform
 import json
 
+import cv2
 from PIL import Image
 from PIL.ExifTags import TAGS
-import piexif  # type: ignore[import-not-found]
+import piexif
 
 if TYPE_CHECKING:
     from .config import Settings
@@ -39,7 +39,7 @@ class CameraInfo:
 class CameraManager:
     """Manages camera detection, selection, and streaming."""
 
-    def __init__(self, settings: Optional['Settings'] = None) -> None:
+    def __init__(self, settings: Optional["Settings"] = None) -> None:
         self.cameras: Dict[int, CameraInfo] = {}
         self.active_captures: Dict[int, cv2.VideoCapture] = {}
         self.streaming_threads: Dict[int, threading.Thread] = {}
@@ -53,7 +53,7 @@ class CameraManager:
         """Get the actual device name/model for a camera."""
         try:
             system = platform.system()
-            
+
             if system == "Linux":
                 # Try to get device name from v4l2
                 try:
@@ -61,41 +61,55 @@ class CameraManager:
                         ["v4l2-ctl", "--device", f"/dev/video{camera_index}", "--info"],
                         capture_output=True,
                         text=True,
-                        timeout=5
+                        timeout=5,
                     )
                     if result.returncode == 0:
-                        lines = result.stdout.split('\n')
+                        lines = result.stdout.split("\n")
                         for line in lines:
-                            if 'Card type' in line or 'Device name' in line:
+                            if "Card type" in line or "Device name" in line:
                                 # Extract device name after the colon
-                                name = line.split(':', 1)[-1].strip()
+                                name = line.split(":", 1)[-1].strip()
                                 if name:
                                     return name
-                except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+                except (
+                    subprocess.TimeoutExpired,
+                    subprocess.CalledProcessError,
+                    FileNotFoundError,
+                ):
                     pass
-                
+
                 # Fallback: try to read from udev
                 try:
                     result = subprocess.run(
-                        ["udevadm", "info", "--name", f"/dev/video{camera_index}", "--query=property"],
+                        [
+                            "udevadm",
+                            "info",
+                            "--name",
+                            f"/dev/video{camera_index}",
+                            "--query=property",
+                        ],
                         capture_output=True,
                         text=True,
-                        timeout=5
+                        timeout=5,
                     )
                     if result.returncode == 0:
-                        lines = result.stdout.split('\n')
+                        lines = result.stdout.split("\n")
                         for line in lines:
-                            if line.startswith('ID_MODEL='):
-                                model = line.split('=', 1)[-1].strip().replace('_', ' ')
+                            if line.startswith("ID_MODEL="):
+                                model = line.split("=", 1)[-1].strip().replace("_", " ")
                                 if model:
                                     return model
-                            elif line.startswith('ID_V4L_PRODUCT='):
-                                product = line.split('=', 1)[-1].strip()
+                            elif line.startswith("ID_V4L_PRODUCT="):
+                                product = line.split("=", 1)[-1].strip()
                                 if product:
                                     return product
-                except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+                except (
+                    subprocess.TimeoutExpired,
+                    subprocess.CalledProcessError,
+                    FileNotFoundError,
+                ):
                     pass
-                    
+
             elif system == "Darwin":  # macOS
                 # Try to get device name from system_profiler
                 try:
@@ -103,37 +117,55 @@ class CameraManager:
                         ["system_profiler", "SPCameraDataType", "-json"],
                         capture_output=True,
                         text=True,
-                        timeout=10
+                        timeout=10,
                     )
                     if result.returncode == 0:
                         data = json.loads(result.stdout)
-                        cameras = data.get('SPCameraDataType', [])
+                        cameras = data.get("SPCameraDataType", [])
                         if camera_index < len(cameras):
                             camera_info = cameras[camera_index]
-                            name = camera_info.get('_name', '')
+                            name = camera_info.get("_name", "")
                             if name:
                                 return str(name)
-                except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError, json.JSONDecodeError):
+                except (
+                    subprocess.TimeoutExpired,
+                    subprocess.CalledProcessError,
+                    FileNotFoundError,
+                    json.JSONDecodeError,
+                ):
                     pass
-                    
+
             elif system == "Windows":
                 # Try to get device name from DirectShow
                 try:
                     result = subprocess.run(
-                        ["powershell", "-Command", 
-                         "Get-CimInstance -ClassName Win32_PnPEntity | Where-Object {$_.Name -like '*camera*' -or $_.Name -like '*webcam*'} | Select-Object Name"],
+                        [
+                            "powershell",
+                            "-Command",
+                            "Get-CimInstance -ClassName Win32_PnPEntity | Where-Object {$_.Name -like '*camera*' -or $_.Name -like '*webcam*'} | Select-Object Name",
+                        ],
                         capture_output=True,
                         text=True,
-                        timeout=10
+                        timeout=10,
                     )
                     if result.returncode == 0:
-                        lines = result.stdout.split('\n')
-                        camera_names = [line.strip() for line in lines if line.strip() and 'Name' not in line and '----' not in line]
+                        lines = result.stdout.split("\n")
+                        camera_names = [
+                            line.strip()
+                            for line in lines
+                            if line.strip()
+                            and "Name" not in line
+                            and "----" not in line
+                        ]
                         if camera_index < len(camera_names):
                             return camera_names[camera_index]
-                except (subprocess.TimeoutExpired, subprocess.CalledProcessError, FileNotFoundError):
+                except (
+                    subprocess.TimeoutExpired,
+                    subprocess.CalledProcessError,
+                    FileNotFoundError,
+                ):
                     pass
-            
+
             # Try OpenCV backend info if available
             cap = cv2.VideoCapture(camera_index)
             if cap.isOpened():
@@ -143,10 +175,12 @@ class CameraManager:
                     cap.release()
                     return f"Camera {camera_index} ({backend})"
                 cap.release()
-                    
+
         except Exception as e:
-            logger.debug("Error getting camera device name for camera %d: %s", camera_index, e)
-        
+            logger.debug(
+                "Error getting camera device name for camera %d: %s", camera_index, e
+            )
+
         # Final fallback
         return f"Camera {camera_index}"
 
@@ -164,15 +198,18 @@ class CameraManager:
 
                 # Get actual device name/model
                 camera_name = self._get_camera_device_name(i)
-                
+
                 camera_info = CameraInfo(
-                    index=i, name=camera_name, resolution=(width, height), is_selected=True
+                    index=i,
+                    name=camera_name,
+                    resolution=(width, height),
+                    is_selected=True,
                 )
-                
+
                 # Load camera configuration from user config if available
                 if self.settings:
                     self._load_camera_config(camera_info)
-                
+
                 cameras.append(camera_info)
                 self.cameras[i] = camera_info
 
@@ -220,15 +257,15 @@ class CameraManager:
         if camera_index not in self.cameras:
             logger.warning("Camera %d not found", camera_index)
             return False
-        
+
         camera = self.cameras[camera_index]
         camera.view_type = view_type
         logger.info("Set camera %d view type to %s", camera_index, view_type)
-        
+
         # Save to user config
         if self.settings:
             self._save_camera_config(camera)
-        
+
         return True
 
     def set_camera_region(
@@ -238,19 +275,21 @@ class CameraManager:
         if camera_index not in self.cameras:
             logger.warning("Camera %d not found", camera_index)
             return False
-        
+
         camera = self.cameras[camera_index]
         camera.region_x = x
         camera.region_y = y
         camera.region_width = width
         camera.region_height = height
-        
-        logger.info("Set camera %d region to (%d,%d) %dx%d", camera_index, x, y, width, height)
-        
+
+        logger.info(
+            "Set camera %d region to (%d,%d) %dx%d", camera_index, x, y, width, height
+        )
+
         # Save to user config
         if self.settings:
             self._save_camera_config(camera)
-        
+
         return True
 
     def clear_camera_region(self, camera_index: int) -> bool:
@@ -258,19 +297,19 @@ class CameraManager:
         if camera_index not in self.cameras:
             logger.warning("Camera %d not found", camera_index)
             return False
-        
+
         camera = self.cameras[camera_index]
         camera.region_x = None
         camera.region_y = None
         camera.region_width = None
         camera.region_height = None
-        
+
         logger.info("Cleared camera %d region", camera_index)
-        
+
         # Save to user config
         if self.settings:
             self._save_camera_config(camera)
-        
+
         return True
 
     def _open_camera_with_timeout(
@@ -448,48 +487,53 @@ class CameraManager:
         if camera_index not in self.cameras:
             logger.warning("Camera %d not found", camera_index)
             return None
-            
+
         camera_info = self.cameras[camera_index]
-        
+
         try:
             # Open camera for high-resolution capture
             cap = self._open_camera_with_timeout(camera_index, timeout=5.0)
             if cap is None:
-                logger.error("Failed to open camera %d for high-resolution capture", camera_index)
+                logger.error(
+                    "Failed to open camera %d for high-resolution capture", camera_index
+                )
                 return None
 
             # Get maximum resolution supported by the camera
             max_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             max_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            
+
             # Try to set to maximum resolution if different from current
-            if max_width != camera_info.resolution[0] or max_height != camera_info.resolution[1]:
+            if (
+                max_width != camera_info.resolution[0]
+                or max_height != camera_info.resolution[1]
+            ):
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_info.resolution[0])
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_info.resolution[1])
-                
+
             # Capture frame
             ret, frame = cap.read()
             cap.release()
-            
+
             if not ret or frame is None:
                 logger.error("Failed to capture frame from camera %d", camera_index)
                 return None
-                
+
             # Convert BGR to RGB for PIL
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
+
             # Create PIL Image
             pil_image = Image.fromarray(frame_rgb)
-            
+
             # Add EXIF metadata
             exif_dict: Dict[str, Any] = {
                 "0th": {},
                 "Exif": {},
                 "GPS": {},
                 "1st": {},
-                "thumbnail": None
+                "thumbnail": None,
             }
-            
+
             # Add camera name to ImageDescription
             # Find the tag number for ImageDescription
             image_desc_tag = None
@@ -497,57 +541,72 @@ class CameraManager:
                 if tag_name == "ImageDescription":
                     image_desc_tag = tag_num
                     break
-                    
+
             if image_desc_tag and exif_dict["0th"] is not None:
                 exif_dict["0th"][image_desc_tag] = camera_info.name
-                
+
             # Add view type to UserComment if available
             user_comment_tag = None
             for tag_num, tag_name in TAGS.items():
                 if tag_name == "UserComment":
                     user_comment_tag = tag_num
                     break
-                    
-            if user_comment_tag and camera_info.view_type and exif_dict["Exif"] is not None:
+
+            if (
+                user_comment_tag
+                and camera_info.view_type
+                and exif_dict["Exif"] is not None
+            ):
                 # UserComment needs special encoding
                 comment = f"view_type:{camera_info.view_type}"
                 # Prefix with character code (ASCII)
                 encoded_comment = b"ASCII\x00\x00\x00" + comment.encode("ascii")
                 exif_dict["Exif"][user_comment_tag] = encoded_comment
-            
+
             # Save image with EXIF to bytes
             from io import BytesIO
+
             output = BytesIO()
-            
+
             # Save with EXIF metadata
             exif_bytes = piexif.dump(exif_dict)
             pil_image.save(output, format="JPEG", quality=95, exif=exif_bytes)
-                
+
             return output.getvalue()
-            
+
         except Exception as e:
-            logger.error("Error capturing high-resolution image from camera %d: %s", camera_index, e)
+            logger.error(
+                "Error capturing high-resolution image from camera %d: %s",
+                camera_index,
+                e,
+            )
             return None
-            
+
     def capture_all_selected_high_resolution(self) -> Dict[int, Optional[bytes]]:
         """Capture high-resolution images from all selected cameras."""
         selected_cameras = self.get_selected_cameras()
         if not selected_cameras:
             logger.warning("No cameras selected for capture")
             return {}
-            
+
         results = {}
         for camera in selected_cameras:
             logger.info("Capturing high-resolution image from camera %d", camera.index)
             image_data = self.capture_high_resolution_image(camera.index)
             results[camera.index] = image_data
-            
+
             if image_data:
-                logger.info("Successfully captured high-resolution image from camera %d (%d bytes)", 
-                           camera.index, len(image_data))
+                logger.info(
+                    "Successfully captured high-resolution image from camera %d (%d bytes)",
+                    camera.index,
+                    len(image_data),
+                )
             else:
-                logger.error("Failed to capture high-resolution image from camera %d", camera.index)
-                
+                logger.error(
+                    "Failed to capture high-resolution image from camera %d",
+                    camera.index,
+                )
+
         return results
 
     def cleanup(self) -> None:
@@ -573,113 +632,122 @@ class CameraManager:
         self.latest_frames.clear()
 
         logger.info("Camera cleanup completed")
-    
+
     def _load_camera_config(self, camera_info: CameraInfo) -> None:
         """Load camera configuration from user config."""
         if not self.settings:
             return
-            
+
         try:
             from .config import UserConfig
-            
+
             user_config_data = self.settings.load_user_config()
             user_config = UserConfig(**user_config_data)
-            
+
             camera_config = user_config.get_camera_config(camera_info.name)
-            
+
             # Apply saved configuration
             camera_info.view_type = camera_config.view_type
             camera_info.region_x = camera_config.region_x
             camera_info.region_y = camera_config.region_y
             camera_info.region_width = camera_config.region_width
             camera_info.region_height = camera_config.region_height
-            
+
             if camera_config.view_type:
-                logger.info("Loaded camera %s config: view_type=%s", 
-                           camera_info.name, camera_config.view_type)
-            
+                logger.info(
+                    "Loaded camera %s config: view_type=%s",
+                    camera_info.name,
+                    camera_config.view_type,
+                )
+
         except Exception as e:
-            logger.warning("Failed to load camera config for %s: %s", 
-                          camera_info.name, e)
-    
+            logger.warning(
+                "Failed to load camera config for %s: %s", camera_info.name, e
+            )
+
     def _save_camera_config(self, camera_info: CameraInfo) -> None:
         """Save camera configuration to user config."""
         if not self.settings:
             return
-            
+
         try:
             from .config import UserConfig, CameraConfig
-            
+
             # Load current user config
             user_config_data = self.settings.load_user_config()
             user_config = UserConfig(**user_config_data)
-            
+
             # Update camera configuration
             camera_config = CameraConfig(
                 view_type=camera_info.view_type,
                 region_x=camera_info.region_x,
                 region_y=camera_info.region_y,
                 region_width=camera_info.region_width,
-                region_height=camera_info.region_height
+                region_height=camera_info.region_height,
             )
-            
+
             user_config.set_camera_config(camera_info.name, camera_config)
-            
+
             # Save to file
             success = self.settings.save_user_config(user_config.model_dump())
             if success:
                 logger.info("Saved camera %s config to user config", camera_info.name)
-            
+
         except Exception as e:
-            logger.error("Failed to save camera config for %s: %s", 
-                        camera_info.name, e)
-    
+            logger.error("Failed to save camera config for %s: %s", camera_info.name, e)
+
     def remove_camera(self, camera_index: int) -> bool:
         """Remove a camera from the configuration."""
         try:
             if camera_index not in self.cameras:
                 logger.warning("Camera %d not found for removal", camera_index)
                 return False
-            
+
             # Stop camera if it's active
             self.stop_camera_stream(camera_index)
-            
+
             # Remove from cameras dict
             camera_info = self.cameras[camera_index]
             del self.cameras[camera_index]
-            
+
             # Remove from user config if settings available
             if self.settings:
                 try:
                     from .config import UserConfig
+
                     user_config_data = self.settings.load_user_config()
                     user_config = UserConfig(**user_config_data)
                     user_config.remove_camera_config(camera_info.name)
                     self.settings.save_user_config(user_config.model_dump())
                 except Exception as e:
                     logger.warning("Failed to remove camera from user config: %s", e)
-            
-            logger.info("Removed camera %d (%s) from configuration", camera_index, camera_info.name)
+
+            logger.info(
+                "Removed camera %d (%s) from configuration",
+                camera_index,
+                camera_info.name,
+            )
             return True
-            
+
         except Exception as e:
             logger.error("Error removing camera %d: %s", camera_index, e)
             return False
-    
+
     def clear_cameras(self) -> None:
         """Clear all cameras from configuration."""
         try:
             # Stop all active cameras
             self.stop_all_cameras()
-            
+
             # Clear cameras dict
             camera_names = [cam.name for cam in self.cameras.values()]
             self.cameras.clear()
-            
+
             # Clear user config if settings available
             if self.settings:
                 try:
                     from .config import UserConfig
+
                     user_config_data = self.settings.load_user_config()
                     user_config = UserConfig(**user_config_data)
                     for camera_name in camera_names:
@@ -687,47 +755,48 @@ class CameraManager:
                     self.settings.save_user_config(user_config.model_dump())
                 except Exception as e:
                     logger.warning("Failed to clear cameras from user config: %s", e)
-            
+
             logger.info("Cleared all cameras from configuration")
-            
+
         except Exception as e:
             logger.error("Error clearing cameras: %s", e)
-    
+
     def reset_to_defaults(self) -> None:
         """Reset camera manager to default settings."""
         try:
             # Stop all cameras and clear
             self.clear_cameras()
-            
+
             # Reset settings
             self.auto_start_cameras = False
-            
+
             # Clear user config entirely if settings available
             if self.settings:
                 try:
                     from .config import UserConfig
+
                     default_config = UserConfig()
                     self.settings.save_user_config(default_config.model_dump())
                 except Exception as e:
                     logger.warning("Failed to reset user config: %s", e)
-            
+
             logger.info("Reset camera manager to defaults")
-            
+
         except Exception as e:
             logger.error("Error resetting to defaults: %s", e)
-    
+
     def save_config(self) -> None:
         """Save current configuration including auto-start setting."""
         try:
             if not self.settings:
                 logger.warning("No settings available to save config")
                 return
-            
+
             # Save all current camera configs
             for camera in self.cameras.values():
                 self._save_camera_config(camera)
-            
+
             logger.info("Saved camera manager configuration")
-            
+
         except Exception as e:
             logger.error("Error saving config: %s", e)

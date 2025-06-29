@@ -74,8 +74,8 @@ class Settings(BaseSettings):  # type: ignore
 
     # ESPHome configuration
     esphome_hostname: str = Field(
-        default="shell-sorter-controller.local", 
-        description="ESPHome device hostname for API communication"
+        default="shell-sorter-controller.local",
+        description="ESPHome device hostname for API communication",
     )
 
     def get_config_path(self) -> Path:
@@ -89,7 +89,7 @@ class Settings(BaseSettings):  # type: ignore
         config_path = self.get_config_path()
         if not config_path.exists():
             return {}
-        
+
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 config_data: Dict[str, Any] = json.load(f)
@@ -101,14 +101,14 @@ class Settings(BaseSettings):  # type: ignore
     def save_user_config(self, config_data: Dict[str, Any]) -> bool:
         """Save user configuration to shell-sorter.json."""
         config_path = self.get_config_path()
-        
+
         try:
             # Ensure directory exists
             config_path.parent.mkdir(exist_ok=True)
-            
+
             with open(config_path, "w", encoding="utf-8") as f:
                 json.dump(config_data, f, indent=2)
-            
+
             logger.info("Saved user config to %s", config_path)
             return True
         except Exception as e:
@@ -137,6 +137,7 @@ class Settings(BaseSettings):  # type: ignore
 
 class CameraConfig(BaseModel):
     """Configuration for a specific camera."""
+
     view_type: Optional[Literal["side", "tail"]] = None
     region_x: Optional[int] = None
     region_y: Optional[int] = None
@@ -146,21 +147,24 @@ class CameraConfig(BaseModel):
 
 class UserConfig(BaseModel):
     """User configuration that persists across application restarts."""
-    camera_configs: Dict[str, CameraConfig] = Field(default_factory=dict)
-    
+
+    camera_configs: Dict[str, CameraConfig] = Field(
+        default={}, description="Camera configurations by name"
+    )
+
     def get_camera_config(self, camera_name: str) -> CameraConfig:
         """Get configuration for a camera by name."""
         return self.camera_configs.get(camera_name, CameraConfig())
-    
+
     def set_camera_config(self, camera_name: str, config: CameraConfig) -> None:
         """Set configuration for a camera by name."""
         self.camera_configs[camera_name] = config
-    
+
     def clear_camera_config(self, camera_name: str) -> None:
         """Clear configuration for a camera by name."""
         if camera_name in self.camera_configs:
             del self.camera_configs[camera_name]
-    
+
     def remove_camera_config(self, camera_name: str) -> None:
         """Remove configuration for a camera by name (alias for clear_camera_config)."""
         self.clear_camera_config(camera_name)
