@@ -20,10 +20,10 @@ run:
     killall shell-sorter || true
     uv run shell-sorter
 
-# Start ESPHome dashboard in Docker
-esphome:
-    docker run --rm -v "$(pwd):/config" -p 6052:6052 esphome/esphome dashboard /config
-
 # Flash ESPHome configuration to device
 esphome-flash DEVICE:
-    docker run --rm -v "$(pwd):/config" --device={{DEVICE}} esphome/esphome run /config/esphome-shell-sorter.yaml
+    esphome upload esphome-shell-sorter.yaml
+
+# flash and monitor the device
+esphome-monitor DEVICE:
+    esphome run esphome-shell-sorter.yaml

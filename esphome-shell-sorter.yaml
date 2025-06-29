@@ -13,22 +13,22 @@ logger:
 # Enable Home Assistant API
 api:
   encryption:
-    key: "YOUR_ENCRYPTION_KEY_HERE"
+    # key: !secret esphome_api_password
 
 # Enable over-the-air updates
 ota:
   - platform: esphome
-    password: "YOUR_OTA_PASSWORD_HERE"
+    password: !secret esphome_ota_password
 
 # WiFi configuration
 wifi:
-  ssid: "YOUR_WIFI_SSID"
-  password: "YOUR_WIFI_PASSWORD"
-  
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "Shell-Sorter-Fallback"
-    password: "shellsorter123"
+    # password: "shellsorter123"
 
 captive_portal:
 
@@ -120,6 +120,59 @@ switch:
       then:
         - logger.log: "Vibration motor deactivated"
 
+  # Template switches to control servos with predefined positions
+  # Case feeder servo control
+  - platform: template
+    name: "Case Feeder Servo - Home Position"
+    id: feeder_servo_home
+    icon: mdi:home
+    turn_on_action:
+      - servo.write:
+          id: case_feeder_servo
+          level: 0% # 0 degrees
+    turn_off_action:
+      - servo.write:
+          id: case_feeder_servo
+          level: 50% # 90 degrees (neutral)
+
+  - platform: template
+    name: "Case Feeder Servo - Feed Position"
+    id: feeder_servo_feed
+    icon: mdi:arrow-right
+    turn_on_action:
+      - servo.write:
+          id: case_feeder_servo
+          level: 100% # 180 degrees
+    turn_off_action:
+      - servo.write:
+          id: case_feeder_servo
+          level: 50% # 90 degrees (neutral)
+
+  # Case positioning servo control
+  - platform: template
+    name: "Case Position Servo - Camera Position"
+    id: position_servo_camera
+    icon: mdi:camera
+    turn_on_action:
+      - servo.write:
+          id: case_position_servo
+          level: 25% # 45 degrees
+    turn_off_action:
+      - servo.write:
+          id: case_position_servo
+          level: 50% # 90 degrees (neutral)
+  - platform: template
+    name: "Case Position Servo - Drop Position"
+    id: position_servo_drop
+    icon: mdi:arrow-down
+    turn_on_action:
+      - servo.write:
+          id: case_position_servo
+          level: 75% # 135 degrees
+    turn_off_action:
+      - servo.write:
+          id: case_position_servo
+          level: 50% # 90 degrees (neutral)
 # Servo controls
 servo:
   # Servo 1 - Case feeder servo
@@ -146,61 +199,6 @@ output:
     pin: GPIO17
     frequency: 50 Hz
 
-  # Template switches to control servos with predefined positions
-  # Case feeder servo control
-  - platform: template
-    name: "Case Feeder Servo - Home Position"
-    id: feeder_servo_home
-    icon: mdi:home
-    turn_on_action:
-      - servo.write:
-          id: case_feeder_servo
-          level: 0%  # 0 degrees
-    turn_off_action:
-      - servo.write:
-          id: case_feeder_servo
-          level: 50%  # 90 degrees (neutral)
-
-  - platform: template
-    name: "Case Feeder Servo - Feed Position"
-    id: feeder_servo_feed
-    icon: mdi:arrow-right
-    turn_on_action:
-      - servo.write:
-          id: case_feeder_servo
-          level: 100%  # 180 degrees
-    turn_off_action:
-      - servo.write:
-          id: case_feeder_servo
-          level: 50%  # 90 degrees (neutral)
-
-  # Case positioning servo control
-  - platform: template
-    name: "Case Position Servo - Camera Position"
-    id: position_servo_camera
-    icon: mdi:camera
-    turn_on_action:
-      - servo.write:
-          id: case_position_servo
-          level: 25%  # 45 degrees
-    turn_off_action:
-      - servo.write:
-          id: case_position_servo
-          level: 50%  # 90 degrees (neutral)
-
-  - platform: template
-    name: "Case Position Servo - Drop Position"
-    id: position_servo_drop
-    icon: mdi:arrow-down
-    turn_on_action:
-      - servo.write:
-          id: case_position_servo
-          level: 75%  # 135 degrees
-    turn_off_action:
-      - servo.write:
-          id: case_position_servo
-          level: 50%  # 90 degrees (neutral)
-
 # Numbers for fine servo control (optional)
 number:
   - platform: template
@@ -215,7 +213,7 @@ number:
       then:
         - servo.write:
             id: case_feeder_servo
-            level: !lambda 'return x / 100.0;'
+            level: !lambda "return x / 100.0;"
 
   - platform: template
     name: "Case Position Servo Position"
@@ -229,13 +227,13 @@ number:
       then:
         - servo.write:
             id: case_position_servo
-            level: !lambda 'return x / 100.0;'
+            level: !lambda "return x / 100.0;"
 
 # Status LED (optional)
-light:
-  - platform: status_led
-    name: "Status LED"
-    pin: GPIO2
+# light:
+#   - platform: status_led
+#     name: "Status LED"
+#     pin: GPIO2
 
 # Button for manual testing (optional)
 button:
