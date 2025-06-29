@@ -72,9 +72,9 @@ class MLTrainer:
                     data = json.load(f)
                     for name, case_data in data.items():
                         self.case_types[name] = CaseType.from_dict(case_data)
-                logger.info(f"Loaded {len(self.case_types)} case types")
+                logger.info("Loaded %d case types", len(self.case_types))
             except Exception as e:
-                logger.error(f"Error loading case types: {e}")
+                logger.error("Error loading case types: %s", e)
 
     def save_case_types(self) -> None:
         """Save case types to storage."""
@@ -84,9 +84,9 @@ class MLTrainer:
             }
             with open(self.case_types_file, "w") as f:
                 json.dump(data, f, indent=2)
-            logger.info(f"Saved {len(self.case_types)} case types")
+            logger.info("Saved %d case types", len(self.case_types))
         except Exception as e:
-            logger.error(f"Error saving case types: {e}")
+            logger.error("Error saving case types: %s", e)
 
     def add_case_type(
         self, name: str, designation: str, brand: Optional[str] = None
@@ -102,13 +102,13 @@ class MLTrainer:
         case_train_dir.mkdir(exist_ok=True)
 
         self.save_case_types()
-        logger.info(f"Added case type: {name} ({designation})")
+        logger.info("Added case type: %s (%s)", name, designation)
         return case_type
 
     def add_reference_image(self, case_type_name: str, image_path: Path) -> bool:
         """Add a reference image for a case type."""
         if case_type_name not in self.case_types:
-            logger.error(f"Case type {case_type_name} not found")
+            logger.error("Case type %s not found", case_type_name)
             return False
 
         case_type = self.case_types[case_type_name]
@@ -124,17 +124,17 @@ class MLTrainer:
             case_type.updated_at = datetime.now().isoformat()
             self.save_case_types()
             logger.info(
-                f"Added reference image for {case_type_name}: {image_path.name}"
+                "Added reference image for %s: %s", case_type_name, image_path.name
             )
             return True
         except Exception as e:
-            logger.error(f"Error adding reference image: {e}")
+            logger.error("Error adding reference image: %s", e)
             return False
 
     def add_training_image(self, case_type_name: str, image_path: Path) -> bool:
         """Add a training image for a case type."""
         if case_type_name not in self.case_types:
-            logger.error(f"Case type {case_type_name} not found")
+            logger.error("Case type %s not found", case_type_name)
             return False
 
         case_type = self.case_types[case_type_name]
@@ -149,10 +149,10 @@ class MLTrainer:
             case_type.training_images.append(target_path)
             case_type.updated_at = datetime.now().isoformat()
             self.save_case_types()
-            logger.info(f"Added training image for {case_type_name}: {image_path.name}")
+            logger.info("Added training image for %s: %s", case_type_name, image_path.name)
             return True
         except Exception as e:
-            logger.error(f"Error adding training image: {e}")
+            logger.error("Error adding training image: %s", e)
             return False
 
     def get_case_types(self) -> Dict[str, CaseType]:
@@ -206,7 +206,7 @@ class MLTrainer:
 
             # Simulate training process
             logger.info(
-                f"Training model with {len(trainable_types)} case types: {trainable_types}"
+                "Training model with %d case types: %s", len(trainable_types), trainable_types
             )
 
             # Create a simple model metadata file
@@ -219,18 +219,18 @@ class MLTrainer:
             }
 
             metadata_path = self.models_dir / f"{model_name}.json"
-            with open(metadata_path, "w") as f:
+            with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump(model_metadata, f, indent=2)
 
             # Create placeholder model file
             model_path.touch()
 
-            logger.info(f"Model training completed: {model_name}")
+            logger.info("Model training completed: %s", model_name)
             return (
                 True,
                 f"Model '{model_name}' trained successfully with {len(trainable_types)} case types",
             )
 
         except Exception as e:
-            logger.error(f"Error during model training: {e}")
+            logger.error("Error during model training: %s", e)
             return False, f"Training failed: {str(e)}"
