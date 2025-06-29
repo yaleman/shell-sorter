@@ -71,11 +71,11 @@
                                     <label>View Type:</label>
                                     <select class="view-type-select" data-camera-index="{{ camera.index }}">
                                         <option value="">Select type...</option>
-                                        <option value="side_view" {% if camera.view_type == 'side_view' %}selected{% endif %}>Side View</option>
-                                        <option value="tail_view" {% if camera.view_type == 'tail_view' %}selected{% endif %}>Tail View</option>
+                                        <option value="side" {% if camera.view_type == 'side' %}selected{% endif %}>Side View</option>
+                                        <option value="tail" {% if camera.view_type == 'tail' %}selected{% endif %}>Tail View</option>
                                     </select>
                                 </div>
-                                {% if camera.view_type in ['side_view', 'tail_view'] %}
+                                {% if camera.view_type in ['side', 'tail'] %}
                                 <div class="region-control">
                                     <button class="btn btn-sm btn-secondary region-select-btn" data-camera-index="{{ camera.index }}">
                                         {% if camera.region_x is not none %}Edit Region{% else %}Select Region{% endif %}

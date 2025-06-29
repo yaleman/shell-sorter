@@ -1,13 +1,21 @@
 """Shell model for shell sorting application."""
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
+class ViewType(StrEnum):
+    """Enumeration for camera view types."""
+    SIDE = "side"
+    TAIL = "tail" 
+    UNKNOWN = "unknown"
+
+
 class CameraRegion(BaseModel):
     """Camera region information for image processing."""
-    view_type: Optional[str] = None
+    view_type: ViewType = ViewType.UNKNOWN
     region_x: Optional[int] = None
     region_y: Optional[int] = None
     region_width: Optional[int] = None
@@ -19,7 +27,7 @@ class CapturedImage(BaseModel):
     camera_index: int
     filename: str
     camera_name: str
-    view_type: Optional[str] = None
+    view_type: ViewType = ViewType.UNKNOWN
     region_x: Optional[int] = None
     region_y: Optional[int] = None
     region_width: Optional[int] = None

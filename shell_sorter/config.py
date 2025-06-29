@@ -137,7 +137,7 @@ class Settings(BaseSettings):  # type: ignore
 
 class CameraConfig(BaseModel):
     """Configuration for a specific camera."""
-    view_type: Optional[Literal["side_view", "tail_view"]] = None
+    view_type: Optional[Literal["side", "tail"]] = None
     region_x: Optional[int] = None
     region_y: Optional[int] = None
     region_width: Optional[int] = None

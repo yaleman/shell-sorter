@@ -523,16 +523,16 @@ async def set_camera_view_type(
 ) -> Dict[str, Any]:
     """Set the view type for a camera."""
     # Validate and cast view_type
-    if view_type == "side_view":
-        validated_view_type: Optional[Literal["side_view", "tail_view"]] = "side_view"
-    elif view_type == "tail_view":
-        validated_view_type = "tail_view"
+    if view_type == "side":
+        validated_view_type: Optional[Literal["side", "tail"]] = "side"
+    elif view_type == "tail":
+        validated_view_type = "tail"
     elif view_type is None or view_type == "":
         validated_view_type = None
     else:
         raise HTTPException(
             status_code=400, 
-            detail="Invalid view type. Must be 'side_view', 'tail_view', or empty"
+            detail="Invalid view type. Must be 'side', 'tail', or empty"
         )
     
     success = camera_manager.set_camera_view_type(camera_index, validated_view_type)
@@ -1174,6 +1174,66 @@ async def generate_composite_images(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@app.post("/api/ml/shells/{session_id}/view-type")
+async def update_shell_image_view_type(
+    session_id: str,
+    view_type_data: Dict[str, str],
+    app_settings: Settings = Depends(get_settings),
+) -> Dict[str, Any]:
+    """Update the view type for a specific shell image."""
+    try:
+        from .shell import ViewType
+        
+        filename = view_type_data.get("filename")
+        new_view_type = view_type_data.get("view_type")
+        
+        if not filename:
+            raise HTTPException(status_code=400, detail="Filename is required")
+        
+        # Validate view type
+        valid_view_types = [ViewType.SIDE, ViewType.TAIL, ViewType.UNKNOWN]
+        if new_view_type not in valid_view_types:
+            raise HTTPException(status_code=400, detail=f"Invalid view type. Must be one of: {[vt.value for vt in valid_view_types]}")
+        
+        # Load shell data
+        shell_file = app_settings.image_directory / f"{session_id}_metadata.json"
+        if not shell_file.exists():
+            raise HTTPException(status_code=404, detail=f"Shell data not found for session {session_id}")
+        
+        with open(shell_file, 'r', encoding='utf-8') as f:
+            shell_data = json.load(f)
+        
+        # Update the view type for the specific image
+        updated = False
+        if 'captured_images' in shell_data:
+            for image in shell_data['captured_images']:
+                if image.get('filename') == filename:
+                    image['view_type'] = new_view_type
+                    updated = True
+                    break
+        
+        if not updated:
+            raise HTTPException(status_code=404, detail=f"Image {filename} not found in session {session_id}")
+        
+        # Save updated shell data
+        with open(shell_file, 'w', encoding='utf-8') as f:
+            json.dump(shell_data, f, indent=2, default=str)
+        
+        logger.info("Updated view type for %s in session %s to %s", filename, session_id, new_view_type)
+        return {
+            "session_id": session_id,
+            "filename": filename,
+            "view_type": new_view_type,
+            "message": "View type updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating shell image view type: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 async def _generate_composite_image(
     session_id: str, shell_data: Dict[str, Any], output_dir: Path
 ) -> Optional[Path]:
@@ -1284,7 +1344,7 @@ def _apply_region_processing(img: Any, region_info: Dict[str, Any]) -> Any:
             img = img[y1:y2, x1:x2]
     
     # Apply view-specific processing
-    if view_type == "tail_view":
+    if view_type == "tail":
         # For tail view, try to detect and focus on circular features
         img = _apply_tail_view_processing(img)
     

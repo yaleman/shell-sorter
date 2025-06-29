@@ -917,17 +917,49 @@ select:focus, input:focus {
 
 .shell-images {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
     margin-top: 15px;
+}
+
+.shell-image-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .shell-image {
     width: 100%;
-    height: 80px;
+    height: 120px;
     object-fit: cover;
     border-radius: 5px;
     border: 1px solid #ddd;
+}
+
+.image-view-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    border: 1px solid #e9ecef;
+}
+
+.view-type-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #495057;
+    text-align: center;
+    margin: 0;
+}
+
+.view-type-selector {
+    padding: 4px 8px;
+    border: 1px solid #ced4da;
+    border-radius: 3px;
+    font-size: 0.8rem;
+    background-color: white;
 }
 
 .composite-preview {

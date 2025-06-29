@@ -25,7 +25,7 @@ class CameraInfo:
     resolution: Tuple[int, int]
     is_active: bool = False
     is_selected: bool = False
-    view_type: Optional[Literal["side_view", "tail_view"]] = None
+    view_type: Optional[Literal["side", "tail"]] = None
     region_x: Optional[int] = None
     region_y: Optional[int] = None
     region_width: Optional[int] = None
@@ -210,7 +210,7 @@ class CameraManager:
         return [cam for cam in self.cameras.values() if cam.is_selected]
 
     def set_camera_view_type(
-        self, camera_index: int, view_type: Optional[Literal["side_view", "tail_view"]]
+        self, camera_index: int, view_type: Optional[Literal["side", "tail"]]
     ) -> bool:
         """Set the view type for a camera."""
         if camera_index not in self.cameras:

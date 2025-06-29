@@ -18,6 +18,13 @@ class MLTrainingInterface {
         document.getElementById('filter-type').addEventListener('change', () => this.applyFilters());
         document.getElementById('filter-include').addEventListener('change', () => this.applyFilters());
         
+        // View type selector event delegation (for dynamically created elements)
+        document.addEventListener('change', (event) => {
+            if (event.target.classList.contains('view-type-selector')) {
+                this.handleViewTypeChange(event.target);
+            }
+        });
+        
         // ML Training button in main interface
         const mlTrainingBtn = document.getElementById('ml-training-btn');
         if (mlTrainingBtn) {
@@ -127,13 +134,24 @@ class MLTrainingInterface {
         const isIncluded = shell.include !== false; // Default to true if not specified
         const formattedDate = new Date(shell.date_captured).toLocaleDateString();
         
+        // Use captured_images if available, otherwise fall back to image_filenames
+        const images = shell.captured_images && shell.captured_images.length > 0 
+            ? shell.captured_images 
+            : shell.image_filenames.map(filename => ({ filename, view_type: null }));
+        
+        // Sort images: side views first, then tail views, then unknown/unspecified
+        const sortedImages = [...images].sort((a, b) => {
+            const viewOrder = { 'side': 0, 'tail': 1, 'unknown': 2, null: 3, undefined: 3 };
+            return viewOrder[a.view_type] - viewOrder[b.view_type];
+        });
+        
         return `
             <div class="shell-item ${isIncluded ? 'included' : 'excluded'}" data-session-id="${shell.session_id}">
                 <div class="shell-header">
                     <div class="shell-info">
                         <div class="shell-title">${shell.brand} ${shell.shell_type}</div>
                         <div class="shell-details">
-                            Captured: ${formattedDate} | Images: ${shell.image_filenames.length} | Session: ${shell.session_id}
+                            Captured: ${formattedDate} | Images: ${images.length} | Session: ${shell.session_id}
                         </div>
                     </div>
                     <div class="shell-toggle">
@@ -142,8 +160,18 @@ class MLTrainingInterface {
                     </div>
                 </div>
                 <div class="shell-images">
-                    ${shell.image_filenames.map(filename => `
-                        <img src="/images/${filename}" alt="Shell image" class="shell-image" onerror="this.style.display='none'">
+                    ${sortedImages.map((image, index) => `
+                        <div class="shell-image-container" data-image-index="${index}">
+                            <img src="/images/${image.filename}" alt="Shell image" class="shell-image" onerror="this.style.display='none'">
+                            <div class="image-view-controls">
+                                <label class="view-type-label">${this.formatViewType(image.view_type)}</label>
+                                <select class="view-type-selector" data-session-id="${shell.session_id}" data-filename="${image.filename}">
+                                    <option value="unknown" ${image.view_type === 'unknown' ? 'selected' : ''}>Unknown</option>
+                                    <option value="side" ${image.view_type === 'side' ? 'selected' : ''}>Side View</option>
+                                    <option value="tail" ${image.view_type === 'tail' ? 'selected' : ''}>Tail View</option>
+                                </select>
+                            </div>
+                        </div>
                     `).join('')}
                 </div>
                 <div class="composite-preview" id="composite-${shell.session_id}" style="display: none;">
@@ -151,6 +179,61 @@ class MLTrainingInterface {
                 </div>
             </div>
         `;
+    }
+
+    formatViewType(viewType) {
+        switch(viewType) {
+            case 'side': return 'Side View';
+            case 'tail': return 'Tail View';
+            case 'unknown': return 'Unknown';
+            default: return 'Unknown';
+        }
+    }
+
+    async handleViewTypeChange(selector) {
+        const sessionId = selector.dataset.sessionId;
+        const filename = selector.dataset.filename;
+        const newViewType = selector.value;
+        
+        try {
+            const response = await fetch(`/api/ml/shells/${sessionId}/view-type`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    filename: filename,
+                    view_type: newViewType
+                })
+            });
+
+            if (response.ok) {
+                // Update local data
+                const shell = this.shells.find(s => s.session_id === sessionId);
+                if (shell && shell.captured_images) {
+                    const image = shell.captured_images.find(img => img.filename === filename);
+                    if (image) {
+                        image.view_type = newViewType;
+                        // Update the label
+                        const container = selector.closest('.shell-image-container');
+                        const label = container.querySelector('.view-type-label');
+                        if (label) {
+                            label.textContent = this.formatViewType(newViewType);
+                        }
+                        // Re-render the shell to update sorting
+                        this.renderShells();
+                    }
+                }
+                this.showToast('View type updated successfully', 'success');
+            } else {
+                throw new Error(`Failed to update view type: ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('Error updating view type:', error);
+            this.showToast('Error updating view type: ' + error.message, 'error');
+            // Revert selector to previous value
+            selector.value = selector.dataset.originalValue || 'unknown';
+        }
     }
 
     async toggleShellInclude(sessionId, include) {
