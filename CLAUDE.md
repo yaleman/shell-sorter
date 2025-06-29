@@ -10,6 +10,7 @@ This application controls an ammunition shell case sorting machine that uses com
 - It is mandatory that README.md is kept up to date with system design, hardware requirements, and setup instructions
 - Never allow a bare "type: ignore" comment
 - Never use global variables
+- Never use inline javascript or css in a web page unless there's no other way to solve the problem
 
 ## Architecture
 
@@ -264,3 +265,4 @@ The ESPHome dashboard allows you to:
 - View device logs in real-time
 - Monitor sensor states and control outputs
 - Update firmware over-the-air (OTA)
+```

@@ -2,13 +2,21 @@
 
 import cv2  # type: ignore[import-not-found]
 import threading
-from typing import Dict, List, Optional, Tuple, Literal, TYPE_CHECKING
+from typing import Dict, List, Optional, Tuple, Literal, TYPE_CHECKING, Any
 from dataclasses import dataclass
 import logging
 import concurrent.futures
 import subprocess
 import platform
 import json
+
+try:
+    from PIL import Image, ExifTags
+    from PIL.ExifTags import TAGS
+except ImportError:
+    Image = None  # type: ignore[assignment]
+    ExifTags = None  # type: ignore[assignment]
+    TAGS = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:
     from .config import Settings
@@ -438,6 +446,130 @@ class CameraManager:
         camera_indices = list(self.active_captures.keys())
         for camera_index in camera_indices:
             self.stop_camera_stream(camera_index)
+
+    def capture_high_resolution_image(self, camera_index: int) -> Optional[bytes]:
+        """Capture a high-resolution image from the specified camera with EXIF metadata."""
+        if camera_index not in self.cameras:
+            logger.warning("Camera %d not found", camera_index)
+            return None
+            
+        camera_info = self.cameras[camera_index]
+        
+        try:
+            # Open camera for high-resolution capture
+            cap = self._open_camera_with_timeout(camera_index, timeout=5.0)
+            if cap is None:
+                logger.error("Failed to open camera %d for high-resolution capture", camera_index)
+                return None
+
+            # Get maximum resolution supported by the camera
+            max_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            max_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            # Try to set to maximum resolution if different from current
+            if max_width != camera_info.resolution[0] or max_height != camera_info.resolution[1]:
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_info.resolution[0])
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_info.resolution[1])
+                
+            # Capture frame
+            ret, frame = cap.read()
+            cap.release()
+            
+            if not ret or frame is None:
+                logger.error("Failed to capture frame from camera %d", camera_index)
+                return None
+                
+            # Convert BGR to RGB for PIL
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # Create PIL Image
+            if Image is None:
+                logger.error("PIL not available for EXIF metadata")
+                # Fallback: encode as JPEG without EXIF
+                _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
+                return buffer.tobytes()
+                
+            pil_image = Image.fromarray(frame_rgb)
+            
+            # Add EXIF metadata
+            exif_dict: Dict[str, Any] = {
+                "0th": {},
+                "Exif": {},
+                "GPS": {},
+                "1st": {},
+                "thumbnail": None
+            }
+            
+            # Add camera name to ImageDescription
+            if TAGS:
+                # Find the tag number for ImageDescription
+                image_desc_tag = None
+                for tag_num, tag_name in TAGS.items():
+                    if tag_name == "ImageDescription":
+                        image_desc_tag = tag_num
+                        break
+                        
+                if image_desc_tag and exif_dict["0th"] is not None:
+                    exif_dict["0th"][image_desc_tag] = camera_info.name
+                    
+                # Add view type to UserComment if available
+                user_comment_tag = None
+                for tag_num, tag_name in TAGS.items():
+                    if tag_name == "UserComment":
+                        user_comment_tag = tag_num
+                        break
+                        
+                if user_comment_tag and camera_info.view_type and exif_dict["Exif"] is not None:
+                    # UserComment needs special encoding
+                    comment = f"view_type:{camera_info.view_type}"
+                    # Prefix with character code (ASCII)
+                    encoded_comment = b"ASCII\x00\x00\x00" + comment.encode("ascii")
+                    exif_dict["Exif"][user_comment_tag] = encoded_comment
+            
+            # Save image with EXIF to bytes
+            from io import BytesIO
+            output = BytesIO()
+            
+            try:
+                # Try to save with EXIF
+                import piexif  # type: ignore[import-not-found]
+                exif_bytes = piexif.dump(exif_dict)
+                pil_image.save(output, format="JPEG", quality=95, exif=exif_bytes)
+            except ImportError:
+                # piexif not available, save without EXIF but log the metadata
+                logger.info("piexif not available, saving image without EXIF metadata")
+                logger.info("Camera: %s, View type: %s", camera_info.name, camera_info.view_type or "unknown")
+                pil_image.save(output, format="JPEG", quality=95)
+            except Exception as e:
+                logger.warning("Failed to add EXIF metadata: %s", e)
+                pil_image.save(output, format="JPEG", quality=95)
+                
+            return output.getvalue()
+            
+        except Exception as e:
+            logger.error("Error capturing high-resolution image from camera %d: %s", camera_index, e)
+            return None
+            
+    def capture_all_selected_high_resolution(self) -> Dict[int, Optional[bytes]]:
+        """Capture high-resolution images from all selected cameras."""
+        selected_cameras = self.get_selected_cameras()
+        if not selected_cameras:
+            logger.warning("No cameras selected for capture")
+            return {}
+            
+        results = {}
+        for camera in selected_cameras:
+            logger.info("Capturing high-resolution image from camera %d", camera.index)
+            image_data = self.capture_high_resolution_image(camera.index)
+            results[camera.index] = image_data
+            
+            if image_data:
+                logger.info("Successfully captured high-resolution image from camera %d (%d bytes)", 
+                           camera.index, len(image_data))
+            else:
+                logger.error("Failed to capture high-resolution image from camera %d", camera.index)
+                
+        return results
 
     def cleanup(self) -> None:
         """Clean up all camera resources."""

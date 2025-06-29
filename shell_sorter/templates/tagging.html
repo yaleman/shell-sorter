@@ -38,12 +38,12 @@
                 <form id="tagging-form" class="tagging-form">
                     <input type="hidden" id="session_id" value="{{ session_id }}">
                     <input type="hidden" id="image_filenames" value="{{ captured_images | map(attribute='filename') | join(',') }}">
-                    
+
                     <div class="form-group">
                         <label for="brand">Brand:</label>
                         <input type="text" id="brand" required placeholder="e.g., Winchester, Federal, PMC">
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="shell_type">Shell Type:</label>
                         <select id="shell_type" required>
@@ -67,6 +67,7 @@
     <div id="toast-container" class="toast-container"></div>
 
     <script src="/static/script.js"></script>
+    <!-- TODO: move this out to a separate JS file -->
     <script>
         // Tagging-specific JavaScript
         document.addEventListener('DOMContentLoaded', function() {
@@ -76,29 +77,29 @@
             if (saveBtn) {
                 saveBtn.addEventListener('click', async function(e) {
                     e.preventDefault();
-                    
+
                     // Get form values
                     const sessionId = document.getElementById('session_id').value;
                     const brand = document.getElementById('brand').value.trim();
                     const shellType = document.getElementById('shell_type').value;
                     const imageFilenamesInput = document.getElementById('image_filenames').value;
-                    
+
                     // Validate form
                     if (!brand) {
                         showToast('Please enter a brand', 'warning');
                         document.getElementById('brand').focus();
                         return;
                     }
-                    
+
                     if (!shellType) {
                         showToast('Please select a shell type', 'warning');
                         document.getElementById('shell_type').focus();
                         return;
                     }
-                    
+
                     // Parse image filenames from comma-delimited string
                     const imageFilenames = imageFilenamesInput.split(',').filter(name => name.trim());
-                    
+
                     // Prepare JSON payload
                     const payload = {
                         session_id: sessionId,
@@ -106,7 +107,7 @@
                         shell_type: shellType,
                         image_filenames: imageFilenames
                     };
-                    
+
                     try {
                         const controller = new AbortController();
                         const timeoutId = setTimeout(() => controller.abort(), 10000);

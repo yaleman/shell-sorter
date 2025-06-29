@@ -697,8 +697,8 @@ async def capture_images() -> Dict[str, Any]:
 
     for camera in selected_cameras:
         if camera.is_active:
-            # Get the latest frame from the camera
-            frame_data = camera_manager.get_latest_frame(camera.index)
+            # Capture high-resolution frame with EXIF metadata
+            frame_data = camera_manager.capture_high_resolution_image(camera.index)
             if frame_data:
                 # Save image with camera index in filename
                 filename = f"{session_id}_camera_{camera.index}.jpg"
