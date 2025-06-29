@@ -1,6 +1,7 @@
 """Machine learning model training for shell case identification."""
 
 import json
+import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
@@ -68,12 +69,12 @@ class MLTrainer:
         """Load case types from storage."""
         if self.case_types_file.exists():
             try:
-                with open(self.case_types_file, "r") as f:
+                with open(self.case_types_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     for name, case_data in data.items():
                         self.case_types[name] = CaseType.from_dict(case_data)
                 logger.info("Loaded %d case types", len(self.case_types))
-            except Exception as e:
+            except (OSError, json.JSONDecodeError) as e:
                 logger.error("Error loading case types: %s", e)
 
     def save_case_types(self) -> None:
@@ -82,10 +83,10 @@ class MLTrainer:
             data = {
                 name: case_type.to_dict() for name, case_type in self.case_types.items()
             }
-            with open(self.case_types_file, "w") as f:
+            with open(self.case_types_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
             logger.info("Saved %d case types", len(self.case_types))
-        except Exception as e:
+        except OSError as e:
             logger.error("Error saving case types: %s", e)
 
     def add_case_type(
@@ -117,8 +118,6 @@ class MLTrainer:
 
         try:
             # Copy image to reference directory
-            import shutil
-
             shutil.copy2(image_path, target_path)
             case_type.reference_images.append(target_path)
             case_type.updated_at = datetime.now().isoformat()
@@ -127,7 +126,7 @@ class MLTrainer:
                 "Added reference image for %s: %s", case_type_name, image_path.name
             )
             return True
-        except Exception as e:
+        except (OSError, shutil.Error) as e:
             logger.error("Error adding reference image: %s", e)
             return False
 
@@ -143,15 +142,15 @@ class MLTrainer:
 
         try:
             # Copy image to training directory
-            import shutil
-
             shutil.copy2(image_path, target_path)
             case_type.training_images.append(target_path)
             case_type.updated_at = datetime.now().isoformat()
             self.save_case_types()
-            logger.info("Added training image for %s: %s", case_type_name, image_path.name)
+            logger.info(
+                "Added training image for %s: %s", case_type_name, image_path.name
+            )
             return True
-        except Exception as e:
+        except (OSError, shutil.Error) as e:
             logger.error("Error adding training image: %s", e)
             return False
 
@@ -206,7 +205,9 @@ class MLTrainer:
 
             # Simulate training process
             logger.info(
-                "Training model with %d case types: %s", len(trainable_types), trainable_types
+                "Training model with %d case types: %s",
+                len(trainable_types),
+                trainable_types,
             )
 
             # Create a simple model metadata file
@@ -231,6 +232,6 @@ class MLTrainer:
                 f"Model '{model_name}' trained successfully with {len(trainable_types)} case types",
             )
 
-        except Exception as e:
+        except OSError as e:
             logger.error("Error during model training: %s", e)
             return False, f"Training failed: {str(e)}"
