@@ -60,6 +60,21 @@ header h1 {
     background-color: #dc3545;
 }
 
+.esphome-status-online {
+    background-color: #28a745;
+    color: white;
+}
+
+.esphome-status-offline {
+    background-color: #dc3545;
+    color: white;
+}
+
+.esphome-status-checking {
+    background-color: #ffc107;
+    color: #212529;
+}
+
 main {
     display: grid;
     grid-template-columns: 1fr 1fr;

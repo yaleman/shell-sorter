@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // UI Elements
     const backToDashboardBtn = document.getElementById('back-to-dashboard-btn');
     const autoStartCamerasCheckbox = document.getElementById('auto-start-cameras');
+    const esphomeHostnameInput = document.getElementById('esphome-hostname');
     const refreshCamerasBtn = document.getElementById('refresh-cameras-btn');
     const clearAllCamerasBtn = document.getElementById('clear-all-cameras-btn');
     const saveConfigBtn = document.getElementById('save-config-btn');
@@ -12,6 +13,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Configuration state
     let configData = {
         auto_start_cameras: false,
+        esphome_hostname: 'shell-sorter-controller.local',
         cameras: []
     };
 
@@ -30,6 +32,14 @@ document.addEventListener('DOMContentLoaded', function() {
         autoStartCamerasCheckbox.addEventListener('change', function() {
             configData.auto_start_cameras = this.checked;
             console.log('Auto-start cameras:', configData.auto_start_cameras);
+        });
+    }
+
+    // ESPHome hostname input
+    if (esphomeHostnameInput) {
+        esphomeHostnameInput.addEventListener('change', function() {
+            configData.esphome_hostname = this.value.trim();
+            console.log('ESPHome hostname:', configData.esphome_hostname);
         });
     }
 
@@ -200,6 +210,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Update auto-start checkbox
         if (autoStartCamerasCheckbox) {
             autoStartCamerasCheckbox.checked = configData.auto_start_cameras || false;
+        }
+        
+        // Update ESPHome hostname input
+        if (esphomeHostnameInput) {
+            esphomeHostnameInput.value = configData.esphome_hostname || 'shell-sorter-controller.local';
         }
 
         // Update cameras list

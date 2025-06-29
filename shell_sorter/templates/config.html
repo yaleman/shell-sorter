@@ -29,6 +29,12 @@
                         </label>
                         <small class="form-help">Automatically start cameras as soon as they are detected on startup</small>
                     </div>
+                    
+                    <div class="form-group">
+                        <label for="esphome-hostname">ESPHome Device Hostname</label>
+                        <input type="text" id="esphome-hostname" value="{{ esphome_hostname }}" placeholder="shell-sorter-controller.local">
+                        <small class="form-help">Hostname or IP address of the ESPHome device for hardware control</small>
+                    </div>
                 </div>
             </section>
 

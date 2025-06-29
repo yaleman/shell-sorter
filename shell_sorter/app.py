@@ -2,13 +2,14 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Generator, Callable, Awaitable, Literal
+from typing import List, Dict, Any, Optional, Generator, Callable, Awaitable, Literal, AsyncGenerator
 from datetime import datetime
 import json
 import logging
 import signal
 import sys
 import uuid
+from contextlib import asynccontextmanager
 
 try:
     import cv2  # type: ignore[import-not-found]
@@ -39,6 +40,7 @@ from .ml_trainer import MLTrainer
 from .camera_manager import CameraManager
 from .shell import Shell
 from .hardware_controller import HardwareController
+from .esphome_monitor import ESPHomeMonitor
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
@@ -140,6 +142,9 @@ camera_manager = CameraManager(settings)
 # Initialize hardware controller
 hardware_controller = HardwareController()
 
+# Initialize ESPHome monitor
+esphome_monitor = ESPHomeMonitor(settings.esphome_hostname)
+
 # Setup logging with timestamps including milliseconds
 logging.basicConfig(
     level=logging.INFO,
@@ -148,7 +153,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Shell Sorter Control Panel", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Manage application lifespan events."""
+    # Startup
+    logger.info("Starting ESPHome connectivity monitoring")
+    esphome_monitor.start_monitoring()
+    
+    yield
+    
+    # Shutdown
+    logger.info("Stopping ESPHome connectivity monitoring")
+    esphome_monitor.stop_monitoring()
+
+
+app = FastAPI(title="Shell Sorter Control Panel", version="1.0.0", lifespan=lifespan)
 
 # Add cache-busting middleware (add first to ensure it runs on all responses)
 app.add_middleware(NoCacheMiddleware)
@@ -187,6 +207,11 @@ def get_settings() -> Settings:
     return settings
 
 
+def get_esphome_monitor() -> ESPHomeMonitor:
+    """Dependency to get the ESPHome monitor instance."""
+    return esphome_monitor
+
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(
     request: Request,
@@ -216,6 +241,7 @@ async def config_page(
         {
             "request": request,
             "cameras": camera_manager.get_cameras(),
+            "esphome_hostname": app_settings.esphome_hostname,
         },
     )
 
@@ -621,6 +647,14 @@ async def get_hardware_status() -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@app.get("/api/machine/esphome-status")
+async def get_esphome_status(
+    monitor: ESPHomeMonitor = Depends(get_esphome_monitor)
+) -> Dict[str, Any]:
+    """Get ESPHome device connectivity status."""
+    return monitor.get_status()
+
+
 @app.get("/api/cameras/{camera_index}/stream")
 async def camera_stream(
     camera_index: int,
@@ -883,11 +917,14 @@ async def save_shell_data(
 
 
 @app.get("/api/config")
-async def get_configuration() -> Dict[str, Any]:
+async def get_configuration(
+    app_settings: Settings = Depends(get_settings)
+) -> Dict[str, Any]:
     """Get current system configuration."""
     try:
         config_data = {
             "auto_start_cameras": getattr(camera_manager, 'auto_start_cameras', False),
+            "esphome_hostname": app_settings.esphome_hostname,
             "cameras": [
                 {
                     "index": cam.index,
@@ -911,12 +948,26 @@ async def get_configuration() -> Dict[str, Any]:
 
 
 @app.post("/api/config")
-async def save_configuration(config: Dict[str, Any]) -> Dict[str, str]:
+async def save_configuration(
+    config: Dict[str, Any],
+    app_settings: Settings = Depends(get_settings),
+    monitor: ESPHomeMonitor = Depends(get_esphome_monitor)
+) -> Dict[str, str]:
     """Save system configuration."""
     try:
         # Save auto-start setting
         if "auto_start_cameras" in config:
             camera_manager.auto_start_cameras = config["auto_start_cameras"]
+        
+        # Save ESPHome hostname setting
+        if "esphome_hostname" in config:
+            new_hostname = config["esphome_hostname"].strip()
+            if new_hostname and new_hostname != app_settings.esphome_hostname:
+                # Update settings
+                app_settings.esphome_hostname = new_hostname
+                # Update monitor hostname
+                monitor.update_hostname(new_hostname)
+                logger.info("Updated ESPHome hostname to: %s", new_hostname)
         
         # Save configuration to file
         camera_manager.save_config()

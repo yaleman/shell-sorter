@@ -14,7 +14,7 @@ logger:
 # Enable Home Assistant API
 api:
   encryption:
-    # key: !secret esphome_api_password
+    key: !secret esphome_api_password
 # Enable over-the-air updates
 ota:
   - platform: esphome
@@ -127,11 +127,11 @@ switch:
     turn_on_action:
       - servo.write:
           id: case_feeder_servo
-          level: 0%  # 0 degrees
+          level: 0% # 0 degrees
     turn_off_action:
       - servo.write:
           id: case_feeder_servo
-          level: 50%  # 90 degrees (neutral)
+          level: 50% # 90 degrees (neutral)
 
   - platform: template
     name: "Case Feeder Servo - Feed Position"
@@ -140,11 +140,11 @@ switch:
     turn_on_action:
       - servo.write:
           id: case_feeder_servo
-          level: 100%  # 180 degrees
+          level: 100% # 180 degrees
     turn_off_action:
       - servo.write:
           id: case_feeder_servo
-          level: 50%  # 90 degrees (neutral)
+          level: 50% # 90 degrees (neutral)
 
   # Case positioning servo control
   - platform: template
@@ -154,11 +154,11 @@ switch:
     turn_on_action:
       - servo.write:
           id: case_position_servo
-          level: 25%  # 45 degrees
+          level: 25% # 45 degrees
     turn_off_action:
       - servo.write:
           id: case_position_servo
-          level: 50%  # 90 degrees (neutral)
+          level: 50% # 90 degrees (neutral)
   - platform: template
     name: "Case Position Servo - Drop Position"
     id: position_servo_drop
@@ -166,11 +166,11 @@ switch:
     turn_on_action:
       - servo.write:
           id: case_position_servo
-          level: 75%  # 135 degrees
+          level: 75% # 135 degrees
     turn_off_action:
       - servo.write:
           id: case_position_servo
-          level: 50%  # 90 degrees (neutral)
+          level: 50% # 90 degrees (neutral)
 # Servo controls
 servo:
   # Servo 1 - Case feeder servo

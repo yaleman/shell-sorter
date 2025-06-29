@@ -72,6 +72,12 @@ class Settings(BaseSettings):  # type: ignore
         description="Supported ammunition case types",
     )
 
+    # ESPHome configuration
+    esphome_hostname: str = Field(
+        default="shell-sorter-controller.local", 
+        description="ESPHome device hostname for API communication"
+    )
+
     def get_config_path(self) -> Path:
         """Get the path to the user config file."""
         config_dir = Path.home() / ".config"

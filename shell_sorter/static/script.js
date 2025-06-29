@@ -226,10 +226,53 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, 25000);
     
+    // ESPHome status monitoring
+    async function updateESPHomeStatus() {
+        try {
+            const response = await fetch('/api/machine/esphome-status');
+            if (response.ok) {
+                const status = await response.json();
+                const statusElement = document.getElementById('esphome-status');
+                const statusText = document.getElementById('esphome-status-text');
+                
+                if (statusElement && statusText) {
+                    // Remove all status classes
+                    statusElement.className = 'status-indicator';
+                    
+                    if (status.online) {
+                        statusElement.classList.add('esphome-status-online');
+                        statusText.textContent = 'Online';
+                    } else {
+                        statusElement.classList.add('esphome-status-offline');
+                        statusText.textContent = 'Offline';
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching ESPHome status:', error);
+            const statusElement = document.getElementById('esphome-status');
+            const statusText = document.getElementById('esphome-status-text');
+            
+            if (statusElement && statusText) {
+                statusElement.className = 'status-indicator esphome-status-offline';
+                statusText.textContent = 'Error';
+            }
+        }
+    }
+    
+    // Initial ESPHome status check
+    updateESPHomeStatus();
+    
+    // Auto-refresh ESPHome status every 30 seconds
+    const esphomeStatusInterval = setInterval(updateESPHomeStatus, 30000);
+    
     // Clean up intervals when page unloads
     window.addEventListener('beforeunload', function() {
         if (statusInterval) {
             clearInterval(statusInterval);
+        }
+        if (esphomeStatusInterval) {
+            clearInterval(esphomeStatusInterval);
         }
         if (currentCameraPollInterval) {
             clearInterval(currentCameraPollInterval);
