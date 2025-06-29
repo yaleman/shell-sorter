@@ -12,8 +12,8 @@ body {
 }
 
 .container {
-    max-width: 1200px;
-    margin: 0 auto;
+    width: 100%;
+    margin: 0;
     padding: 20px;
 }
 
@@ -26,12 +26,20 @@ header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
 }
 
 .header-right {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.header-right .btn {
+    padding: 10px 20px;
+    font-size: 0.9rem;
+    min-width: auto;
 }
 
 header h1 {
@@ -80,6 +88,17 @@ main {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto;
     gap: 30px;
+    max-width: 100%;
+}
+
+@media (min-width: 1400px) {
+    main {
+        gap: 40px;
+    }
+    
+    .container {
+        padding: 20px 40px;
+    }
 }
 
 .control-panel {
@@ -341,22 +360,22 @@ select:focus, input:focus {
 }
 
 .btn-secondary {
-    background-color: #6c757d;
+    background-color: #764ba2;
     color: white;
 }
 
 .btn-secondary:hover {
-    background-color: #545b62;
+    background-color: #5f3c85;
     transform: translateY(-2px);
 }
 
 .btn-info {
-    background-color: #17a2b8;
+    background-color: #667eea;
     color: white;
 }
 
 .btn-info:hover {
-    background-color: #138496;
+    background-color: #5a67d8;
     transform: translateY(-2px);
 }
 
