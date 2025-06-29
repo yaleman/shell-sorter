@@ -1,5 +1,10 @@
 # Shell Sorter development tasks
 
+# list the available tasks
+default:
+    just --list
+
+
 # Run linting checks
 lint:
     uv run ruff check shell_sorter/
@@ -8,8 +13,8 @@ lint:
 mypy:
     uv run mypy --strict shell_sorter/
 
-# Run all checks (lint then mypy)
-check: lint mypy
+# Run all checks
+check: lint mypy esphome-check
 
 # Format code
 fmt:
@@ -27,3 +32,7 @@ esphome-flash DEVICE:
 # flash and monitor the device
 esphome-monitor DEVICE:
     esphome run esphome-shell-sorter.yaml
+
+esphome-check:
+    yamllint esphome-shell-sorter.yaml
+    esphome config esphome-shell-sorter.yaml > /dev/null
