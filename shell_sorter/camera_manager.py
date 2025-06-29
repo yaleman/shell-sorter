@@ -10,13 +10,9 @@ import subprocess
 import platform
 import json
 
-try:
-    from PIL import Image, ExifTags
-    from PIL.ExifTags import TAGS
-except ImportError:
-    Image = None  # type: ignore[assignment]
-    ExifTags = None  # type: ignore[assignment]
-    TAGS = None  # type: ignore[assignment]
+from PIL import Image
+from PIL.ExifTags import TAGS
+import piexif  # type: ignore[import-not-found]
 
 if TYPE_CHECKING:
     from .config import Settings
@@ -483,12 +479,6 @@ class CameraManager:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
             # Create PIL Image
-            if Image is None:
-                logger.error("PIL not available for EXIF metadata")
-                # Fallback: encode as JPEG without EXIF
-                _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
-                return buffer.tobytes()
-                
             pil_image = Image.fromarray(frame_rgb)
             
             # Add EXIF metadata
@@ -501,48 +491,37 @@ class CameraManager:
             }
             
             # Add camera name to ImageDescription
-            if TAGS:
-                # Find the tag number for ImageDescription
-                image_desc_tag = None
-                for tag_num, tag_name in TAGS.items():
-                    if tag_name == "ImageDescription":
-                        image_desc_tag = tag_num
-                        break
-                        
-                if image_desc_tag and exif_dict["0th"] is not None:
-                    exif_dict["0th"][image_desc_tag] = camera_info.name
+            # Find the tag number for ImageDescription
+            image_desc_tag = None
+            for tag_num, tag_name in TAGS.items():
+                if tag_name == "ImageDescription":
+                    image_desc_tag = tag_num
+                    break
                     
-                # Add view type to UserComment if available
-                user_comment_tag = None
-                for tag_num, tag_name in TAGS.items():
-                    if tag_name == "UserComment":
-                        user_comment_tag = tag_num
-                        break
-                        
-                if user_comment_tag and camera_info.view_type and exif_dict["Exif"] is not None:
-                    # UserComment needs special encoding
-                    comment = f"view_type:{camera_info.view_type}"
-                    # Prefix with character code (ASCII)
-                    encoded_comment = b"ASCII\x00\x00\x00" + comment.encode("ascii")
-                    exif_dict["Exif"][user_comment_tag] = encoded_comment
+            if image_desc_tag and exif_dict["0th"] is not None:
+                exif_dict["0th"][image_desc_tag] = camera_info.name
+                
+            # Add view type to UserComment if available
+            user_comment_tag = None
+            for tag_num, tag_name in TAGS.items():
+                if tag_name == "UserComment":
+                    user_comment_tag = tag_num
+                    break
+                    
+            if user_comment_tag and camera_info.view_type and exif_dict["Exif"] is not None:
+                # UserComment needs special encoding
+                comment = f"view_type:{camera_info.view_type}"
+                # Prefix with character code (ASCII)
+                encoded_comment = b"ASCII\x00\x00\x00" + comment.encode("ascii")
+                exif_dict["Exif"][user_comment_tag] = encoded_comment
             
             # Save image with EXIF to bytes
             from io import BytesIO
             output = BytesIO()
             
-            try:
-                # Try to save with EXIF
-                import piexif  # type: ignore[import-not-found]
-                exif_bytes = piexif.dump(exif_dict)
-                pil_image.save(output, format="JPEG", quality=95, exif=exif_bytes)
-            except ImportError:
-                # piexif not available, save without EXIF but log the metadata
-                logger.info("piexif not available, saving image without EXIF metadata")
-                logger.info("Camera: %s, View type: %s", camera_info.name, camera_info.view_type or "unknown")
-                pil_image.save(output, format="JPEG", quality=95)
-            except Exception as e:
-                logger.warning("Failed to add EXIF metadata: %s", e)
-                pil_image.save(output, format="JPEG", quality=95)
+            # Save with EXIF metadata
+            exif_bytes = piexif.dump(exif_dict)
+            pil_image.save(output, format="JPEG", quality=95, exif=exif_bytes)
                 
             return output.getvalue()
             
