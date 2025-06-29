@@ -47,12 +47,14 @@ This application controls an ammunition shell case sorting machine that uses com
 
 6. **ESPHome Controller** (`esphome-shell-sorter.yaml`)
    - ESP32-based hardware controller configuration
-   - Two binary sensors for case detection
-   - One manual trigger button for vibration motor
-   - Two servo controls for case manipulation
-   - One switch for vibration motor control
+   - Two binary sensors for case detection (ready-to-feed, camera view)
+   - Manual trigger button with automatic vibration sequence
+   - Template switches for servo position control (home/feed/camera/drop positions)
+   - Number sliders for fine servo control (0-100% positioning)
+   - Vibration motor with template switch control
+   - Test sequence button for system validation
    - Web server with HTTP API for remote control
-   - Network communication over WiFi
+   - Network communication over WiFi with fallback AP mode
 
 ### Directory Structure
 
@@ -75,13 +77,20 @@ esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
 ## System Capabilities
 
 ### Machine Control
+
 - Next case advancement via ESPHome controller
-- Hardware sensor monitoring (case detection)
-- Servo control for case positioning and feeding
-- Vibration motor control for case advancement
+- Hardware sensor monitoring (case ready-to-feed, case in camera view)
+- Servo control with predefined positions:
+  - Case feeder servo: home (0°), neutral (90°), feed (180°) positions
+  - Case positioning servo: camera (45°), neutral (90°), drop (135°) positions
+- Fine servo control with 0-100% positioning sliders
+- Vibration motor control with automatic timing sequences
+- Manual vibration trigger with 1-second activation
+- Test sequence automation for system validation
 - Real-time hardware status updates via web interface
 
 ### Machine Learning
+
 - Multiple camera setup for shell case imaging with view type classification
 - Camera view types: side_view (profile shots) and tail_view (case end shots)
 - Interactive region selection for each camera to focus on shell case areas
@@ -94,7 +103,17 @@ esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
   - Designation only (e.g., 9mm Parabellum, 38 Special)
   - Designation and brand combination
 
+### Configuration Management
+
+- Web-based configuration interface accessible from dashboard
+- Camera management with deletion and configuration reset capabilities
+- Auto-start cameras setting for automatic startup when detected  
+- Configuration persistence in `~/.config/shell-sorter.json`
+- System settings management with confirmation dialogs
+- Toast notifications for user feedback on configuration changes
+
 ### Data Management
+
 - Capture images from multiple cameras simultaneously with region metadata
 - Tag captured images with shell case metadata including camera regions
 - Store camera view types and region selections in training data
@@ -107,12 +126,14 @@ esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
 ## API Endpoints
 
 ### Machine Control
+
 - `GET /` - Web dashboard
 - `POST /api/machine/next-case` - Trigger next case sequence
 - `GET /api/machine/sensors` - Get hardware sensor status
 - `GET /api/machine/hardware-status` - Get ESPHome device status
 
 ### Camera Management
+
 - `GET /api/cameras` - Get detected cameras with view types and regions
 - `GET /api/cameras/detect` - Detect available cameras
 - `POST /api/cameras/select` - Select cameras for use
@@ -126,10 +147,12 @@ esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
 - `DELETE /api/cameras/{index}/region` - Clear camera region selection
 
 ### Shell Data Management
+
 - `GET /tagging/{session_id}` - Shell tagging interface
 - `POST /api/shells/save` - Save tagged shell data
 
 ### ML Management
+
 - `GET /api/ml/shells` - Get all training shells with region data
 - `POST /api/ml/shells/{session_id}/toggle` - Toggle shell inclusion in training
 - `POST /api/ml/generate-composites` - Generate composite images using region processing
@@ -139,9 +162,19 @@ esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
 - `POST /api/case-types/{name}/training-image` - Upload training image
 - `POST /api/train-model` - Train ML model
 
+### Configuration API
+
+- `GET /config` - Configuration management interface
+- `GET /api/config` - Get current configuration settings
+- `POST /api/config` - Save configuration settings
+- `DELETE /api/config/cameras/{camera_index}` - Delete camera configuration
+- `DELETE /api/config/cameras` - Clear all camera configurations
+- `POST /api/config/reset` - Reset configuration to defaults
+
 ## Configuration
 
 ### Camera Setup and Region Configuration
+
 Cameras must be configured with view types and regions for optimal training data:
 
 1. **Camera Detection**: Use the "Detect Cameras" button to find available cameras
@@ -157,6 +190,7 @@ Cameras must be configured with view types and regions for optimal training data
 Camera configurations are automatically saved to `~/.config/shell-sorter.json` and persist across sessions.
 
 ### Application Settings
+
 Settings can be configured via environment variables or `.env` file:
 
 ```bash
@@ -169,20 +203,36 @@ SHELL_SORTER_CAMERA_COUNT=4
 ```
 
 ### ESPHome Hardware Configuration
+
 The hardware controller requires an ESP32 device flashed with the provided ESPHome configuration:
 
 **Hardware Connections:**
-- GPIO18: Case ready sensor (binary sensor with pullup)
-- GPIO19: Case in camera view sensor (binary sensor with pullup)
+
+- GPIO18: Case ready-to-feed sensor (binary sensor with pullup, inverted)
+- GPIO19: Case in camera view sensor (binary sensor with pullup, inverted)
 - GPIO21: Vibration motor control (digital output)
-- GPIO22: Manual vibration trigger button (binary sensor with pullup)
-- GPIO16: Case feeder servo (PWM output)
-- GPIO17: Case positioning servo (PWM output)
+- GPIO22: Manual vibration trigger button (binary sensor with pullup, inverted)
+- GPIO16: Case feeder servo (PWM output, 50Hz)
+- GPIO17: Case positioning servo (PWM output, 50Hz)
+
+**ESPHome Features:**
+
+- Template switches for servo position control with predefined angles
+- Number entities for fine servo control (0-100% positioning)
+- Vibration motor switch with restore mode ALWAYS_OFF
+- Manual trigger button with automatic 1-second vibration sequence
+- Test sequence button for complete system validation
+- Servo auto-detach after 2 seconds with 1-second transition time
+- Sensor debouncing with delayed_on/delayed_off filters
+- Comprehensive logging for all sensor and actuator events
 
 **Network Setup:**
+
 - Device hostname: `shell-sorter-controller.local`
 - Web server on port 80 with basic auth (admin/shellsorter)
-- WiFi with fallback AP mode for initial configuration
+- WiFi with fallback AP mode ("Shell-Sorter-Fallback") for initial configuration
+- Home Assistant API integration with encryption support
+- Over-the-air (OTA) updates with password protection
 
 ## Running the Application
 
@@ -209,6 +259,7 @@ just esphome-flash /dev/ttyUSB0
 ```
 
 The ESPHome dashboard allows you to:
+
 - Edit and validate the configuration
 - View device logs in real-time
 - Monitor sensor states and control outputs
