@@ -1195,8 +1195,8 @@ async def update_shell_image_view_type(
         if new_view_type not in valid_view_types:
             raise HTTPException(status_code=400, detail=f"Invalid view type. Must be one of: {[vt.value for vt in valid_view_types]}")
         
-        # Load shell data
-        shell_file = app_settings.image_directory / f"{session_id}_metadata.json"
+        # Load shell data from data directory (not image directory)
+        shell_file = app_settings.data_directory / f"{session_id}.json"
         if not shell_file.exists():
             raise HTTPException(status_code=404, detail=f"Shell data not found for session {session_id}")
         
