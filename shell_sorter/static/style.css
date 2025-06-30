@@ -1161,7 +1161,13 @@ select:focus, input:focus {
     border-radius: 0 0 10px 10px;
     border-top: 1px solid #e9ecef;
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.modal-footer-right {
+    display: flex;
     gap: 10px;
 }
 

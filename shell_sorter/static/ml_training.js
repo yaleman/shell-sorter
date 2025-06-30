@@ -309,8 +309,11 @@ class MLTrainingInterface {
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button class="btn btn-primary" id="save-shell-changes">Save Changes</button>
-                        <button class="btn btn-secondary" id="cancel-edit-modal">Cancel</button>
+                        <button class="btn btn-danger" id="delete-shell-from-modal">Delete Shell</button>
+                        <div class="modal-footer-right">
+                            <button class="btn btn-primary" id="save-shell-changes">Save Changes</button>
+                            <button class="btn btn-secondary" id="cancel-edit-modal">Cancel</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -323,6 +326,7 @@ class MLTrainingInterface {
         document.getElementById('close-edit-modal').addEventListener('click', () => this.closeEditModal());
         document.getElementById('cancel-edit-modal').addEventListener('click', () => this.closeEditModal());
         document.getElementById('save-shell-changes').addEventListener('click', () => this.saveShellChanges(sessionId));
+        document.getElementById('delete-shell-from-modal').addEventListener('click', () => this.deleteShellFromModal(sessionId));
         
         // Handle image deletion
         document.querySelectorAll('.delete-image-btn').forEach(btn => {
@@ -337,6 +341,35 @@ class MLTrainingInterface {
         const modal = document.getElementById('edit-modal-overlay');
         if (modal) {
             modal.remove();
+        }
+    }
+
+    async deleteShellFromModal(sessionId) {
+        const shell = this.shells.find(s => s.session_id === sessionId);
+        if (!shell) {
+            this.showToast('Shell not found', 'error');
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete the shell "${shell.brand} ${shell.shell_type}" and all its images? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/ml/shells/${sessionId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                this.showToast('Shell deleted successfully', 'success');
+                this.closeEditModal();
+                this.loadShells(); // Reload to show changes
+            } else {
+                throw new Error(`Failed to delete shell: ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('Error deleting shell:', error);
+            this.showToast('Error deleting shell: ' + error.message, 'error');
         }
     }
 
