@@ -33,6 +33,16 @@ esphome-flash DEVICE:
 esphome-monitor DEVICE:
     esphome run esphome-shell-sorter.yaml
 
+# Flash ESP32 Camera configuration to device
+esphome-cam-flash DEVICE:
+    esphome upload esphome-esp32cam1.yaml
+
+# flash and monitor the ESP32 camera device
+esphome-cam-monitor DEVICE:
+    esphome run esphome-esp32cam1.yaml
+
 esphome-check:
     yamllint esphome-shell-sorter.yaml
+    yamllint esphome-esp32cam1.yaml
     esphome config esphome-shell-sorter.yaml > /dev/null
+    esphome config esphome-esp32cam1.yaml > /dev/null
