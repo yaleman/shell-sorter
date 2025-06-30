@@ -909,18 +909,33 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         };
 
-        // Function to fetch and display ESP command history
-        async function fetchESPHistory() {
+        // WebSocket connection for real-time ESP command updates
+        let debugWebSocket = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+
+        function connectDebugWebSocket() {
             try {
-                const response = await fetch('/api/debug/esp-commands');
-                if (response.ok) {
-                    const commands = await response.json();
-                    
-                    // Add any new commands to debug log
-                    commands.forEach(cmd => {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws/debug/esp-commands`;
+                
+                debugWebSocket = new WebSocket(wsUrl);
+                
+                debugWebSocket.onopen = function(event) {
+                    console.log('Debug WebSocket connected');
+                    debugStatusText.textContent = 'Connected';
+                    debugIndicator.className = 'debug-indicator debug-info';
+                    reconnectAttempts = 0;
+                };
+                
+                debugWebSocket.onmessage = function(event) {
+                    try {
+                        const cmd = JSON.parse(event.data);
+                        
+                        // Check for duplicates
                         if (!debugHistory.find(entry => 
                             entry.timestamp === cmd.timestamp && 
-                            entry.message === cmd.command
+                            entry.message === `ESP: ${cmd.command}`
                         )) {
                             addDebugEntry('command', `ESP: ${cmd.command}`, {
                                 url: cmd.url,
@@ -928,18 +943,75 @@ document.addEventListener('DOMContentLoaded', function() {
                                 response: cmd.response
                             });
                         }
-                    });
-                }
+                    } catch (error) {
+                        console.error('Error parsing WebSocket message:', error);
+                    }
+                };
+                
+                debugWebSocket.onclose = function(event) {
+                    console.log('Debug WebSocket disconnected');
+                    debugStatusText.textContent = 'Disconnected';
+                    debugIndicator.className = 'debug-indicator';
+                    
+                    // Attempt to reconnect
+                    if (reconnectAttempts < maxReconnectAttempts) {
+                        reconnectAttempts++;
+                        console.log(`Attempting to reconnect WebSocket (${reconnectAttempts}/${maxReconnectAttempts})`);
+                        setTimeout(connectDebugWebSocket, 2000 * reconnectAttempts);
+                    } else {
+                        addDebugEntry('error', 'WebSocket connection lost, falling back to polling');
+                        fallbackToPolling();
+                    }
+                };
+                
+                debugWebSocket.onerror = function(error) {
+                    console.error('Debug WebSocket error:', error);
+                    debugStatusText.textContent = 'Error';
+                    debugIndicator.className = 'debug-indicator debug-error';
+                };
+                
             } catch (error) {
-                console.debug('Failed to fetch ESP command history:', error);
+                console.error('Failed to create WebSocket connection:', error);
+                fallbackToPolling();
             }
         }
 
-        // Poll for ESP command updates every 2 seconds
-        setInterval(fetchESPHistory, 2000);
-        
-        // Initial fetch
-        fetchESPHistory();
+        // Fallback to polling if WebSocket fails
+        function fallbackToPolling() {
+            async function fetchESPHistory() {
+                try {
+                    const response = await fetch('/api/debug/esp-commands');
+                    if (response.ok) {
+                        const commands = await response.json();
+                        
+                        // Add any new commands to debug log
+                        commands.forEach(cmd => {
+                            if (!debugHistory.find(entry => 
+                                entry.timestamp === cmd.timestamp && 
+                                entry.message === `ESP: ${cmd.command}`
+                            )) {
+                                addDebugEntry('command', `ESP: ${cmd.command}`, {
+                                    url: cmd.url,
+                                    status: cmd.status,
+                                    response: cmd.response
+                                });
+                            }
+                        });
+                    }
+                } catch (error) {
+                    console.debug('Failed to fetch ESP command history:', error);
+                }
+            }
+
+            // Poll for ESP command updates every 2 seconds
+            setInterval(fetchESPHistory, 2000);
+            
+            // Initial fetch
+            fetchESPHistory();
+        }
+
+        // Start WebSocket connection
+        connectDebugWebSocket();
     }
 
     // Initialize debug console

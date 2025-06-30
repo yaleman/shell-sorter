@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Callable, Coroutine
 from datetime import datetime
 import aiohttp  # type: ignore[import-not-found]
 from pydantic import BaseModel
@@ -35,6 +35,7 @@ class HardwareController:
         self.base_url = f"http://{self.config.host}:{self.config.port}"
         self.auth = aiohttp.BasicAuth(self.config.username, self.config.password)
         self.command_history: List[ESPCommand] = []
+        self._command_broadcast_callback: Optional[Callable[[Dict[str, Any]], Coroutine[Any, Any, None]]] = None
         
     async def _make_request(self, endpoint: str, method: str = "GET", data: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """Make HTTP request to ESPHome device."""
@@ -103,6 +104,10 @@ class HardwareController:
             self._add_command_to_history(cmd)
             return None
 
+    def set_command_broadcast_callback(self, callback: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]]) -> None:
+        """Set callback for broadcasting commands to WebSocket clients."""
+        self._command_broadcast_callback = callback
+
     def _add_command_to_history(self, command: ESPCommand) -> None:
         """Add command to history, keeping only last 50 commands."""
         self.command_history.append(command)
@@ -110,6 +115,25 @@ class HardwareController:
         # Keep only last 50 commands
         if len(self.command_history) > 50:
             self.command_history = self.command_history[-50:]
+        
+        # Broadcast to WebSocket clients if callback is set
+        if self._command_broadcast_callback:
+            command_data = {
+                "timestamp": command.timestamp,
+                "command": command.command,
+                "url": command.url,
+                "status": command.status,
+                "response": command.response
+            }
+            # Schedule the coroutine to run
+            try:
+                loop = asyncio.get_event_loop()
+                # Create a task from the coroutine
+                coro = self._command_broadcast_callback(command_data)
+                loop.create_task(coro)
+            except RuntimeError:
+                # No event loop running, skip broadcast
+                pass
 
     def get_command_history(self) -> List[ESPCommand]:
         """Get the command history for debugging."""

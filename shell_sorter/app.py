@@ -26,6 +26,8 @@ from fastapi import (
     HTTPException,
     Depends,
     BackgroundTasks,
+    WebSocket,
+    WebSocketDisconnect,
 )
 from pydantic import BaseModel
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -137,11 +139,53 @@ ml_trainer = MLTrainer(settings)
 # Initialize machine controller
 machine_controller = MachineController()
 
+# Initialize debug WebSocket manager early (needed for hardware controller callback)
+class DebugWebSocketManager:
+    """Manage WebSocket connections for debug console."""
+    
+    def __init__(self) -> None:
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket) -> None:
+        """Accept a new WebSocket connection."""
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info("Debug WebSocket connected, total connections: %d", len(self.active_connections))
+    
+    def disconnect(self, websocket: WebSocket) -> None:
+        """Remove a WebSocket connection."""
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+        logger.info("Debug WebSocket disconnected, total connections: %d", len(self.active_connections))
+    
+    async def broadcast_command(self, command_data: Dict[str, Any]) -> None:
+        """Broadcast command data to all connected clients."""
+        if not self.active_connections:
+            return
+        
+        disconnected_connections = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(command_data)
+            except Exception as e:
+                logger.warning("Failed to send to WebSocket connection: %s", e)
+                disconnected_connections.append(connection)
+        
+        # Remove failed connections
+        for connection in disconnected_connections:
+            self.disconnect(connection)
+
+# Global WebSocket manager for debug console
+debug_ws_manager = DebugWebSocketManager()
+
 # Initialize camera manager
 camera_manager = CameraManager(settings)
 
 # Initialize hardware controller
 hardware_controller = HardwareController()
+
+# Set up WebSocket broadcasting for debug commands
+hardware_controller.set_command_broadcast_callback(debug_ws_manager.broadcast_command)
 
 # Initialize ESPHome monitor
 esphome_monitor = ESPHomeMonitor(settings.esphome_hostname)
@@ -1719,11 +1763,48 @@ def _apply_tail_view_processing(img: Any) -> Any:
 # Debug Endpoints
 
 
+@app.websocket("/ws/debug/esp-commands")
+async def debug_esp_commands_websocket(
+    websocket: WebSocket,
+    hardware: HardwareController = Depends(get_hardware_controller)
+) -> None:
+    """WebSocket endpoint for real-time ESP command debugging."""
+    await debug_ws_manager.connect(websocket)
+    
+    try:
+        # Send existing command history on connection
+        commands = hardware.get_command_history()
+        for cmd in commands:
+            command_data = {
+                "timestamp": cmd.timestamp,
+                "command": cmd.command,
+                "url": cmd.url,
+                "status": cmd.status,
+                "response": cmd.response
+            }
+            await websocket.send_json(command_data)
+        
+        # Keep connection alive and handle client messages
+        while True:
+            # Wait for client messages (ping/pong to keep connection alive)
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+                
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error("Error in debug WebSocket: %s", e)
+    finally:
+        debug_ws_manager.disconnect(websocket)
+
+
 @app.get("/api/debug/esp-commands")
 async def get_esp_command_history(
     hardware: HardwareController = Depends(get_hardware_controller)
 ) -> List[Dict[str, Any]]:
-    """Get ESP command history for debugging."""
+    """Get ESP command history for debugging (REST fallback)."""
     try:
         commands = hardware.get_command_history()
         return [
