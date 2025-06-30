@@ -177,6 +177,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (response.ok) {
                     const result = await response.json();
                     showToast(result.message, 'success');
+                    // Update controller status immediately after successful operation
+                    updateESPHomeStatus();
                 } else {
                     const error = await response.text();
                     showToast('Error triggering next case: ' + error, 'error');
@@ -262,8 +264,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initial ESPHome status check
     updateESPHomeStatus();
     
-    // Auto-refresh ESPHome status every 30 seconds
-    const esphomeStatusInterval = setInterval(updateESPHomeStatus, 30000);
+    // Auto-refresh ESPHome status every 5 seconds for more responsive updates
+    const esphomeStatusInterval = setInterval(updateESPHomeStatus, 5000);
     
     // Clean up intervals when page unloads
     window.addEventListener('beforeunload', function() {
