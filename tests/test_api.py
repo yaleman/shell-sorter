@@ -60,7 +60,8 @@ def mock_camera_manager_for_api():
         mock_manager.set_camera_region.return_value = True
         mock_manager.clear_camera_region.return_value = True
         mock_manager.trigger_autofocus.return_value = True
-        mock_manager.capture_all_selected_high_resolution.return_value = {0: b"fake_image_data"}
+        mock_manager.capture_all_selected_high_resolution.return_value = {0: "fake_image_filename.jpg"}
+        mock_manager.capture_high_resolution_image.return_value = b"fake_image_data"
         mock_manager.get_latest_frame.return_value = b"fake_frame_data"
         
         yield mock_manager
@@ -239,7 +240,8 @@ class TestCameraAPI:
         assert "session_id" in data
         assert "captured_images" in data
         assert "message" in data
-        mock_camera_manager_for_api.capture_all_selected_high_resolution.assert_called_once()
+        # The endpoint calls capture_high_resolution_image for each active camera
+        mock_camera_manager_for_api.capture_high_resolution_image.assert_called()
 
 
 class TestConfigurationAPI:
@@ -311,8 +313,8 @@ class TestMLAPI:
     @patch('shell_sorter.app.get_settings')
     def test_get_shells(self, mock_get_settings, test_client: TestClient, tmp_path: Path):
         """Test getting training shells."""
-        # Create mock data directory with shell data
-        data_dir = tmp_path / "data"
+        # Create isolated test data directory
+        data_dir = tmp_path / "isolated_test_data" 
         data_dir.mkdir()
         
         shell_data = {
@@ -327,7 +329,7 @@ class TestMLAPI:
         with open(shell_file, 'w') as f:
             json.dump(shell_data, f)
         
-        # Mock settings
+        # Mock settings to point to isolated directory
         mock_settings = MagicMock()
         mock_settings.data_directory = data_dir
         mock_get_settings.return_value = mock_settings
@@ -339,19 +341,20 @@ class TestMLAPI:
         
         assert "shells" in data
         assert "summary" in data
+        # Should only find our test file in the isolated directory
         assert len(data["shells"]) == 1
         assert data["shells"][0]["brand"] == "Test"
     
     @patch('shell_sorter.app.get_settings')
     def test_toggle_shell_training(self, mock_get_settings, test_client: TestClient, tmp_path: Path):
         """Test toggling shell training inclusion."""
-        # Create mock data directory with shell data
-        data_dir = tmp_path / "data"
+        # Create isolated test data directory
+        data_dir = tmp_path / "isolated_toggle_test"
         data_dir.mkdir()
         
         shell_data = {
             "brand": "Test",
-            "shell_type": "308win",
+            "shell_type": "308win", 
             "include": True,
             "image_filenames": ["test_image.jpg"]
         }
@@ -361,7 +364,7 @@ class TestMLAPI:
         with open(shell_file, 'w') as f:
             json.dump(shell_data, f)
         
-        # Mock settings
+        # Mock settings to point to isolated directory
         mock_settings = MagicMock()
         mock_settings.data_directory = data_dir
         mock_get_settings.return_value = mock_settings
