@@ -8,14 +8,18 @@ import concurrent.futures
 import subprocess
 import platform
 import json
+from io import BytesIO
 
-import cv2
+import cv2  # type: ignore[import-not-found]
 from PIL import Image
 from PIL.ExifTags import TAGS
-import piexif
+import piexif  # type: ignore[import-not-found]
 
 if TYPE_CHECKING:
-    from .config import Settings
+    from .config import Settings, UserConfig, CameraConfig
+else:
+    # Import these at runtime to avoid circular imports
+    from .config import UserConfig, CameraConfig
 
 logger = logging.getLogger(__name__)
 
@@ -138,11 +142,18 @@ class CameraManager:
             elif system == "Windows":
                 # Try to get device name from DirectShow
                 try:
+                    powershell_command = " | ".join(
+                        [
+                            "Get-CimInstance -ClassName Win32_PnPEntity",
+                            "Where-Object {$_.Name -like '*camera*' -or $_.Name -like '*webcam*'} ",
+                            " Select-Object Name",
+                        ]
+                    )
                     result = subprocess.run(
                         [
                             "powershell",
                             "-Command",
-                            "Get-CimInstance -ClassName Win32_PnPEntity | Where-Object {$_.Name -like '*camera*' -or $_.Name -like '*webcam*'} | Select-Object Name",
+                            powershell_command,
                         ],
                         capture_output=True,
                         text=True,
@@ -564,8 +575,6 @@ class CameraManager:
                 exif_dict["Exif"][user_comment_tag] = encoded_comment
 
             # Save image with EXIF to bytes
-            from io import BytesIO
-
             output = BytesIO()
 
             # Save with EXIF metadata
@@ -639,8 +648,6 @@ class CameraManager:
             return
 
         try:
-            from .config import UserConfig
-
             user_config_data = self.settings.load_user_config()
             user_config = UserConfig(**user_config_data)
 
@@ -671,8 +678,6 @@ class CameraManager:
             return
 
         try:
-            from .config import UserConfig, CameraConfig
-
             # Load current user config
             user_config_data = self.settings.load_user_config()
             user_config = UserConfig(**user_config_data)
@@ -713,8 +718,6 @@ class CameraManager:
             # Remove from user config if settings available
             if self.settings:
                 try:
-                    from .config import UserConfig
-
                     user_config_data = self.settings.load_user_config()
                     user_config = UserConfig(**user_config_data)
                     user_config.remove_camera_config(camera_info.name)
@@ -746,8 +749,6 @@ class CameraManager:
             # Clear user config if settings available
             if self.settings:
                 try:
-                    from .config import UserConfig
-
                     user_config_data = self.settings.load_user_config()
                     user_config = UserConfig(**user_config_data)
                     for camera_name in camera_names:
@@ -773,8 +774,6 @@ class CameraManager:
             # Clear user config entirely if settings available
             if self.settings:
                 try:
-                    from .config import UserConfig
-
                     default_config = UserConfig()
                     self.settings.save_user_config(default_config.model_dump())
                 except Exception as e:
