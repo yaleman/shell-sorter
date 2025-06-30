@@ -28,6 +28,7 @@ processing and cataloging ammunition shell cases. The system combines:
 
 - **ESP32 Controller**: Network-connected hardware controller
 - **Multiple USB Cameras**: For shell case imaging from different angles
+- **ESPHome Cameras**: Network-connected ESP32-S3 camera modules
 - **Case Feeder System**: Automated case positioning and advancement
 - **Sensors**: Detection of case positions throughout the system
 - **Actuators**: Servo motors and vibration motor for case movement
@@ -37,6 +38,28 @@ processing and cataloging ammunition shell cases. The system combines:
 ### ESP32 Controller Wiring
 
 The system requires an ESP32 development board with the following connections:
+
+### ESPHome Camera Setup
+
+The system supports ESPHome-based ESP32-S3 camera modules as network cameras. Testing has been performed with the [Freenove ESP32-S3 WROOM Board](https://github.com/Freenove/Freenove_ESP32_S3_WROOM_Board).
+
+#### ESP32-S3 Camera Configuration
+
+Network cameras are automatically detected at startup and can be used alongside USB cameras:
+
+- **Hostname**: `esp32cam1.local` (configurable in ESPHome YAML)
+- **Stream URL**: `http://esp32cam1.local/camera`
+- **Web Interface**: Available at `http://esp32cam1.local` (admin/esp32cam)
+- **Resolution**: 800x600 (configurable)
+- **Integration**: Seamless mixing with USB cameras in the application
+
+#### Features
+
+- **Automatic Detection**: Network cameras are discovered on startup
+- **High-Resolution Capture**: Full resolution capture for training data
+- **EXIF Metadata**: Camera name and view type stored in image metadata
+- **Async Operations**: Non-blocking network operations using aiohttp
+- **Region Support**: Same region selection and overlay features as USB cameras
 
 #### Required Components
 
@@ -137,15 +160,21 @@ The web interface will be available at `http://localhost:8000`
 just esphome
 # Open http://localhost:6052 in browser
 
-# Flash configuration to device (replace with your device path)
+# Flash main controller configuration to device (replace with your device path)
 just esphome-flash /dev/ttyUSB0
+
+# Flash camera module configuration (for ESP32-S3 camera boards)
+# Replace with your camera device path
+esphome run esphome-esp32cam1.yaml --device /dev/ttyUSB1
 ```
 
 ### Configuration Management
 
-- ESPHome configuration: `esphome-shell-sorter.yaml`
-- Edit configuration in ESPHome dashboard or directly in file
+- **Main Controller**: `esphome-shell-sorter.yaml` - Hardware control and sensors
+- **Camera Module**: `esphome-esp32cam1.yaml` - ESP32-S3 camera configuration
+- Edit configurations in ESPHome dashboard or directly in files
 - Support for over-the-air (OTA) updates after initial flash
+- Network camera devices automatically discovered by the application
 
 ## Usage
 
@@ -183,9 +212,10 @@ just esphome-flash /dev/ttyUSB0
 
 ### Camera Management API
 
-- `GET /api/cameras` - List available cameras
-- `POST /api/cameras/capture` - Capture images from selected cameras
-- `GET /api/cameras/{index}/stream` - Live camera feed
+- `GET /api/cameras` - List available cameras (USB and network)
+- `GET /api/cameras/detect` - Detect available cameras including ESPHome devices
+- `POST /api/cameras/capture` - Capture images from selected cameras with region metadata
+- `GET /api/cameras/{index}/stream` - Live camera feed (USB and network cameras)
 
 ### Data Management API
 
