@@ -161,6 +161,22 @@
     <div id="toast-container" class="toast-container"></div>
 
     <script src="/static/script.js"></script>
+    <script>
+        // Pass camera region data to JavaScript
+        window.cameraRegionData = {
+            {% if camera.region_x is not none %}
+            x: {{ camera.region_x }},
+            y: {{ camera.region_y }},
+            width: {{ camera.region_width }},
+            height: {{ camera.region_height }}
+            {% else %}
+            x: null,
+            y: null,
+            width: null,
+            height: null
+            {% endif %}
+        };
+    </script>
     <script src="/static/region_selection.js"></script>
 </body>
 </html>

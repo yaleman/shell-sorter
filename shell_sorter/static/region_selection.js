@@ -270,4 +270,35 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     console.log('Region selection initialized for camera', cameraIndex);
+    
+    // Load existing region if present
+    function loadExistingRegion() {
+        // Check if we have existing region data
+        if (window.cameraRegionData && window.cameraRegionData.x !== null) {
+            const { x, y, width, height } = window.cameraRegionData;
+            
+            console.log('Loading existing region:', { x, y, width, height });
+            
+            // Set current selection
+            currentSelection = { x, y, width, height };
+            
+            // Update display
+            updateCoordinatesDisplay(x, y, x + width, y + height);
+            updateOverlay(x, y, x + width, y + height);
+            
+            // Enable save button since we have a valid region
+            if (saveRegionBtn) {
+                saveRegionBtn.disabled = false;
+            }
+        }
+    }
+    
+    // Load existing region when image is ready
+    if (cameraImage) {
+        if (cameraImage.complete && cameraImage.naturalWidth > 0) {
+            loadExistingRegion();
+        } else {
+            cameraImage.addEventListener('load', loadExistingRegion);
+        }
+    }
 });
