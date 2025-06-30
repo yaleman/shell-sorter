@@ -46,6 +46,12 @@ class CameraInfo:
     is_network_camera: bool = False
     stream_url: Optional[str] = None
     hostname: Optional[str] = None
+    # Hardware identification for stable mapping
+    device_path: Optional[str] = None  # e.g., /dev/video0
+    vendor_id: Optional[str] = None
+    product_id: Optional[str] = None
+    serial_number: Optional[str] = None
+    hardware_id: Optional[str] = None  # Composite stable identifier
 
 
 class CameraManager:
@@ -207,6 +213,165 @@ class CameraManager:
         # Final fallback
         return f"Camera {camera_index}"
 
+    def _get_camera_hardware_info(self, camera_index: int) -> Dict[str, Optional[str]]:
+        """Get hardware identification information for a camera."""
+        hardware_info: Dict[str, Optional[str]] = {
+            "device_path": None,
+            "vendor_id": None,
+            "product_id": None,
+            "serial_number": None,
+        }
+
+        try:
+            system = platform.system()
+            device_path = f"/dev/video{camera_index}"
+            hardware_info["device_path"] = device_path
+
+            if system == "Linux":
+                # Try to get hardware info from udev
+                try:
+                    result = subprocess.run(
+                        [
+                            "udevadm",
+                            "info",
+                            "--name",
+                            device_path,
+                            "--query=property",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                        check=False,
+                    )
+                    if result.returncode == 0:
+                        lines = result.stdout.split("\n")
+                        for line in lines:
+                            if line.startswith("ID_VENDOR_ID="):
+                                hardware_info["vendor_id"] = line.split("=", 1)[-1].strip()
+                            elif line.startswith("ID_MODEL_ID="):
+                                hardware_info["product_id"] = line.split("=", 1)[-1].strip()
+                            elif line.startswith("ID_SERIAL_SHORT="):
+                                hardware_info["serial_number"] = line.split("=", 1)[-1].strip()
+                except (
+                    subprocess.TimeoutExpired,
+                    subprocess.CalledProcessError,
+                    FileNotFoundError,
+                ):
+                    pass
+
+                # Alternative: try lsusb to get more USB device info
+                if not hardware_info["vendor_id"]:
+                    try:
+                        result = subprocess.run(
+                            ["lsusb", "-v"],
+                            capture_output=True,
+                            text=True,
+                            timeout=10,
+                            check=False,
+                        )
+                        if result.returncode == 0:
+                            # This is complex parsing - for now just try basic approach
+                            # TODO: Parse lsusb output to match video device to USB device
+                            pass
+                    except (
+                        subprocess.TimeoutExpired,
+                        subprocess.CalledProcessError,
+                        FileNotFoundError,
+                    ):
+                        pass
+
+            elif system == "Darwin":  # macOS
+                # Try to get device info from system_profiler
+                try:
+                    result = subprocess.run(
+                        ["system_profiler", "SPUSBDataType", "-json"],
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                        check=False,
+                    )
+                    if result.returncode == 0:
+                        # TODO: Match camera to USB device by parsing the tree
+                        # This is complex because we need to correlate video device with USB device
+                        # data = json.loads(result.stdout)
+                        # usb_devices = data.get("SPUSBDataType", [])
+                        pass
+                except (
+                    subprocess.TimeoutExpired,
+                    subprocess.CalledProcessError,
+                    FileNotFoundError,
+                    json.JSONDecodeError,
+                ):
+                    pass
+
+            elif system == "Windows":
+                # Try to get device info from Windows
+                try:
+                    # Use wmic to get USB device info
+                    result = subprocess.run(
+                        [
+                            "wmic",
+                            "path",
+                            "Win32_USBHub",
+                            "get",
+                            "DeviceID,Description",
+                            "/format:csv",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                        check=False,
+                    )
+                    if result.returncode == 0:
+                        # TODO: Parse Windows device info
+                        pass
+                except (
+                    subprocess.TimeoutExpired,
+                    subprocess.CalledProcessError,
+                    FileNotFoundError,
+                ):
+                    pass
+
+        except Exception as e:
+            logger.debug(
+                "Error getting camera hardware info for camera %d: %s", camera_index, e
+            )
+
+        return hardware_info
+
+    def _generate_hardware_id(self, camera_info: "CameraInfo") -> str:
+        """Generate a stable hardware identifier for a camera."""
+        if camera_info.is_network_camera:
+            # For network cameras, use hostname as stable identifier
+            return f"network:{camera_info.hostname or 'unknown'}"
+
+        # For USB cameras, try to create a stable identifier from hardware info
+        parts = []
+        
+        if camera_info.vendor_id and camera_info.product_id:
+            parts.append(f"usb:{camera_info.vendor_id}:{camera_info.product_id}")
+            
+        if camera_info.serial_number:
+            parts.append(f"serial:{camera_info.serial_number}")
+        
+        if camera_info.device_path:
+            parts.append(f"path:{camera_info.device_path}")
+            
+        # Always include the camera name as a fallback component
+        parts.append(f"name:{camera_info.name}")
+        
+        # If we have vendor/product ID, that's our primary identifier
+        if camera_info.vendor_id and camera_info.product_id:
+            if camera_info.serial_number:
+                primary_id = f"{camera_info.vendor_id}:{camera_info.product_id}:{camera_info.serial_number}"
+            else:
+                primary_id = f"{camera_info.vendor_id}:{camera_info.product_id}:{camera_info.name}"
+        else:
+            # Fallback to device path + name
+            primary_id = f"{camera_info.device_path or 'unknown'}:{camera_info.name}"
+            
+        return primary_id
+
     def detect_esphome_cameras(self) -> List[CameraInfo]:
         """Detect ESPHome cameras on the network."""
         # Run async detection in event loop
@@ -287,6 +452,9 @@ class CameraManager:
                                 stream_url=camera_url,
                                 hostname=hostname,
                             )
+                            
+                            # Generate stable hardware ID for network camera
+                            camera_info.hardware_id = self._generate_hardware_id(camera_info)
 
                             # Load camera configuration from user config if available
                             if self.settings:
@@ -323,13 +491,23 @@ class CameraManager:
 
                 # Get actual device name/model
                 camera_name = self._get_camera_device_name(i)
+                
+                # Get hardware identification information
+                hardware_info = self._get_camera_hardware_info(i)
 
                 camera_info = CameraInfo(
                     index=i,
                     name=camera_name,
                     resolution=(width, height),
                     is_selected=True,
+                    device_path=hardware_info["device_path"],
+                    vendor_id=hardware_info["vendor_id"],
+                    product_id=hardware_info["product_id"],
+                    serial_number=hardware_info["serial_number"],
                 )
+                
+                # Generate stable hardware ID
+                camera_info.hardware_id = self._generate_hardware_id(camera_info)
 
                 # Load camera configuration from user config if available
                 if self.settings:
@@ -354,7 +532,65 @@ class CameraManager:
             len(cameras) - len(esphome_cameras),
             len(esphome_cameras),
         )
+        
+        # Perform camera remapping to maintain stable assignments
+        self._remap_cameras_by_hardware_id()
+        
         return cameras
+
+    def _remap_cameras_by_hardware_id(self) -> None:
+        """Remap camera indices to maintain stable hardware ID assignments."""
+        if not self.settings:
+            return
+
+        try:
+            # Load existing user config to see what hardware IDs we know about
+            user_config_data = self.settings.load_user_config()
+            user_config = UserConfig(**user_config_data)
+            
+            # Get all known hardware IDs with configurations
+            known_hardware_ids = set(user_config.camera_configs.keys())
+            
+            # Filter to only include hardware IDs (not legacy name-based configs)
+            known_hardware_ids = {
+                hid for hid in known_hardware_ids 
+                if ':' in hid and (hid.startswith('usb:') or hid.startswith('network:'))
+            }
+            
+            if not known_hardware_ids:
+                logger.debug("No known hardware IDs found, skipping camera remapping")
+                return
+            
+            # Create mapping from hardware ID to new camera info
+            hardware_id_to_camera = {}
+            for camera in self.cameras.values():
+                if camera.hardware_id:
+                    hardware_id_to_camera[camera.hardware_id] = camera
+            
+            # Check for hardware ID matches
+            matched_hardware_ids = known_hardware_ids.intersection(hardware_id_to_camera.keys())
+            
+            if matched_hardware_ids:
+                logger.info("Found %d cameras with known hardware IDs: %s", 
+                          len(matched_hardware_ids), list(matched_hardware_ids))
+                
+                # For USB cameras, we might need to create a stable index mapping
+                # For now, we just log the successful matches
+                for hardware_id in matched_hardware_ids:
+                    camera = hardware_id_to_camera[hardware_id]
+                    logger.info("Camera at index %d matched known hardware ID: %s (%s)",
+                              camera.index, hardware_id, camera.name)
+            else:
+                logger.info("No cameras matched known hardware IDs")
+                
+            # Report any previously known cameras that are now missing
+            missing_hardware_ids = known_hardware_ids - set(hardware_id_to_camera.keys())
+            if missing_hardware_ids:
+                logger.warning("Previously configured cameras not found: %s", 
+                             list(missing_hardware_ids))
+                
+        except Exception as e:
+            logger.warning("Error during camera remapping: %s", e)
 
     def get_cameras(self) -> List[CameraInfo]:
         """Get list of detected cameras."""
@@ -1041,15 +1277,31 @@ class CameraManager:
         logger.info("Camera cleanup completed")
 
     def _load_camera_config(self, camera_info: CameraInfo) -> None:
-        """Load camera configuration from user config."""
-        if not self.settings:
+        """Load camera configuration from user config using hardware ID."""
+        if not self.settings or not camera_info.hardware_id:
             return
 
         try:
             user_config_data = self.settings.load_user_config()
             user_config = UserConfig(**user_config_data)
 
-            camera_config = user_config.get_camera_config(camera_info.name)
+            # Try to load by hardware ID first (new stable method)
+            camera_config = user_config.get_camera_config(camera_info.hardware_id)
+            
+            # If no config found by hardware ID, try legacy name-based lookup
+            if not any([camera_config.view_type, camera_config.region_x, camera_config.region_y]):
+                legacy_config = user_config.get_camera_config(camera_info.name)
+                if any([legacy_config.view_type, legacy_config.region_x, legacy_config.region_y]):
+                    camera_config = legacy_config
+                    logger.info("Migrating camera config from name-based to hardware ID: %s -> %s", 
+                              camera_info.name, camera_info.hardware_id)
+                    # Save the config under the new hardware ID
+                    user_config.set_camera_config(camera_info.hardware_id, camera_config)
+                    # Remove the old name-based config
+                    if camera_info.name in user_config.camera_configs:
+                        del user_config.camera_configs[camera_info.name]
+                    # Save the updated config
+                    self.settings.save_user_config(user_config.model_dump())
 
             # Apply saved configuration
             camera_info.view_type = camera_config.view_type
@@ -1060,19 +1312,21 @@ class CameraManager:
 
             if camera_config.view_type:
                 logger.info(
-                    "Loaded camera %s config: view_type=%s",
+                    "Loaded camera %s (ID: %s) config: view_type=%s",
                     camera_info.name,
+                    camera_info.hardware_id,
                     camera_config.view_type,
                 )
 
         except Exception as e:
             logger.warning(
-                "Failed to load camera config for %s: %s", camera_info.name, e
+                "Failed to load camera config for %s (ID: %s): %s", 
+                camera_info.name, camera_info.hardware_id, e
             )
 
     def _save_camera_config(self, camera_info: CameraInfo) -> None:
-        """Save camera configuration to user config."""
-        if not self.settings:
+        """Save camera configuration to user config using hardware ID."""
+        if not self.settings or not camera_info.hardware_id:
             return
 
         try:
@@ -1089,15 +1343,23 @@ class CameraManager:
                 region_height=camera_info.region_height,
             )
 
-            user_config.set_camera_config(camera_info.name, camera_config)
+            # Save using hardware ID for stable identification
+            user_config.set_camera_config(camera_info.hardware_id, camera_config)
+            
+            # Remove any legacy name-based config if it exists
+            if camera_info.name in user_config.camera_configs:
+                del user_config.camera_configs[camera_info.name]
+                logger.debug("Removed legacy camera config for name: %s", camera_info.name)
 
             # Save to file
             success = self.settings.save_user_config(user_config.model_dump())
             if success:
-                logger.info("Saved camera %s config to user config", camera_info.name)
+                logger.info("Saved camera %s (ID: %s) config to user config", 
+                          camera_info.name, camera_info.hardware_id)
 
         except Exception as e:
-            logger.error("Failed to save camera config for %s: %s", camera_info.name, e)
+            logger.error("Failed to save camera config for %s (ID: %s): %s", 
+                        camera_info.name, camera_info.hardware_id, e)
 
     def remove_camera(self, camera_index: int) -> bool:
         """Remove a camera from the configuration."""
@@ -1118,7 +1380,17 @@ class CameraManager:
                 try:
                     user_config_data = self.settings.load_user_config()
                     user_config = UserConfig(**user_config_data)
-                    user_config.remove_camera_config(camera_info.name)
+                    
+                    # Remove by hardware ID (primary method)
+                    if camera_info.hardware_id and camera_info.hardware_id in user_config.camera_configs:
+                        del user_config.camera_configs[camera_info.hardware_id]
+                        logger.debug("Removed camera config by hardware ID: %s", camera_info.hardware_id)
+                    
+                    # Also remove any legacy name-based config
+                    if camera_info.name in user_config.camera_configs:
+                        del user_config.camera_configs[camera_info.name]
+                        logger.debug("Removed legacy camera config by name: %s", camera_info.name)
+                    
                     self.settings.save_user_config(user_config.model_dump())
                 except Exception as e:
                     logger.warning("Failed to remove camera from user config: %s", e)
@@ -1141,7 +1413,12 @@ class CameraManager:
             self.stop_all_cameras()
 
             # Clear cameras dict
-            camera_names = [cam.name for cam in self.cameras.values()]
+            camera_configs_to_remove = []
+            for cam in self.cameras.values():
+                if cam.hardware_id:
+                    camera_configs_to_remove.append(cam.hardware_id)
+                camera_configs_to_remove.append(cam.name)  # Also remove legacy name-based configs
+            
             self.cameras.clear()
 
             # Clear user config if settings available
@@ -1149,8 +1426,13 @@ class CameraManager:
                 try:
                     user_config_data = self.settings.load_user_config()
                     user_config = UserConfig(**user_config_data)
-                    for camera_name in camera_names:
-                        user_config.remove_camera_config(camera_name)
+                    
+                    # Remove all camera configurations (both hardware ID and name-based)
+                    for config_key in camera_configs_to_remove:
+                        if config_key in user_config.camera_configs:
+                            del user_config.camera_configs[config_key]
+                            logger.debug("Removed camera config: %s", config_key)
+                    
                     self.settings.save_user_config(user_config.model_dump())
                 except Exception as e:
                     logger.warning("Failed to clear cameras from user config: %s", e)

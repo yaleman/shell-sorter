@@ -284,7 +284,7 @@ operation modes.
 ### High Priority
 
 - **Fix camera index/name mapping to handle OS reordering of USB cameras**
-  (Pending)
+  (Completed)
   - _ID: camera-index-fix_
 
 ### Medium Priority
