@@ -768,6 +768,19 @@ document.addEventListener('DOMContentLoaded', function() {
     
     async function autoDetectCameras() {
         try {
+            // First check if auto-detect is enabled in configuration
+            const configResponse = await fetch('/api/config');
+            if (!configResponse.ok) {
+                console.log('Failed to get configuration, skipping auto-detection');
+                return;
+            }
+            
+            const config = await configResponse.json();
+            if (!config.auto_detect_cameras) {
+                console.log('Auto-detect cameras is disabled in configuration');
+                return;
+            }
+            
             // Check if we already have cameras detected
             const response = await fetch('/api/cameras', {
                 signal: AbortSignal.timeout(2500)
