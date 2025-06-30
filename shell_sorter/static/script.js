@@ -527,8 +527,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 });
                 
-                // Update overlay checkbox visibility when camera status changes
-                updateOverlayCheckboxVisibility();
+                // Show overlays when camera status changes
+                showRegionOverlays();
                 
                 return cameras;
             }
@@ -737,8 +737,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize camera selection display
     updateCameraSelection();
     
-    // Initialize overlay checkbox visibility
-    updateOverlayCheckboxVisibility();
+    // Initialize overlays
+    showRegionOverlays();
     
     // Sync region data with server and initialize overlays
     initializeRegionData();
