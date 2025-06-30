@@ -376,15 +376,16 @@ class CameraManager:
         """Detect ESPHome cameras on the network."""
         # Run async detection in event loop
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
+            try:
+                asyncio.get_running_loop()
                 # If we're already in an event loop, create a task
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     future = executor.submit(
                         asyncio.run, self._detect_esphome_cameras_async()
                     )
                     return future.result(timeout=10)
-            else:
+            except RuntimeError:
+                # No event loop running, run directly
                 return asyncio.run(self._detect_esphome_cameras_async())
         except Exception as e:
             logger.warning("Failed to detect ESPHome cameras: %s", e)

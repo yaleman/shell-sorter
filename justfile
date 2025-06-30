@@ -13,8 +13,12 @@ lint:
 mypy:
     uv run mypy --strict shell_sorter/
 
+# Run tests
+test:
+    uv run pytest
+
 # Run all checks
-check: lint mypy esphome-check
+check: lint mypy test esphome-check
 
 # Format code
 fmt:

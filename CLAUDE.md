@@ -58,6 +58,14 @@ This application controls an ammunition shell case sorting machine that uses com
    - Web server with HTTP API for remote control
    - Network communication over WiFi with fallback AP mode
 
+7. **Camera Management System** (`shell_sorter/camera_manager.py`)
+   - Hardware-based camera identification using vendor/product IDs and serial numbers
+   - Stable camera mapping that persists across system reboots and device reordering
+   - Support for both USB cameras and ESPHome network cameras
+   - Autofocus control for USB cameras with region-based focusing
+   - Camera configuration migration from legacy name-based to hardware ID-based system
+   - Real-time frame capture with error recovery and consecutive failure tracking
+
 ### Directory Structure
 
 ```
@@ -71,6 +79,13 @@ data/
 images/              # Captured shell case images from cameras
 ├── *.jpg           # Camera capture images
 └── *_metadata.json # Camera region metadata for capture sessions
+
+tests/               # Comprehensive test suite
+├── test_api.py             # API endpoint testing with mocked camera calls
+├── test_camera_manager.py  # Camera management testing without hardware access
+├── test_config.py          # Configuration system testing
+├── conftest.py            # Pytest fixtures and mocking setup
+└── __init__.py            # Test package initialization
 
 ~/.config/shell-sorter.json  # Camera configuration persistence
 esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
@@ -144,6 +159,7 @@ esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
 - `POST /api/cameras/capture` - Capture images from selected cameras with region metadata
 - `GET /api/cameras/{index}/stream` - Live camera stream
 - `POST /api/cameras/{index}/view-type` - Set camera view type (side_view/tail_view)
+- `POST /api/cameras/{index}/autofocus` - Trigger camera autofocus on region center
 - `GET /region-selection/{index}` - Region selection interface for camera
 - `POST /api/cameras/{index}/region` - Save camera region selection
 - `DELETE /api/cameras/{index}/region` - Clear camera region selection
@@ -236,17 +252,44 @@ The hardware controller requires an ESP32 device flashed with the provided ESPHo
 - Home Assistant API integration with encryption support
 - Over-the-air (OTA) updates with password protection
 
-## Running the Application
+## Development Workflow
+
+### Running the Application
 
 ```bash
 # Install dependencies
 uv sync
 
-# Run linting and type checking
+# Run linting and type checking (includes tests)
 just check
+
+# Run tests only
+just test
 
 # Start the application
 just run
+```
+
+### Testing
+
+The project includes a comprehensive test suite with 64 tests covering:
+
+- **Camera Management**: Hardware-independent camera testing with mocked OpenCV calls
+- **Configuration System**: Settings and user configuration testing with temporary files
+- **API Endpoints**: FastAPI endpoint testing with mocked dependencies
+- **Error Handling**: Validation and error response testing
+
+All tests are designed to avoid invoking direct camera hardware calls through strategic mocking and proper test isolation. Tests can be run with:
+
+```bash
+# Run all tests
+just test
+
+# Run specific test file
+uv run pytest tests/test_camera_manager.py -v
+
+# Run tests with coverage
+uv run pytest --cov=shell_sorter tests/
 ```
 
 ## ESPHome Hardware Setup
