@@ -27,6 +27,7 @@ from fastapi import (
     Depends,
     BackgroundTasks,
 )
+from pydantic import BaseModel
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -389,14 +390,19 @@ async def upload_training_image(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+class TrainModelRequest(BaseModel):
+    """Request model for training ML model."""
+    case_types: Optional[List[str]] = None
+
+
 @app.post("/api/train-model")
 async def train_model(
-    case_types: Optional[List[str]] = None,
+    request: TrainModelRequest,
     trainer: MLTrainer = Depends(get_ml_trainer),
 ) -> Dict[str, Any]:
     """Train the ML model with available data."""
     try:
-        success, message = trainer.train_model(case_types)
+        success, message = trainer.train_model(request.case_types)
         if success:
             return {"message": message, "success": True}
         raise HTTPException(status_code=400, detail=message)
