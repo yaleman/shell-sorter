@@ -150,33 +150,6 @@ class CameraConfig(BaseModel):
     region_y: Optional[int] = None
     region_width: Optional[int] = None
     region_height: Optional[int] = None
-    
-    @classmethod
-    def model_validate(
-        cls, 
-        obj: Any, 
-        *, 
-        strict: Optional[bool] = None, 
-        from_attributes: Optional[bool] = None, 
-        context: Optional[Any] = None, 
-        by_alias: Optional[bool] = None, 
-        by_name: Optional[bool] = None
-    ) -> "CameraConfig":
-        """Validate and migrate legacy view_type values."""
-        if isinstance(obj, dict) and "view_type" in obj:
-            # Migrate legacy view_type values
-            if obj["view_type"] == "side_view":
-                obj["view_type"] = "side"
-            elif obj["view_type"] == "tail_view":
-                obj["view_type"] = "tail"
-        return super().model_validate(
-            obj, 
-            strict=strict, 
-            from_attributes=from_attributes, 
-            context=context, 
-            by_alias=by_alias, 
-            by_name=by_name
-        )
 
 
 class UserConfig(BaseModel):
