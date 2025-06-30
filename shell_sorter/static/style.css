@@ -1452,6 +1452,67 @@ select:focus, input:focus {
     box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
+/* Shell Edit Page Styles */
+.shell-edit-main {
+    background: white;
+    border-radius: 10px;
+    padding: 30px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.shell-edit-content {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.form-section {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.shell-edit-split {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 30px;
+    margin-bottom: 30px;
+}
+
+.shell-edit-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-top: 3px solid #007bff;
+}
+
+.actions-right {
+    display: flex;
+    gap: 12px;
+}
+
+/* Responsive design for shell edit */
+@media (max-width: 1024px) {
+    .shell-edit-split {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto;
+    }
+    
+    .composite-section-side {
+        order: -1;
+    }
+    
+    .form-section {
+        grid-template-columns: 1fr;
+    }
+}
+
 @media (max-width: 768px) {
     .ml-training-main {
         grid-template-columns: 1fr;

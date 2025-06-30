@@ -823,6 +823,40 @@ async def ml_training_page(
     )
 
 
+@app.get("/shell-edit/{session_id}", response_class=HTMLResponse)
+async def shell_edit_page(
+    request: Request,
+    session_id: str,
+    app_settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    """Display the shell editing interface for a specific shell."""
+    try:
+        data_dir = app_settings.data_directory
+        shell_file = data_dir / f"{session_id}.json"
+
+        if not shell_file.exists():
+            raise HTTPException(status_code=404, detail="Shell data not found")
+
+        # Load shell data
+        with open(shell_file, "r", encoding="utf-8") as f:
+            shell_data = json.load(f)
+
+        return templates.TemplateResponse(
+            "shell_edit.html",
+            {
+                "request": request,
+                "shell": shell_data,
+                "session_id": session_id,
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error loading shell edit page for %s: %s", session_id, e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @app.get("/region-selection/{camera_index}", response_class=HTMLResponse)
 async def region_selection_page(
     request: Request,

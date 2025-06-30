@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Shell: {{ shell.brand }} {{ shell.shell_type }} - Shell Sorter</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="icon" type="image/svg+xml" sizes="32x32" href="/static/favicon-32x32.svg">
+    <link rel="icon" type="image/svg+xml" sizes="16x16" href="/static/favicon-16x16.svg">
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>✏️ Edit Shell: {{ shell.brand }} {{ shell.shell_type }}</h1>
+            <div class="header-actions">
+                <a href="/ml-training" class="btn btn-secondary">← Back to ML Training</a>
+            </div>
+        </header>
+
+        <main class="shell-edit-main">
+            <div class="shell-edit-content">
+                <div class="form-section">
+                    <div class="form-group">
+                        <label for="edit-brand">Brand:</label>
+                        <input type="text" id="edit-brand" value="{{ shell.brand }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-shell-type">Shell Type:</label>
+                        <select id="edit-shell-type">
+                            <option value="">Select shell type...</option>
+                            <!-- Options will be populated by JavaScript -->
+                            <option value="__custom__">Custom (enter below)</option>
+                        </select>
+                        <input type="text" id="edit-shell-type-custom" placeholder="Enter custom shell type" style="display: none; margin-top: 8px;">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="edit-include" {{ 'checked' if shell.include != false else '' }}>
+                            Include in Training
+                        </label>
+                    </div>
+                </div>
+
+                <div class="shell-edit-split">
+                    <div class="images-section">
+                        <h3>Images & Regions</h3>
+                        <div class="edit-images" id="edit-images">
+                            <!-- Images will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <div class="composite-section-side">
+                        <h3>Composite Image</h3>
+                        <div class="composite-preview-side">
+                            <img src="/api/composites/{{ session_id }}" alt="Composite image" class="composite-image-side" 
+                                 id="composite-image-{{ session_id }}"
+                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                            <div class="no-composite-side" style="display: none;">
+                                No composite image available.
+                            </div>
+                        </div>
+                        <div class="composite-controls">
+                            <button class="btn btn-sm btn-success regenerate-composite-btn" data-session-id="{{ session_id }}">
+                                Regenerate Composite
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="shell-edit-actions">
+                    <button class="btn btn-danger" id="delete-shell-btn">Delete Shell</button>
+                    <div class="actions-right">
+                        <button class="btn btn-primary" id="save-shell-changes">Save Changes</button>
+                        <a href="/ml-training" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast notification container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Include the existing shell editing JavaScript -->
+    <script>
+        // Pass shell data to JavaScript
+        window.shellData = {{ shell | tojson }};
+        window.sessionId = "{{ session_id }}";
+    </script>
+    <script src="/static/shell_edit.js"></script>
+</body>
+</html>
