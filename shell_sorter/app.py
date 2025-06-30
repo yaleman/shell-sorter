@@ -207,6 +207,11 @@ def get_settings() -> Settings:
     return settings
 
 
+def get_hardware_controller() -> HardwareController:
+    """Dependency to get the hardware controller instance."""
+    return hardware_controller
+
+
 def get_esphome_monitor() -> ESPHomeMonitor:
     """Dependency to get the ESPHome monitor instance."""
     return esphome_monitor
@@ -1449,6 +1454,31 @@ def _apply_tail_view_processing(img: Any) -> Any:
         logger.debug("Tail view processing failed, using original image: %s", e)
     
     return img
+
+
+# Debug Endpoints
+
+
+@app.get("/api/debug/esp-commands")
+async def get_esp_command_history(
+    hardware: HardwareController = Depends(get_hardware_controller)
+) -> List[Dict[str, Any]]:
+    """Get ESP command history for debugging."""
+    try:
+        commands = hardware.get_command_history()
+        return [
+            {
+                "timestamp": cmd.timestamp,
+                "command": cmd.command,
+                "url": cmd.url,
+                "status": cmd.status,
+                "response": cmd.response
+            }
+            for cmd in commands
+        ]
+    except Exception as e:
+        logger.error("Error getting ESP command history: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 def signal_handler(signum: int, _frame: Any) -> None:

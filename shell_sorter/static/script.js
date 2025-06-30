@@ -810,4 +810,125 @@ document.addEventListener('DOMContentLoaded', function() {
             // Silently fail - don't show error toast for automatic detection
         }
     }
+
+    // Debug Console functionality
+    function initializeDebugConsole() {
+        const debugToggleBtn = document.getElementById('debug-toggle-btn');
+        const debugClearBtn = document.getElementById('debug-clear-btn');
+        const debugContent = document.getElementById('debug-content');
+        const debugLog = document.getElementById('debug-log');
+        const debugIndicator = document.getElementById('debug-indicator');
+        const debugStatusText = document.getElementById('debug-status-text');
+
+        let debugVisible = true;
+        let debugHistory = [];
+
+        // Toggle debug console visibility
+        if (debugToggleBtn) {
+            debugToggleBtn.addEventListener('click', function() {
+                debugVisible = !debugVisible;
+                if (debugContent) {
+                    debugContent.style.display = debugVisible ? 'block' : 'none';
+                }
+                debugToggleBtn.textContent = debugVisible ? 'Hide' : 'Show';
+            });
+        }
+
+        // Clear debug log
+        if (debugClearBtn) {
+            debugClearBtn.addEventListener('click', function() {
+                if (debugLog) {
+                    debugLog.innerHTML = '<div class="debug-entry debug-info">' +
+                        '<span class="debug-timestamp">' + new Date().toISOString().slice(0, 19) + '</span>' +
+                        '<span class="debug-type">INFO</span>' +
+                        '<span class="debug-message">Debug console cleared</span>' +
+                        '</div>';
+                }
+                debugHistory = [];
+                showToast('Debug console cleared', 'info');
+            });
+        }
+
+        // Add debug entry function
+        window.addDebugEntry = function(type, message, data = null) {
+            const timestamp = new Date().toISOString().slice(0, 19);
+            const entry = {
+                timestamp: timestamp,
+                type: type.toUpperCase(),
+                message: message,
+                data: data
+            };
+
+            debugHistory.push(entry);
+
+            // Keep only last 100 entries
+            if (debugHistory.length > 100) {
+                debugHistory = debugHistory.slice(-100);
+            }
+
+            if (debugLog) {
+                const entryElement = document.createElement('div');
+                entryElement.className = `debug-entry debug-${type.toLowerCase()}`;
+                
+                let entryHTML = `
+                    <span class="debug-timestamp">${timestamp}</span>
+                    <span class="debug-type">${type.toUpperCase()}</span>
+                    <span class="debug-message">${message}</span>
+                `;
+
+                if (data) {
+                    entryHTML += `<span class="debug-data">${JSON.stringify(data, null, 2)}</span>`;
+                }
+
+                entryElement.innerHTML = entryHTML;
+                debugLog.appendChild(entryElement);
+
+                // Auto-scroll to bottom
+                debugLog.scrollTop = debugLog.scrollHeight;
+
+                // Update status indicator
+                if (debugIndicator) {
+                    debugIndicator.className = `debug-indicator debug-${type.toLowerCase()}`;
+                }
+                if (debugStatusText) {
+                    debugStatusText.textContent = `Last: ${type.toUpperCase()}`;
+                }
+            }
+        };
+
+        // Function to fetch and display ESP command history
+        async function fetchESPHistory() {
+            try {
+                const response = await fetch('/api/debug/esp-commands');
+                if (response.ok) {
+                    const commands = await response.json();
+                    
+                    // Add any new commands to debug log
+                    commands.forEach(cmd => {
+                        if (!debugHistory.find(entry => 
+                            entry.timestamp === cmd.timestamp && 
+                            entry.message === cmd.command
+                        )) {
+                            addDebugEntry('command', `ESP: ${cmd.command}`, {
+                                url: cmd.url,
+                                status: cmd.status,
+                                response: cmd.response
+                            });
+                        }
+                    });
+                }
+            } catch (error) {
+                console.debug('Failed to fetch ESP command history:', error);
+            }
+        }
+
+        // Poll for ESP command updates every 2 seconds
+        setInterval(fetchESPHistory, 2000);
+        
+        // Initial fetch
+        fetchESPHistory();
+    }
+
+    // Initialize debug console
+    initializeDebugConsole();
 });

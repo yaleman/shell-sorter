@@ -2,11 +2,21 @@
 
 import asyncio
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from datetime import datetime
 import aiohttp  # type: ignore[import-not-found]
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+class ESPCommand(BaseModel):
+    """Represents an ESP command for debugging."""
+    timestamp: str
+    command: str
+    url: str
+    status: int
+    response: Optional[str] = None
 
 
 class ESPHomeConfig(BaseModel):
@@ -24,27 +34,55 @@ class HardwareController:
         self.config = config or ESPHomeConfig()
         self.base_url = f"http://{self.config.host}:{self.config.port}"
         self.auth = aiohttp.BasicAuth(self.config.username, self.config.password)
+        self.command_history: List[ESPCommand] = []
         
     async def _make_request(self, endpoint: str, method: str = "GET", data: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """Make HTTP request to ESPHome device."""
+        timestamp = datetime.now().isoformat()
+        url = f"{self.base_url}{endpoint}"
+        command_desc = f"{method} {endpoint}"
+        
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
-                url = f"{self.base_url}{endpoint}"
                 
                 if method == "GET":
                     async with session.get(url, auth=self.auth) as response:
+                        response_text = await response.text()
+                        
+                        # Log command to history
+                        cmd = ESPCommand(
+                            timestamp=timestamp,
+                            command=command_desc,
+                            url=url,
+                            status=response.status,
+                            response=response_text if response.status != 200 else "OK"
+                        )
+                        self._add_command_to_history(cmd)
+                        
                         if response.status == 200:
                             return await response.json()  # type: ignore[no-any-return]
                         else:
-                            logger.error("ESPHome request failed: %s %s", response.status, await response.text())
+                            logger.error("ESPHome request failed: %s %s", response.status, response_text)
                             return None
                             
                 elif method == "POST":
                     async with session.post(url, auth=self.auth, json=data) as response:
+                        response_text = await response.text()
+                        
+                        # Log command to history
+                        cmd = ESPCommand(
+                            timestamp=timestamp,
+                            command=f"{command_desc} {data}" if data else command_desc,
+                            url=url,
+                            status=response.status,
+                            response=response_text if response.status != 200 else "OK"
+                        )
+                        self._add_command_to_history(cmd)
+                        
                         if response.status == 200:
                             return await response.json()  # type: ignore[no-any-return]
                         else:
-                            logger.error("ESPHome request failed: %s %s", response.status, await response.text())
+                            logger.error("ESPHome request failed: %s %s", response.status, response_text)
                             return None
                             
                 return None
@@ -54,7 +92,28 @@ class HardwareController:
             return None
         except Exception as e:
             logger.error("ESPHome request error: %s", e)
+            # Log failed command to history
+            cmd = ESPCommand(
+                timestamp=timestamp,
+                command=command_desc,
+                url=url,
+                status=0,
+                response=f"Error: {str(e)}"
+            )
+            self._add_command_to_history(cmd)
             return None
+
+    def _add_command_to_history(self, command: ESPCommand) -> None:
+        """Add command to history, keeping only last 50 commands."""
+        self.command_history.append(command)
+        
+        # Keep only last 50 commands
+        if len(self.command_history) > 50:
+            self.command_history = self.command_history[-50:]
+
+    def get_command_history(self) -> List[ESPCommand]:
+        """Get the command history for debugging."""
+        return self.command_history.copy()
 
     async def get_sensor_states(self) -> Dict[str, bool]:
         """Get current state of all sensors."""

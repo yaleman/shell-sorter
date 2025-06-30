@@ -110,6 +110,30 @@
             </section>
 
         </main>
+
+        <!-- Debug Console -->
+        <section class="debug-console">
+            <div class="debug-header">
+                <h3>🔧 ESP Controller Debug Console</h3>
+                <div class="debug-controls">
+                    <button id="debug-toggle-btn" class="btn btn-sm btn-secondary">Hide</button>
+                    <button id="debug-clear-btn" class="btn btn-sm btn-danger">Clear</button>
+                    <span class="debug-status">
+                        <span class="debug-indicator" id="debug-indicator"></span>
+                        <span id="debug-status-text">Idle</span>
+                    </span>
+                </div>
+            </div>
+            <div class="debug-content" id="debug-content">
+                <div class="debug-log" id="debug-log">
+                    <div class="debug-entry debug-info">
+                        <span class="debug-timestamp">{{ machine_status.last_update[:19] }}</span>
+                        <span class="debug-type">INFO</span>
+                        <span class="debug-message">Debug console initialized</span>
+                    </div>
+                </div>
+            </div>
+        </section>
     </div>
 
     <!-- Toast notification container -->
