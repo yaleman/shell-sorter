@@ -6,7 +6,7 @@ and supports environment variable overrides.
 """
 
 from pathlib import Path
-from typing import Optional, Any, Dict, Literal
+from typing import Optional, Any, Dict, Literal, List
 import json
 import logging
 from pydantic import Field, BaseModel
@@ -84,9 +84,9 @@ class Settings(BaseSettings):  # type: ignore
         default="shell-sorter-controller.local",
         description="ESPHome device hostname for API communication",
     )
-    
+
     # Network camera configuration
-    network_camera_hostnames: list[str] = Field(
+    network_camera_hostnames: List[str] = Field(
         default=["esp32cam1.local"],
         description="List of ESPHome camera hostnames to detect",
     )
@@ -168,7 +168,7 @@ class UserConfig(BaseModel):
     camera_configs: Dict[str, CameraConfig] = Field(
         default={}, description="Camera configurations by name"
     )
-    network_camera_hostnames: list[str] = Field(
+    network_camera_hostnames: List[str] = Field(
         default=["esp32cam1.local"],
         description="List of ESPHome camera hostnames to detect",
     )
