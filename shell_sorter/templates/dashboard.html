@@ -44,7 +44,7 @@
                     <button id="stop-all-btn" class="btn btn-danger">Stop All</button>
                     <button id="capture-images-btn" class="btn btn-success">Capture & Tag Images</button>
                     <label class="overlay-checkbox">
-                        <input type="checkbox" id="show-overlay-checkbox">
+                        <input type="checkbox" id="show-overlay-checkbox" checked>
                         Show Region Overlays
                     </label>
                 </div>
@@ -86,11 +86,6 @@
                                     {% endif %}
                                 </div>
                             </div>
-                            {% if camera.region_x is not none %}
-                            <div class="camera-region-info">
-                                <span class="region-info">Region: {{ camera.region_x }},{{ camera.region_y }} ({{ camera.region_width }}x{{ camera.region_height }})</span>
-                            </div>
-                            {% endif %}
                             {% if camera.is_active %}
                             <div class="camera-feed" 
                                  data-camera-index="{{ camera.index }}"
@@ -105,8 +100,7 @@
                                      data-region-x="{{ camera.region_x }}"
                                      data-region-y="{{ camera.region_y }}"
                                      data-region-width="{{ camera.region_width }}"
-                                     data-region-height="{{ camera.region_height }}"
-                                     style="display: none;">
+                                     data-region-height="{{ camera.region_height }}">
                                 </div>
                                 {% endif %}
                             </div>

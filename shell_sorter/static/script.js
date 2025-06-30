@@ -605,13 +605,8 @@ document.addEventListener('DOMContentLoaded', function() {
             overlayCheckbox.style.display = 'flex';
         } else {
             overlayCheckbox.style.display = 'none';
-            // Also uncheck the checkbox when hiding it
-            const checkbox = document.getElementById('show-overlay-checkbox');
-            if (checkbox) {
-                checkbox.checked = false;
-                // Hide any visible overlays
-                toggleRegionOverlays(false);
-            }
+            // Hide any visible overlays when no active cameras
+            toggleRegionOverlays(false);
         }
         
         console.log(`Overlay checkbox ${hasActiveCameras ? 'shown' : 'hidden'} - active cameras: ${activeCameras.length}`);
@@ -641,18 +636,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function initializeOverlayCheckbox() {
-        const overlays = document.querySelectorAll('.camera-region-overlay');
-        
-        // If there are overlays available, ensure the checkbox works properly
-        if (overlays.length > 0) {
-            // Check if any overlays are currently visible to set initial checkbox state
-            const visibleOverlays = Array.from(overlays).some(overlay => 
-                overlay.style.display !== 'none' && overlay.style.display !== ''
-            );
-            
-            if (showOverlayCheckbox) {
-                showOverlayCheckbox.checked = visibleOverlays;
-            }
+        // Initialize overlays based on checkbox state (default is checked)
+        if (showOverlayCheckbox) {
+            // Apply the current checkbox state to overlays
+            toggleRegionOverlays(showOverlayCheckbox.checked);
         }
     }
     
