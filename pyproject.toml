@@ -24,3 +24,8 @@ shell-sorter = "shell_sorter.app:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pylint.messages_control]
+disable = [
+    "W0718",  # broad-exception-caught
+]
