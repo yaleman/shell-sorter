@@ -66,6 +66,7 @@ class CameraManager:
                         capture_output=True,
                         text=True,
                         timeout=5,
+                        check=False,
                     )
                     if result.returncode == 0:
                         lines = result.stdout.split("\n")
@@ -95,6 +96,7 @@ class CameraManager:
                         capture_output=True,
                         text=True,
                         timeout=5,
+                        check=False,
                     )
                     if result.returncode == 0:
                         lines = result.stdout.split("\n")
@@ -122,6 +124,7 @@ class CameraManager:
                         capture_output=True,
                         text=True,
                         timeout=10,
+                        check=False,
                     )
                     if result.returncode == 0:
                         data = json.loads(result.stdout)
@@ -158,6 +161,7 @@ class CameraManager:
                         capture_output=True,
                         text=True,
                         timeout=10,
+                        check=False,
                     )
                     if result.returncode == 0:
                         lines = result.stdout.split("\n")
