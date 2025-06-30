@@ -1719,6 +1719,47 @@ async def clear_image_region(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@app.post("/api/ml/shells/{session_id}/composite")
+async def regenerate_shell_composite(
+    session_id: str,
+    app_settings: Settings = Depends(get_settings),
+) -> Dict[str, str]:
+    """Regenerate composite image for a specific shell."""
+    try:
+        data_dir = app_settings.data_directory
+        shell_file = data_dir / f"{session_id}.json"
+        composites_dir = data_dir / "composites"
+
+        if not shell_file.exists():
+            raise HTTPException(status_code=404, detail="Shell data not found")
+
+        # Ensure composites directory exists
+        composites_dir.mkdir(exist_ok=True)
+
+        # Load shell data
+        with open(shell_file, "r", encoding="utf-8") as f:
+            shell_data = json.load(f)
+
+        # Check if shell is included in training
+        if shell_data.get("include", True) is False:
+            raise HTTPException(status_code=400, detail="Shell is not included in training")
+
+        # Generate composite for this shell
+        composite_path = await _generate_composite_image(session_id, shell_data, composites_dir)
+        
+        if composite_path:
+            logger.info("Regenerated composite image for shell %s: %s", session_id, composite_path)
+            return {"message": f"Composite image regenerated for shell {session_id}"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to generate composite image")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error regenerating composite for shell %s: %s", session_id, e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 async def _generate_composite_image(
     session_id: str, shell_data: Dict[str, Any], output_dir: Path
 ) -> Optional[Path]:

@@ -1232,30 +1232,85 @@ select:focus, input:focus {
     align-self: flex-start;
 }
 
-/* Composite image section */
-.composite-section {
-    margin-bottom: 25px;
+/* Modal content split layout */
+.modal-content-split {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 20px;
+    min-height: 400px;
 }
 
-.composite-preview-modal {
-    text-align: center;
-    padding: 15px;
+/* Images section (left side) */
+.images-section {
+    min-width: 0; /* Allow grid item to shrink */
+}
+
+/* Composite section (right side) */
+.composite-section-side {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.composite-preview-side {
     background-color: #f8f9fa;
     border-radius: 8px;
     border: 1px solid #e9ecef;
+    padding: 15px;
+    text-align: center;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
-.composite-image-modal {
+.composite-image-side {
     max-width: 100%;
-    max-height: 200px;
+    max-height: 250px;
     border-radius: 5px;
     border: 1px solid #ddd;
+    object-fit: contain;
 }
 
-.no-composite {
+.no-composite-side {
     color: #6c757d;
     font-style: italic;
     padding: 20px;
+}
+
+.composite-controls {
+    display: flex;
+    justify-content: center;
+}
+
+.regenerate-composite-btn {
+    background-color: #28a745;
+    border-color: #28a745;
+    color: white;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+}
+
+.regenerate-composite-btn:hover {
+    background-color: #218838;
+    border-color: #1e7e34;
+}
+
+/* Responsive design for modal split */
+@media (max-width: 1024px) {
+    .modal-content-split {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto;
+    }
+    
+    .composite-section-side {
+        order: -1; /* Move composite to top on smaller screens */
+    }
+    
+    .composite-preview-side {
+        max-height: 200px;
+    }
 }
 
 /* Region editing UI components */

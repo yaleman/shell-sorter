@@ -288,59 +288,70 @@ class MLTrainingInterface {
                                 Include in Training
                             </label>
                         </div>
-                        <div class="composite-section">
-                            <h4>Composite Image</h4>
-                            <div class="composite-preview-modal">
-                                <img src="/api/composites/${shell.session_id}" alt="Composite image" class="composite-image-modal" 
-                                     onerror="this.parentElement.innerHTML='<div class=\\'no-composite\\'>No composite image available. Generate composites first.</div>'">
-                            </div>
-                        </div>
-                        
-                        <div class="images-section">
-                            <h4>Images & Regions</h4>
-                            <div class="edit-images">
-                                ${(shell.captured_images || shell.image_filenames.map(f => ({filename: f, view_type: 'unknown'}))).map((img, index) => `
-                                    <div class="edit-image-item" data-image-index="${index}">
-                                        <div class="edit-image-container">
-                                            <img src="/images/${img.filename}" alt="Shell image" class="edit-image" id="edit-image-${index}">
-                                            <div class="region-overlay-container" id="region-overlay-container-${index}">
+                        <div class="modal-content-split">
+                            <div class="images-section">
+                                <h4>Images & Regions</h4>
+                                <div class="edit-images">
+                                    ${(shell.captured_images || shell.image_filenames.map(f => ({filename: f, view_type: 'unknown'}))).map((img, index) => `
+                                        <div class="edit-image-item" data-image-index="${index}">
+                                            <div class="edit-image-container">
+                                                <img src="/images/${img.filename}" alt="Shell image" class="edit-image" id="edit-image-${index}">
+                                                <div class="region-overlay-container" id="region-overlay-container-${index}">
+                                                    ${img.region_x !== null && img.region_x !== undefined ? 
+                                                        `<div class="region-overlay-edit" id="region-overlay-${index}" 
+                                                              data-region-x="${img.region_x}" 
+                                                              data-region-y="${img.region_y}" 
+                                                              data-region-width="${img.region_width}" 
+                                                              data-region-height="${img.region_height}">
+                                                         </div>` : ''
+                                                    }
+                                                </div>
+                                            </div>
+                                            <div class="edit-image-controls">
+                                                <div class="control-row">
+                                                    <label>View Type:</label>
+                                                    <select class="edit-view-type" data-filename="${img.filename}">
+                                                        <option value="unknown" ${(img.view_type || 'unknown') === 'unknown' ? 'selected' : ''}>Unknown</option>
+                                                        <option value="side" ${img.view_type === 'side' ? 'selected' : ''}>Side View</option>
+                                                        <option value="tail" ${img.view_type === 'tail' ? 'selected' : ''}>Tail View</option>
+                                                    </select>
+                                                </div>
+                                                <div class="control-row">
+                                                    <button class="btn btn-sm btn-primary edit-region-btn" data-image-index="${index}" data-filename="${img.filename}">
+                                                        ${img.region_x !== null && img.region_x !== undefined ? 'Edit Region' : 'Select Region'}
+                                                    </button>
+                                                    ${img.region_x !== null && img.region_x !== undefined ? 
+                                                        `<button class="btn btn-sm btn-warning clear-region-btn" data-image-index="${index}" data-filename="${img.filename}">Clear Region</button>` 
+                                                        : ''
+                                                    }
+                                                    <button class="btn btn-sm btn-danger delete-image-btn" data-filename="${img.filename}">Delete Image</button>
+                                                </div>
                                                 ${img.region_x !== null && img.region_x !== undefined ? 
-                                                    `<div class="region-overlay-edit" id="region-overlay-${index}" 
-                                                          data-region-x="${img.region_x}" 
-                                                          data-region-y="${img.region_y}" 
-                                                          data-region-width="${img.region_width}" 
-                                                          data-region-height="${img.region_height}">
+                                                    `<div class="region-info">
+                                                        Region: ${img.region_x},${img.region_y} (${img.region_width}x${img.region_height})
                                                      </div>` : ''
                                                 }
                                             </div>
                                         </div>
-                                        <div class="edit-image-controls">
-                                            <div class="control-row">
-                                                <label>View Type:</label>
-                                                <select class="edit-view-type" data-filename="${img.filename}">
-                                                    <option value="unknown" ${(img.view_type || 'unknown') === 'unknown' ? 'selected' : ''}>Unknown</option>
-                                                    <option value="side" ${img.view_type === 'side' ? 'selected' : ''}>Side View</option>
-                                                    <option value="tail" ${img.view_type === 'tail' ? 'selected' : ''}>Tail View</option>
-                                                </select>
-                                            </div>
-                                            <div class="control-row">
-                                                <button class="btn btn-sm btn-primary edit-region-btn" data-image-index="${index}" data-filename="${img.filename}">
-                                                    ${img.region_x !== null && img.region_x !== undefined ? 'Edit Region' : 'Select Region'}
-                                                </button>
-                                                ${img.region_x !== null && img.region_x !== undefined ? 
-                                                    `<button class="btn btn-sm btn-warning clear-region-btn" data-image-index="${index}" data-filename="${img.filename}">Clear Region</button>` 
-                                                    : ''
-                                                }
-                                                <button class="btn btn-sm btn-danger delete-image-btn" data-filename="${img.filename}">Delete Image</button>
-                                            </div>
-                                            ${img.region_x !== null && img.region_x !== undefined ? 
-                                                `<div class="region-info">
-                                                    Region: ${img.region_x},${img.region_y} (${img.region_width}x${img.region_height})
-                                                 </div>` : ''
-                                            }
-                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            
+                            <div class="composite-section-side">
+                                <h4>Composite Image</h4>
+                                <div class="composite-preview-side">
+                                    <img src="/api/composites/${shell.session_id}" alt="Composite image" class="composite-image-side" 
+                                         id="composite-image-${shell.session_id}"
+                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                                    <div class="no-composite-side" style="display: none;">
+                                        No composite image available.
                                     </div>
-                                `).join('')}
+                                </div>
+                                <div class="composite-controls">
+                                    <button class="btn btn-sm btn-success regenerate-composite-btn" data-session-id="${shell.session_id}">
+                                        Regenerate Composite
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -387,6 +398,14 @@ class MLTrainingInterface {
                 const imageIndex = parseInt(e.target.dataset.imageIndex);
                 const filename = e.target.dataset.filename;
                 this.clearRegionFromImage(sessionId, imageIndex, filename);
+            });
+        });
+        
+        // Handle composite regeneration
+        document.querySelectorAll('.regenerate-composite-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const sessionId = e.target.dataset.sessionId;
+                this.regenerateComposite(sessionId);
             });
         });
         
@@ -732,15 +751,72 @@ class MLTrainingInterface {
 
             if (response.ok) {
                 this.showToast('Region saved successfully', 'success');
-                // Reload the modal to show changes
-                this.closeEditModal();
-                this.openShellEditModal(sessionId);
+                // Update the overlay and UI elements in place
+                this.updateRegionUIAfterSave(sessionId, imageIndex, filename, selection);
             } else {
                 throw new Error(`Failed to save region: ${response.statusText}`);
             }
         } catch (error) {
             console.error('Error saving region:', error);
             this.showToast('Error saving region: ' + error.message, 'error');
+        }
+    }
+
+    updateRegionUIAfterSave(sessionId, imageIndex, filename, selection) {
+        // Update the overlay
+        const overlay = document.getElementById(`region-overlay-${imageIndex}`);
+        const image = document.getElementById(`edit-image-${imageIndex}`);
+        
+        if (overlay && image) {
+            // Set the region data attributes
+            overlay.dataset.regionX = selection.x;
+            overlay.dataset.regionY = selection.y;
+            overlay.dataset.regionWidth = selection.width;
+            overlay.dataset.regionHeight = selection.height;
+            
+            // Update the overlay position
+            this.updateRegionOverlay(overlay, image, selection.x, selection.y, selection.width, selection.height);
+        }
+        
+        // Update the controls and info
+        const editImageItem = document.querySelector(`[data-image-index="${imageIndex}"]`);
+        if (editImageItem) {
+            // Update the edit region button text
+            const editBtn = editImageItem.querySelector('.edit-region-btn');
+            if (editBtn) {
+                editBtn.textContent = 'Edit Region';
+            }
+            
+            // Add clear region button if it doesn't exist
+            const clearBtn = editImageItem.querySelector('.clear-region-btn');
+            if (!clearBtn) {
+                const controlRow = editImageItem.querySelector('.control-row:last-child');
+                if (controlRow) {
+                    const newClearBtn = document.createElement('button');
+                    newClearBtn.className = 'btn btn-sm btn-warning clear-region-btn';
+                    newClearBtn.dataset.imageIndex = imageIndex;
+                    newClearBtn.dataset.filename = filename;
+                    newClearBtn.textContent = 'Clear Region';
+                    
+                    // Add event listener
+                    newClearBtn.addEventListener('click', (e) => {
+                        this.clearRegionFromImage(sessionId, imageIndex, filename);
+                    });
+                    
+                    // Insert before the delete button
+                    const deleteBtn = controlRow.querySelector('.delete-image-btn');
+                    controlRow.insertBefore(newClearBtn, deleteBtn);
+                }
+            }
+            
+            // Update or add region info
+            let regionInfo = editImageItem.querySelector('.region-info');
+            if (!regionInfo) {
+                regionInfo = document.createElement('div');
+                regionInfo.className = 'region-info';
+                editImageItem.querySelector('.edit-image-controls').appendChild(regionInfo);
+            }
+            regionInfo.textContent = `Region: ${selection.x},${selection.y} (${selection.width}x${selection.height})`;
         }
     }
 
@@ -765,6 +841,34 @@ class MLTrainingInterface {
         } catch (error) {
             console.error('Error clearing region:', error);
             this.showToast('Error clearing region: ' + error.message, 'error');
+        }
+    }
+
+    async regenerateComposite(sessionId) {
+        try {
+            this.showToast('Regenerating composite image...', 'info');
+            
+            const response = await fetch(`/api/ml/shells/${sessionId}/composite`, {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                this.showToast('Composite regenerated successfully', 'success');
+                
+                // Update the composite image by adding a cache-busting parameter
+                const compositeImg = document.getElementById(`composite-image-${sessionId}`);
+                if (compositeImg) {
+                    const timestamp = new Date().getTime();
+                    compositeImg.src = `/api/composites/${sessionId}?t=${timestamp}`;
+                    compositeImg.style.display = 'block';
+                    compositeImg.nextElementSibling.style.display = 'none';
+                }
+            } else {
+                throw new Error(`Failed to regenerate composite: ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('Error regenerating composite:', error);
+            this.showToast('Error regenerating composite: ' + error.message, 'error');
         }
     }
 
