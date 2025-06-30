@@ -282,9 +282,12 @@ operation modes.
 ## Current Development Tasks
 
 ### High Priority
-- **Fix camera index/name mapping to handle OS reordering of USB cameras** (Pending)
-  - *ID: camera-index-fix*
 
-### Medium Priority  
+- **Fix camera index/name mapping to handle OS reordering of USB cameras**
+  (Pending)
+  - _ID: camera-index-fix_
+
+### Medium Priority
+
 - **Remove 'clear' button from cameras on the dashboard** (Pending)
-  - *ID: remove-clear-btn*
+  - _ID: remove-clear-btn_

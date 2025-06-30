@@ -2,7 +2,15 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Generator, Callable, Awaitable, Literal, AsyncGenerator
+from typing import (
+    List,
+    Dict,
+    Any,
+    Optional,
+    Generator,
+    Literal,
+    AsyncGenerator,
+)
 from datetime import datetime
 import json
 import logging
@@ -11,12 +19,9 @@ import sys
 import uuid
 from contextlib import asynccontextmanager
 
-try:
-    import cv2  # type: ignore[import-not-found]
-    import numpy as np  # type: ignore[import-not-found]
-except ImportError:
-    cv2 = None
-    np = None
+import cv2  # type: ignore[import-not-found]
+import numpy as np  # type: ignore[import-not-found]
+
 from fastapi import (
     FastAPI,
     Request,
@@ -34,8 +39,6 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 import uvicorn
 
 from .config import Settings
@@ -45,33 +48,7 @@ from .shell import Shell
 from .hardware_controller import HardwareController
 from .esphome_monitor import ESPHomeMonitor
 
-
-class NoCacheMiddleware(BaseHTTPMiddleware):
-    """Middleware to add no-cache headers to prevent browser caching."""
-
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        """Process request and add no-cache headers to prevent browser caching."""
-        response = await call_next(request)
-
-        # Add no-cache headers for all responses
-        response.headers["Cache-Control"] = (
-            "no-cache, no-store, must-revalidate, max-age=0"
-        )
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
-
-        # Additional headers for static files (JS, CSS, HTML)
-        if any(
-            request.url.path.endswith(ext) for ext in [".js", ".css", ".html", ".htm"]
-        ):
-            response.headers["Cache-Control"] = (
-                "no-cache, no-store, must-revalidate, max-age=0, private"
-            )
-            response.headers["ETag"] = f'"{datetime.now().timestamp()}"'
-
-        return response
+from .middleware import NoCacheMiddleware
 
 
 @dataclass
@@ -139,30 +116,37 @@ ml_trainer = MLTrainer(settings)
 # Initialize machine controller
 machine_controller = MachineController()
 
+
 # Initialize debug WebSocket manager early (needed for hardware controller callback)
 class DebugWebSocketManager:
     """Manage WebSocket connections for debug console."""
-    
+
     def __init__(self) -> None:
         self.active_connections: List[WebSocket] = []
-    
+
     async def connect(self, websocket: WebSocket) -> None:
         """Accept a new WebSocket connection."""
         await websocket.accept()
         self.active_connections.append(websocket)
-        logger.info("Debug WebSocket connected, total connections: %d", len(self.active_connections))
-    
+        logger.info(
+            "Debug WebSocket connected, total connections: %d",
+            len(self.active_connections),
+        )
+
     def disconnect(self, websocket: WebSocket) -> None:
         """Remove a WebSocket connection."""
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
-        logger.info("Debug WebSocket disconnected, total connections: %d", len(self.active_connections))
-    
+        logger.info(
+            "Debug WebSocket disconnected, total connections: %d",
+            len(self.active_connections),
+        )
+
     async def broadcast_command(self, command_data: Dict[str, Any]) -> None:
         """Broadcast command data to all connected clients."""
         if not self.active_connections:
             return
-        
+
         disconnected_connections = []
         for connection in self.active_connections:
             try:
@@ -170,10 +154,11 @@ class DebugWebSocketManager:
             except Exception as e:
                 logger.warning("Failed to send to WebSocket connection: %s", e)
                 disconnected_connections.append(connection)
-        
+
         # Remove failed connections
         for connection in disconnected_connections:
             self.disconnect(connection)
+
 
 # Global WebSocket manager for debug console
 debug_ws_manager = DebugWebSocketManager()
@@ -200,14 +185,14 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application lifespan events."""
     # Startup
     logger.info("Starting ESPHome connectivity monitoring")
     esphome_monitor.start_monitoring()
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Stopping ESPHome connectivity monitoring")
     esphome_monitor.stop_monitoring()
@@ -290,12 +275,13 @@ async def config_page(
     try:
         user_config_data = app_settings.load_user_config()
         from .config import UserConfig
+
         user_config = UserConfig(**user_config_data)
         network_camera_hostnames = user_config.network_camera_hostnames
     except Exception:
         # Fall back to application settings
         network_camera_hostnames = app_settings.network_camera_hostnames
-    
+
     return templates.TemplateResponse(
         "config.html",
         {
@@ -436,6 +422,7 @@ async def upload_training_image(
 
 class TrainModelRequest(BaseModel):
     """Request model for training ML model."""
+
     case_types: Optional[List[str]] = None
 
 
@@ -597,10 +584,10 @@ async def set_camera_view_type(
         validated_view_type = None
     else:
         raise HTTPException(
-            status_code=400, 
-            detail="Invalid view type. Must be 'side', 'tail', or empty"
+            status_code=400,
+            detail="Invalid view type. Must be 'side', 'tail', or empty",
         )
-    
+
     success = camera_manager.set_camera_view_type(camera_index, validated_view_type)
     if success:
         return {
@@ -623,15 +610,13 @@ async def set_camera_region(
     # Validate region parameters
     if width <= 0 or height <= 0:
         raise HTTPException(
-            status_code=400, 
-            detail="Width and height must be positive values"
+            status_code=400, detail="Width and height must be positive values"
         )
     if x < 0 or y < 0:
         raise HTTPException(
-            status_code=400, 
-            detail="X and Y coordinates must be non-negative"
+            status_code=400, detail="X and Y coordinates must be non-negative"
         )
-    
+
     success = camera_manager.set_camera_region(camera_index, x, y, width, height)
     if success:
         return {
@@ -662,22 +647,28 @@ async def trigger_camera_autofocus(camera_index: int) -> Dict[str, Any]:
     success = camera_manager.trigger_autofocus(camera_index)
     if success:
         camera_info = camera_manager.cameras.get(camera_index)
-        if camera_info and (camera_info.region_x is not None and camera_info.region_y is not None 
-                           and camera_info.region_width is not None and camera_info.region_height is not None):
+        if camera_info and (
+            camera_info.region_x is not None
+            and camera_info.region_y is not None
+            and camera_info.region_width is not None
+            and camera_info.region_height is not None
+        ):
             center_x = camera_info.region_x + camera_info.region_width // 2
             center_y = camera_info.region_y + camera_info.region_height // 2
             return {
                 "message": f"Triggered autofocus for camera {camera_index} at region center",
                 "camera_index": camera_index,
-                "focus_point": {"x": center_x, "y": center_y}
+                "focus_point": {"x": center_x, "y": center_y},
             }
         else:
             return {
                 "message": f"Triggered autofocus for camera {camera_index}",
                 "camera_index": camera_index,
-                "focus_point": None
+                "focus_point": None,
             }
-    raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found or autofocus failed")
+    raise HTTPException(
+        status_code=404, detail=f"Camera {camera_index} not found or autofocus failed"
+    )
 
 
 # Machine Control Endpoints
@@ -739,7 +730,7 @@ async def get_hardware_status() -> Dict[str, Any]:
 
 @app.get("/api/machine/esphome-status")
 async def get_esphome_status(
-    monitor: ESPHomeMonitor = Depends(get_esphome_monitor)
+    monitor: ESPHomeMonitor = Depends(get_esphome_monitor),
 ) -> Dict[str, Any]:
     """Get ESPHome device connectivity status."""
     return monitor.get_status()
@@ -822,7 +813,6 @@ async def capture_images() -> Dict[str, Any]:
     # Save capture metadata for later use during shell data saving
     metadata_path = images_dir / f"{session_id}_metadata.json"
     with open(metadata_path, "w", encoding="utf-8") as f:
-        import json
         json.dump(captured_images, f, indent=2)
 
     logger.info("Captured %d images for session %s", len(captured_images), session_id)
@@ -889,9 +879,9 @@ async def region_selection_page(
     """Display the region selection interface for a camera."""
     if camera_index not in camera_manager.cameras:
         raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
-    
+
     camera = camera_manager.cameras[camera_index]
-    
+
     return templates.TemplateResponse(
         "region_selection.html",
         {
@@ -993,9 +983,14 @@ async def save_shell_data(
                     metadata = json.load(f)
                     # Convert to CapturedImage objects
                     from .shell import CapturedImage
-                    captured_images_data = [CapturedImage(**img_data) for img_data in metadata]
+
+                    captured_images_data = [
+                        CapturedImage(**img_data) for img_data in metadata
+                    ]
         except Exception as e:
-            logger.warning("Could not load capture metadata for session %s: %s", session_id, e)
+            logger.warning(
+                "Could not load capture metadata for session %s: %s", session_id, e
+            )
 
         # Create Shell object
         shell = Shell(
@@ -1042,7 +1037,7 @@ async def save_shell_data(
 
 @app.get("/api/config")
 async def get_configuration(
-    app_settings: Settings = Depends(get_settings)
+    app_settings: Settings = Depends(get_settings),
 ) -> Dict[str, Any]:
     """Get current system configuration."""
     try:
@@ -1050,6 +1045,7 @@ async def get_configuration(
         try:
             user_config_data = app_settings.load_user_config()
             from .config import UserConfig
+
             user_config = UserConfig(**user_config_data)
             network_camera_hostnames = user_config.network_camera_hostnames
             auto_detect_cameras = user_config.auto_detect_cameras
@@ -1057,9 +1053,9 @@ async def get_configuration(
             # Fall back to application settings
             network_camera_hostnames = app_settings.network_camera_hostnames
             auto_detect_cameras = app_settings.auto_detect_cameras
-        
+
         config_data = {
-            "auto_start_cameras": getattr(camera_manager, 'auto_start_cameras', False),
+            "auto_start_cameras": getattr(camera_manager, "auto_start_cameras", False),
             "auto_detect_cameras": auto_detect_cameras,
             "esphome_hostname": app_settings.esphome_hostname,
             "network_camera_hostnames": network_camera_hostnames,
@@ -1077,7 +1073,7 @@ async def get_configuration(
                     "region_height": cam.region_height,
                 }
                 for cam in camera_manager.get_cameras()
-            ]
+            ],
         }
         return config_data
     except Exception as e:
@@ -1089,14 +1085,14 @@ async def get_configuration(
 async def save_configuration(
     config: Dict[str, Any],
     app_settings: Settings = Depends(get_settings),
-    monitor: ESPHomeMonitor = Depends(get_esphome_monitor)
+    monitor: ESPHomeMonitor = Depends(get_esphome_monitor),
 ) -> Dict[str, str]:
     """Save system configuration."""
     try:
         # Save auto-start setting
         if "auto_start_cameras" in config:
             camera_manager.auto_start_cameras = config["auto_start_cameras"]
-        
+
         # Save ESPHome hostname setting
         if "esphome_hostname" in config:
             new_hostname = config["esphome_hostname"].strip()
@@ -1106,17 +1102,18 @@ async def save_configuration(
                 # Update monitor hostname
                 monitor.update_hostname(new_hostname)
                 logger.info("Updated ESPHome hostname to: %s", new_hostname)
-        
+
         # Save network camera hostnames and auto-detect settings
         if "network_camera_hostnames" in config or "auto_detect_cameras" in config:
             # Load current user config
             try:
                 user_config_data = app_settings.load_user_config()
                 from .config import UserConfig
+
                 user_config = UserConfig(**user_config_data)
             except Exception:
                 user_config = UserConfig()
-            
+
             # Update network camera hostnames
             if "network_camera_hostnames" in config:
                 hostnames = config["network_camera_hostnames"]
@@ -1124,19 +1121,24 @@ async def save_configuration(
                     user_config.network_camera_hostnames = [
                         hostname.strip() for hostname in hostnames if hostname.strip()
                     ]
-                    logger.info("Updated network camera hostnames: %s", user_config.network_camera_hostnames)
-            
+                    logger.info(
+                        "Updated network camera hostnames: %s",
+                        user_config.network_camera_hostnames,
+                    )
+
             # Update auto-detect cameras setting
             if "auto_detect_cameras" in config:
                 user_config.auto_detect_cameras = bool(config["auto_detect_cameras"])
-                logger.info("Updated auto-detect cameras: %s", user_config.auto_detect_cameras)
-            
+                logger.info(
+                    "Updated auto-detect cameras: %s", user_config.auto_detect_cameras
+                )
+
             # Save to user config file
             app_settings.save_user_config(user_config.model_dump())
-        
+
         # Save configuration to file
         camera_manager.save_config()
-        
+
         logger.info("Configuration saved successfully")
         return {"message": "Configuration saved successfully"}
     except Exception as e:
@@ -1150,14 +1152,16 @@ async def delete_camera_config(camera_index: int) -> Dict[str, str]:
     try:
         # Remove camera from manager
         removed = camera_manager.remove_camera(camera_index)
-        
+
         if removed:
             # Save updated configuration
             camera_manager.save_config()
             logger.info("Deleted camera %d from configuration", camera_index)
             return {"message": f"Camera {camera_index} deleted successfully"}
         else:
-            raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
+            raise HTTPException(
+                status_code=404, detail=f"Camera {camera_index} not found"
+            )
     except HTTPException:
         raise
     except Exception as e:
@@ -1171,10 +1175,10 @@ async def clear_all_cameras() -> Dict[str, str]:
     try:
         # Clear all cameras
         camera_manager.clear_cameras()
-        
+
         # Save configuration
         camera_manager.save_config()
-        
+
         logger.info("Cleared all cameras from configuration")
         return {"message": "All cameras cleared successfully"}
     except Exception as e:
@@ -1188,10 +1192,10 @@ async def reset_configuration() -> Dict[str, str]:
     try:
         # Reset camera manager to defaults
         camera_manager.reset_to_defaults()
-        
+
         # Save default configuration
         camera_manager.save_config()
-        
+
         logger.info("Configuration reset to defaults")
         return {"message": "Configuration reset to defaults"}
     except Exception as e:
@@ -1212,7 +1216,10 @@ async def get_training_shells(
         data_dir = app_settings.data_directory
 
         if not data_dir.exists():
-            return {"shells": [], "summary": {"total": 0, "included": 0, "unique_types": 0}}
+            return {
+                "shells": [],
+                "summary": {"total": 0, "included": 0, "unique_types": 0},
+            }
 
         # Load all JSON files in data directory
         for json_file in data_dir.glob("*.json"):
@@ -1241,7 +1248,7 @@ async def get_training_shells(
         summary = {
             "total": len(shells),
             "included": len(included_shells),
-            "unique_types": unique_types
+            "unique_types": unique_types,
         }
 
         return {"shells": shells, "summary": summary}
@@ -1278,7 +1285,7 @@ async def toggle_shell_include(
         return {
             "session_id": session_id,
             "include": shell_data["include"],
-            "message": f"Shell {'included' if shell_data['include'] else 'excluded'} from training"
+            "message": f"Shell {'included' if shell_data['include'] else 'excluded'} from training",
         }
 
     except Exception as e:
@@ -1331,7 +1338,7 @@ async def generate_composite_images(
         return {
             "generated": generated_count,
             "errors": error_count,
-            "message": f"Generated {generated_count} composite images ({error_count} errors)"
+            "message": f"Generated {generated_count} composite images ({error_count} errors)",
         }
 
     except Exception as e:
@@ -1349,9 +1356,9 @@ async def get_composite_image(
         data_dir = app_settings.data_directory
         composites_dir = data_dir / "composites"
         composites_dir.mkdir(exist_ok=True)
-        
+
         composite_path = composites_dir / f"{session_id}_composite.jpg"
-        
+
         # If composite doesn't exist, try to create it
         if not composite_path.exists():
             shell_file = data_dir / f"{session_id}.json"
@@ -1359,35 +1366,42 @@ async def get_composite_image(
                 try:
                     with open(shell_file, "r", encoding="utf-8") as f:
                         shell_data = json.load(f)
-                    
+
                     # Generate composite image
                     created_path = await _generate_composite_image(
                         session_id, shell_data, composites_dir
                     )
-                    
+
                     if not created_path:
-                        raise HTTPException(status_code=404, detail="Could not create composite image")
-                        
+                        raise HTTPException(
+                            status_code=404, detail="Could not create composite image"
+                        )
+
                 except Exception as e:
-                    logger.error("Error auto-creating composite for %s: %s", session_id, e)
-                    raise HTTPException(status_code=500, detail="Failed to create composite image")
+                    logger.error(
+                        "Error auto-creating composite for %s: %s", session_id, e
+                    )
+                    raise HTTPException(
+                        status_code=500, detail="Failed to create composite image"
+                    ) from e
             else:
                 raise HTTPException(status_code=404, detail="Shell data not found")
-        
+
         # Serve the composite image
         if composite_path.exists():
+
             def iterfile() -> Generator[bytes, None, None]:
                 with open(composite_path, "rb") as f:
                     yield from f
-            
+
             return StreamingResponse(
                 iterfile(),
                 media_type="image/jpeg",
-                headers={"Cache-Control": "no-cache"}
+                headers={"Cache-Control": "no-cache"},
             )
         else:
             raise HTTPException(status_code=404, detail="Composite image not found")
-            
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1404,50 +1418,63 @@ async def update_shell_image_view_type(
     """Update the view type for a specific shell image."""
     try:
         from .shell import ViewType
-        
+
         filename = view_type_data.get("filename")
         new_view_type = view_type_data.get("view_type")
-        
+
         if not filename:
             raise HTTPException(status_code=400, detail="Filename is required")
-        
+
         # Validate view type
         valid_view_types = [ViewType.SIDE, ViewType.TAIL, ViewType.UNKNOWN]
         if new_view_type not in valid_view_types:
-            raise HTTPException(status_code=400, detail=f"Invalid view type. Must be one of: {[vt.value for vt in valid_view_types]}")
-        
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid view type. Must be one of: {[vt.value for vt in valid_view_types]}",
+            )
+
         # Load shell data from data directory (not image directory)
         shell_file = app_settings.data_directory / f"{session_id}.json"
         if not shell_file.exists():
-            raise HTTPException(status_code=404, detail=f"Shell data not found for session {session_id}")
-        
-        with open(shell_file, 'r', encoding='utf-8') as f:
+            raise HTTPException(
+                status_code=404, detail=f"Shell data not found for session {session_id}"
+            )
+
+        with open(shell_file, "r", encoding="utf-8") as f:
             shell_data = json.load(f)
-        
+
         # Update the view type for the specific image
         updated = False
-        if 'captured_images' in shell_data:
-            for image in shell_data['captured_images']:
-                if image.get('filename') == filename:
-                    image['view_type'] = new_view_type
+        if "captured_images" in shell_data:
+            for image in shell_data["captured_images"]:
+                if image.get("filename") == filename:
+                    image["view_type"] = new_view_type
                     updated = True
                     break
-        
+
         if not updated:
-            raise HTTPException(status_code=404, detail=f"Image {filename} not found in session {session_id}")
-        
+            raise HTTPException(
+                status_code=404,
+                detail=f"Image {filename} not found in session {session_id}",
+            )
+
         # Save updated shell data
-        with open(shell_file, 'w', encoding='utf-8') as f:
+        with open(shell_file, "w", encoding="utf-8") as f:
             json.dump(shell_data, f, indent=2, default=str)
-        
-        logger.info("Updated view type for %s in session %s to %s", filename, session_id, new_view_type)
+
+        logger.info(
+            "Updated view type for %s in session %s to %s",
+            filename,
+            session_id,
+            new_view_type,
+        )
         return {
             "session_id": session_id,
             "filename": filename,
             "view_type": new_view_type,
-            "message": "View type updated successfully"
+            "message": "View type updated successfully",
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1457,6 +1484,7 @@ async def update_shell_image_view_type(
 
 class ShellUpdateRequest(BaseModel):
     """Request model for updating shell data."""
+
     brand: str
     shell_type: str
     include: bool
@@ -1491,7 +1519,7 @@ async def update_shell(
             for update in request.view_type_updates:
                 filename = update.get("filename")
                 new_view_type = update.get("view_type")
-                
+
                 # Update in captured_images
                 for image in shell_data["captured_images"]:
                     if image.get("filename") == filename:
@@ -1504,13 +1532,14 @@ async def update_shell(
 
         logger.info(
             "Updated shell data for session %s: brand=%s, type=%s, include=%s, view_type_updates=%d",
-            session_id, request.brand, request.shell_type, request.include, len(request.view_type_updates)
+            session_id,
+            request.brand,
+            request.shell_type,
+            request.include,
+            len(request.view_type_updates),
         )
 
-        return {
-            "session_id": session_id,
-            "message": "Shell updated successfully"
-        }
+        return {"session_id": session_id, "message": "Shell updated successfully"}
 
     except HTTPException:
         raise
@@ -1557,7 +1586,9 @@ async def delete_shell(
                 metadata_file.unlink()
                 logger.info("Deleted metadata file: %s", metadata_file.name)
             except Exception as e:
-                logger.warning("Could not delete metadata file %s: %s", metadata_file.name, e)
+                logger.warning(
+                    "Could not delete metadata file %s: %s", metadata_file.name, e
+                )
 
         # Delete composite image if it exists
         composites_dir = data_dir / "composites"
@@ -1567,7 +1598,9 @@ async def delete_shell(
                 composite_file.unlink()
                 logger.info("Deleted composite image: %s", composite_file.name)
             except Exception as e:
-                logger.warning("Could not delete composite %s: %s", composite_file.name, e)
+                logger.warning(
+                    "Could not delete composite %s: %s", composite_file.name, e
+                )
 
         # Delete shell data file
         shell_file.unlink()
@@ -1614,7 +1647,8 @@ async def delete_shell_image(
         # Remove from captured_images if it exists
         if "captured_images" in shell_data:
             shell_data["captured_images"] = [
-                img for img in shell_data["captured_images"] 
+                img
+                for img in shell_data["captured_images"]
                 if img.get("filename") != filename
             ]
 
@@ -1633,19 +1667,20 @@ async def delete_shell_image(
 
         logger.info("Removed image %s from shell %s", filename, session_id)
 
-        return {
-            "message": f"Image {filename} deleted successfully"
-        }
+        return {"message": f"Image {filename} deleted successfully"}
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error deleting image %s from shell %s: %s", filename, session_id, e)
+        logger.error(
+            "Error deleting image %s from shell %s: %s", filename, session_id, e
+        )
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 class RegionUpdateRequest(BaseModel):
     """Request model for updating region data on an image."""
+
     region_x: int
     region_y: int
     region_width: int
@@ -1687,7 +1722,22 @@ async def update_image_region(
                     break
             else:
                 # Image not found in captured_images, create new entry
-                shell_data["captured_images"].append({
+                shell_data["captured_images"].append(
+                    {
+                        "filename": filename,
+                        "region_x": request.region_x,
+                        "region_y": request.region_y,
+                        "region_width": request.region_width,
+                        "region_height": request.region_height,
+                        "view_type": "unknown",
+                        "camera_index": 0,
+                        "camera_name": "unknown",
+                    }
+                )
+        else:
+            # Create captured_images structure
+            shell_data["captured_images"] = [
+                {
                     "filename": filename,
                     "region_x": request.region_x,
                     "region_y": request.region_y,
@@ -1695,20 +1745,9 @@ async def update_image_region(
                     "region_height": request.region_height,
                     "view_type": "unknown",
                     "camera_index": 0,
-                    "camera_name": "unknown"
-                })
-        else:
-            # Create captured_images structure
-            shell_data["captured_images"] = [{
-                "filename": filename,
-                "region_x": request.region_x,
-                "region_y": request.region_y,
-                "region_width": request.region_width,
-                "region_height": request.region_height,
-                "view_type": "unknown",
-                "camera_index": 0,
-                "camera_name": "unknown"
-            }]
+                    "camera_name": "unknown",
+                }
+            ]
 
         # Save updated shell data
         with open(shell_file, "w", encoding="utf-8") as f:
@@ -1716,8 +1755,12 @@ async def update_image_region(
 
         logger.info(
             "Updated region for image %s in shell %s: (%d,%d) %dx%d",
-            filename, session_id, request.region_x, request.region_y,
-            request.region_width, request.region_height
+            filename,
+            session_id,
+            request.region_x,
+            request.region_y,
+            request.region_width,
+            request.region_height,
         )
 
         return {"message": f"Region updated for image {filename}"}
@@ -1725,7 +1768,12 @@ async def update_image_region(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error updating region for image %s in shell %s: %s", filename, session_id, e)
+        logger.error(
+            "Error updating region for image %s in shell %s: %s",
+            filename,
+            session_id,
+            e,
+        )
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
@@ -1773,7 +1821,12 @@ async def clear_image_region(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error clearing region for image %s in shell %s: %s", filename, session_id, e)
+        logger.error(
+            "Error clearing region for image %s in shell %s: %s",
+            filename,
+            session_id,
+            e,
+        )
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
@@ -1800,16 +1853,26 @@ async def regenerate_shell_composite(
 
         # Check if shell is included in training
         if shell_data.get("include", True) is False:
-            raise HTTPException(status_code=400, detail="Shell is not included in training")
+            raise HTTPException(
+                status_code=400, detail="Shell is not included in training"
+            )
 
         # Generate composite for this shell
-        composite_path = await _generate_composite_image(session_id, shell_data, composites_dir)
-        
+        composite_path = await _generate_composite_image(
+            session_id, shell_data, composites_dir
+        )
+
         if composite_path:
-            logger.info("Regenerated composite image for shell %s: %s", session_id, composite_path)
+            logger.info(
+                "Regenerated composite image for shell %s: %s",
+                session_id,
+                composite_path,
+            )
             return {"message": f"Composite image regenerated for shell {session_id}"}
         else:
-            raise HTTPException(status_code=500, detail="Failed to generate composite image")
+            raise HTTPException(
+                status_code=500, detail="Failed to generate composite image"
+            )
 
     except HTTPException:
         raise
@@ -1831,7 +1894,7 @@ async def _generate_composite_image(
         composite_path = output_dir / f"{session_id}_composite.jpg"
         image_filenames = shell_data.get("image_filenames", [])
         captured_images = shell_data.get("captured_images", [])
-        
+
         # Create a lookup for region data by filename
         region_lookup = {}
         if captured_images:
@@ -1848,7 +1911,7 @@ async def _generate_composite_image(
                     # Apply region cropping if available
                     if filename in region_lookup:
                         img = _apply_region_processing(img, region_lookup[filename])
-                    
+
                     # Resize to standard size
                     img = cv2.resize(img, (200, 200))
                     loaded_images.append(img)
@@ -1875,7 +1938,7 @@ async def _generate_composite_image(
             # 4+ images: create 2x2 grid
             rows = []
             for i in range(0, len(loaded_images), 2):
-                row_images = loaded_images[i:i+2]
+                row_images = loaded_images[i : i + 2]
                 if len(row_images) == 1:
                     # Pad with blank image
                     blank = np.zeros_like(row_images[0])
@@ -1897,17 +1960,17 @@ def _apply_region_processing(img: Any, region_info: Dict[str, Any]) -> Any:
     """Apply region processing to an image based on camera view type and region data."""
     if cv2 is None or np is None:
         return img
-    
+
     view_type = region_info.get("view_type")
     region_x = region_info.get("region_x")
     region_y = region_info.get("region_y")
     region_width = region_info.get("region_width")
     region_height = region_info.get("region_height")
-    
+
     # If region data is available, crop to region
     if all(x is not None for x in [region_x, region_y, region_width, region_height]):
         h, w = img.shape[:2]
-        
+
         # Convert to int (we know they're not None due to the check above)
         assert region_x is not None
         assert region_y is not None
@@ -1917,21 +1980,21 @@ def _apply_region_processing(img: Any, region_info: Dict[str, Any]) -> Any:
         region_y_int = int(region_y)
         region_width_int = int(region_width)
         region_height_int = int(region_height)
-        
+
         # Ensure region is within image bounds
         x1 = max(0, min(region_x_int, w))
         y1 = max(0, min(region_y_int, h))
         x2 = max(0, min(region_x_int + region_width_int, w))
         y2 = max(0, min(region_y_int + region_height_int, h))
-        
+
         if x2 > x1 and y2 > y1:
             img = img[y1:y2, x1:x2]
-    
+
     # Apply view-specific processing
     if view_type == "tail":
         # For tail view, try to detect and focus on circular features
         img = _apply_tail_view_processing(img)
-    
+
     return img
 
 
@@ -1939,14 +2002,14 @@ def _apply_tail_view_processing(img: Any) -> Any:
     """Apply circular detection and filtering for tail view cameras."""
     if cv2 is None or np is None:
         return img
-    
+
     try:
         # Convert to grayscale for circle detection
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
+
         # Apply Gaussian blur to reduce noise
         blurred = cv2.GaussianBlur(gray, (9, 9), 2)
-        
+
         # Detect circles using HoughCircles
         circles = cv2.HoughCircles(
             blurred,
@@ -1956,39 +2019,39 @@ def _apply_tail_view_processing(img: Any) -> Any:
             param1=50,
             param2=30,
             minRadius=10,
-            maxRadius=min(img.shape[:2]) // 2
+            maxRadius=min(img.shape[:2]) // 2,
         )
-        
+
         if circles is not None:
             circles = np.round(circles[0, :]).astype("int")
-            
+
             # Find the largest circle (likely the case end)
             largest_circle = max(circles, key=lambda c: c[2])
             x, y, r = largest_circle
-            
+
             # Create a mask for the circular region
             mask = np.zeros(gray.shape, dtype=np.uint8)
             cv2.circle(mask, (x, y), r, 255, -1)
-            
+
             # Apply the mask to the original image
             result = cv2.bitwise_and(img, img, mask=mask)
-            
+
             # Crop to the circle bounding box with some padding
             padding = 10
             x1 = max(0, x - r - padding)
             y1 = max(0, y - r - padding)
             x2 = min(img.shape[1], x + r + padding)
             y2 = min(img.shape[0], y + r + padding)
-            
+
             result = result[y1:y2, x1:x2]
-            
+
             # If the result is too small, return the original
             if result.shape[0] > 20 and result.shape[1] > 20:
                 return result
-    
+
     except Exception as e:
         logger.debug("Tail view processing failed, using original image: %s", e)
-    
+
     return img
 
 
@@ -1998,11 +2061,11 @@ def _apply_tail_view_processing(img: Any) -> Any:
 @app.websocket("/ws/debug/esp-commands")
 async def debug_esp_commands_websocket(
     websocket: WebSocket,
-    hardware: HardwareController = Depends(get_hardware_controller)
+    hardware: HardwareController = Depends(get_hardware_controller),
 ) -> None:
     """WebSocket endpoint for real-time ESP command debugging."""
     await debug_ws_manager.connect(websocket)
-    
+
     try:
         # Send existing command history on connection
         commands = hardware.get_command_history()
@@ -2012,10 +2075,10 @@ async def debug_esp_commands_websocket(
                 "command": cmd.command,
                 "url": cmd.url,
                 "status": cmd.status,
-                "response": cmd.response
+                "response": cmd.response,
             }
             await websocket.send_json(command_data)
-        
+
         # Keep connection alive and handle client messages
         while True:
             # Wait for client messages (ping/pong to keep connection alive)
@@ -2023,7 +2086,7 @@ async def debug_esp_commands_websocket(
                 await websocket.receive_text()
             except WebSocketDisconnect:
                 break
-                
+
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -2034,7 +2097,7 @@ async def debug_esp_commands_websocket(
 
 @app.get("/api/debug/esp-commands")
 async def get_esp_command_history(
-    hardware: HardwareController = Depends(get_hardware_controller)
+    hardware: HardwareController = Depends(get_hardware_controller),
 ) -> List[Dict[str, Any]]:
     """Get ESP command history for debugging (REST fallback)."""
     try:
@@ -2045,7 +2108,7 @@ async def get_esp_command_history(
                 "command": cmd.command,
                 "url": cmd.url,
                 "status": cmd.status,
-                "response": cmd.response
+                "response": cmd.response,
             }
             for cmd in commands
         ]
