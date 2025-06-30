@@ -34,17 +34,18 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import uvicorn
 
-from .config import Settings
+from .config import Settings, UserConfig
 from .ml_trainer import MLTrainer
 from .camera_manager import CameraManager
-from .shell import Shell
+from .shell import Shell, ViewType, CapturedImage
+
 from .hardware_controller import HardwareController
 from .esphome_monitor import ESPHomeMonitor
 
@@ -274,7 +275,6 @@ async def config_page(
     # Get network camera hostnames from user config
     try:
         user_config_data = app_settings.load_user_config()
-        from .config import UserConfig
 
         user_config = UserConfig(**user_config_data)
         network_camera_hostnames = user_config.network_camera_hostnames
@@ -982,7 +982,6 @@ async def save_shell_data(
                 with open(metadata_path, "r", encoding="utf-8") as f:
                     metadata = json.load(f)
                     # Convert to CapturedImage objects
-                    from .shell import CapturedImage
 
                     captured_images_data = [
                         CapturedImage(**img_data) for img_data in metadata
@@ -1044,7 +1043,6 @@ async def get_configuration(
         # Get configuration from user config
         try:
             user_config_data = app_settings.load_user_config()
-            from .config import UserConfig
 
             user_config = UserConfig(**user_config_data)
             network_camera_hostnames = user_config.network_camera_hostnames
@@ -1108,7 +1106,6 @@ async def save_configuration(
             # Load current user config
             try:
                 user_config_data = app_settings.load_user_config()
-                from .config import UserConfig
 
                 user_config = UserConfig(**user_config_data)
             except Exception:
@@ -1417,8 +1414,6 @@ async def update_shell_image_view_type(
 ) -> Dict[str, Any]:
     """Update the view type for a specific shell image."""
     try:
-        from .shell import ViewType
-
         filename = view_type_data.get("filename")
         new_view_type = view_type_data.get("view_type")
 
