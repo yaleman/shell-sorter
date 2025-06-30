@@ -5,6 +5,9 @@ class MLTrainingInterface {
         this.shells = [];
         this.filteredShells = [];
         this.initializeEventListeners();
+        
+        // Auto-load shell data when the interface initializes
+        this.loadShells();
     }
 
     initializeEventListeners() {
@@ -71,6 +74,63 @@ class MLTrainingInterface {
         document.getElementById('total-shells').textContent = summary.total;
         document.getElementById('included-shells').textContent = summary.included;
         document.getElementById('unique-types').textContent = summary.unique_types;
+        
+        // Update shell type coverage statistics
+        this.updateShellTypeStats();
+    }
+
+    updateShellTypeStats() {
+        const shellTypeStats = document.getElementById('shell-type-stats');
+        const typeStatsList = document.getElementById('type-stats-list');
+        
+        if (!this.shells || this.shells.length === 0) {
+            shellTypeStats.style.display = 'none';
+            return;
+        }
+
+        // Group shells by type and calculate statistics
+        const typeGroups = {};
+        this.shells.forEach(shell => {
+            const typeKey = `${shell.brand} ${shell.shell_type}`;
+            if (!typeGroups[typeKey]) {
+                typeGroups[typeKey] = {
+                    total: 0,
+                    included: 0
+                };
+            }
+            typeGroups[typeKey].total++;
+            if (shell.include !== false) {
+                typeGroups[typeKey].included++;
+            }
+        });
+
+        // Filter types that have over 50% selection or significant data
+        const significantTypes = Object.entries(typeGroups)
+            .map(([typeName, stats]) => ({
+                name: typeName,
+                ...stats,
+                percentage: (stats.included / stats.total) * 100
+            }))
+            .filter(type => type.percentage >= 50 || type.total >= 3)
+            .sort((a, b) => b.percentage - a.percentage);
+
+        if (significantTypes.length === 0) {
+            shellTypeStats.style.display = 'none';
+            return;
+        }
+
+        // Generate HTML for type statistics
+        typeStatsList.innerHTML = significantTypes.map(type => {
+            const cssClass = type.percentage >= 75 ? 'good' : 'warning';
+            return `
+                <div class="type-stat-item ${cssClass}">
+                    <span class="type-stat-name">${type.name}</span>
+                    <span class="type-stat-ratio">${type.included}/${type.total}</span>
+                </div>
+            `;
+        }).join('');
+
+        shellTypeStats.style.display = 'block';
     }
 
     populateFilters() {
@@ -406,6 +466,9 @@ class MLTrainingInterface {
             // Update statistics
             const includedCount = this.shells.filter(s => s.include !== false).length;
             document.getElementById('included-shells').textContent = includedCount;
+            
+            // Update shell type statistics
+            this.updateShellTypeStats();
             
             this.showToast(data.message, 'success');
             

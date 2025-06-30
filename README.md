@@ -41,11 +41,14 @@ The system requires an ESP32 development board with the following connections:
 
 ### ESPHome Camera Setup
 
-The system supports ESPHome-based ESP32-S3 camera modules as network cameras. Testing has been performed with the [Freenove ESP32-S3 WROOM Board](https://github.com/Freenove/Freenove_ESP32_S3_WROOM_Board).
+The system supports ESPHome-based ESP32-S3 camera modules as network cameras.
+Testing has been performed with the
+[Freenove ESP32-S3 WROOM Board](https://github.com/Freenove/Freenove_ESP32_S3_WROOM_Board).
 
 #### ESP32-S3 Camera Configuration
 
-Network cameras are automatically detected at startup and can be used alongside USB cameras:
+Network cameras are automatically detected at startup and can be used alongside
+USB cameras:
 
 - **Hostname**: `esp32cam1.local` (configurable in ESPHome YAML)
 - **Stream URL**: `http://esp32cam1.local/camera`
@@ -170,7 +173,8 @@ esphome run esphome-esp32cam1.yaml --device /dev/ttyUSB1
 
 ### Configuration Management
 
-- **Main Controller**: `esphome-shell-sorter.yaml` - Hardware control and sensors
+- **Main Controller**: `esphome-shell-sorter.yaml` - Hardware control and
+  sensors
 - **Camera Module**: `esphome-esp32cam1.yaml` - ESP32-S3 camera configuration
 - Edit configurations in ESPHome dashboard or directly in files
 - Support for over-the-air (OTA) updates after initial flash
@@ -214,7 +218,8 @@ esphome run esphome-esp32cam1.yaml --device /dev/ttyUSB1
 
 - `GET /api/cameras` - List available cameras (USB and network)
 - `GET /api/cameras/detect` - Detect available cameras including ESPHome devices
-- `POST /api/cameras/capture` - Capture images from selected cameras with region metadata
+- `POST /api/cameras/capture` - Capture images from selected cameras with region
+  metadata
 - `GET /api/cameras/{index}/stream` - Live camera feed (USB and network cameras)
 
 ### Data Management API
@@ -277,9 +282,5 @@ operation modes.
 ## TODO
 
 - [ ] The composite image doesn't match the capture region
-- [ ] the shell training data ui only partially shows the images, it should show
-      the full image (shrunk to fit)
-- [ ] the shell training data ui should just show what view each image is with a
-      badge, and there should be an edit ui for the individual training object
-      that lets me update things, change the regions, or delete the object and
-      associated images
+- [ ] load the default set of shell data when the training UI loads. it's Ok,
+      because it's all over the LAN.
