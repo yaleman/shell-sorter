@@ -8,18 +8,18 @@ esp32:
   framework:
     type: arduino
 
-# Enable logging
+#  Enable logging
 logger:
 
-# Enable Home Assistant API
+#  Enable Home Assistant API
 api:
   encryption:
     key: !secret esphome_api_password
-# Enable over-the-air updates
+#  Enable over-the-air updates
 ota:
   - platform: esphome
     password: !secret esphome_ota_password
-# WiFi configuration
+#  WiFi configuration
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
