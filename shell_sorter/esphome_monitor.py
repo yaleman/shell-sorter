@@ -2,8 +2,8 @@
 
 import asyncio
 import logging
-from typing import Optional, Any
 from threading import Lock
+from typing import Any, Optional
 
 try:
     import aiohttp  # type: ignore[import-not-found]

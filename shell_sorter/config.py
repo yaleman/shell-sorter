@@ -5,11 +5,12 @@ camera configurations, and user preferences. It uses Pydantic for validation
 and supports environment variable overrides.
 """
 
-from pathlib import Path
-from typing import Optional, Any, Dict, Literal, List
 import json
 import logging
-from pydantic import Field, BaseModel
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict  # type: ignore
 
 logger = logging.getLogger(__name__)

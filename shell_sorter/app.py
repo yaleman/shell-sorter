@@ -1,36 +1,28 @@
 """Main application module for the Shell Sorter Control Panel."""
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import (
-    List,
-    Dict,
-    Any,
-    Optional,
-    Generator,
-    Literal,
-    AsyncGenerator,
-)
-from datetime import datetime
 import json
 import logging
 import signal
 import sys
 import uuid
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any, AsyncGenerator, Dict, Generator, List, Literal, Optional
 
 import cv2  # type: ignore[import-not-found]
 import numpy as np  # type: ignore[import-not-found]
-
+import uvicorn
 from fastapi import (
-    FastAPI,
-    Request,
-    Form,
-    File,
-    UploadFile,
-    HTTPException,
-    Depends,
     BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -39,17 +31,14 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-import uvicorn
 
-from .config import Settings, UserConfig
-from .ml_trainer import MLTrainer
 from .camera_manager import CameraManager
-from .shell import Shell, ViewType, CapturedImage
-
-from .hardware_controller import HardwareController
+from .config import Settings, UserConfig
 from .esphome_monitor import ESPHomeMonitor
-
+from .hardware_controller import HardwareController
 from .middleware import NoCacheMiddleware
+from .ml_trainer import MLTrainer
+from .shell import CapturedImage, Shell, ViewType
 
 
 @dataclass

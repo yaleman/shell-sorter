@@ -2,8 +2,9 @@
 
 import asyncio
 import logging
-from typing import Optional, Dict, Any, List, Callable, Coroutine
 from datetime import datetime
+from typing import Any, Callable, Coroutine, Dict, List, Optional
+
 import aiohttp  # type: ignore[import-not-found]
 from pydantic import BaseModel
 

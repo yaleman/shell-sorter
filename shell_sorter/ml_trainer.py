@@ -1,11 +1,11 @@
 """Machine learning model training for shell case identification."""
 
 import json
-import shutil
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime
 import logging
+import shutil
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from .config import Settings
 

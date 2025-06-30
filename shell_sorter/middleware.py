@@ -1,9 +1,9 @@
 """NoCacheMiddleware"""
 
-from datetime import datetime, UTC
-from typing import Callable, Awaitable
-from fastapi import Request
+from datetime import UTC, datetime
+from typing import Awaitable, Callable
 
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 

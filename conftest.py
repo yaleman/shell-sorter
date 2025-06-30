@@ -1,10 +1,10 @@
 """Pytest configuration and fixtures."""
 
+from typing import Dict, Any, Generator
 import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-from typing import Dict, Any, Generator
 
 from shell_sorter.config import Settings
 from shell_sorter.camera_manager import CameraManager
@@ -26,28 +26,29 @@ def mock_settings(temp_data_dir: Path) -> Settings:
         debug=True,
         esphome_hostname="test-controller.local",
     )
-    
+
     # Ensure directories exist
     settings.data_directory.mkdir(exist_ok=True)
     settings.image_directory.mkdir(exist_ok=True)
-    
+
     return settings
 
 
 @pytest.fixture
 def mock_camera_manager(mock_settings: Settings) -> CameraManager:
     """Create a camera manager with mocked hardware calls."""
-    with patch('shell_sorter.camera_manager.cv2') as mock_cv2, \
-         patch('shell_sorter.camera_manager.subprocess') as mock_subprocess:
-        
+    with (
+        patch("shell_sorter.camera_manager.cv2") as mock_cv2,
+        patch("shell_sorter.camera_manager.subprocess") as mock_subprocess,
+    ):
         # Mock cv2.VideoCapture to avoid accessing real cameras
         mock_capture = MagicMock()
         mock_capture.isOpened.return_value = False  # No cameras by default
         mock_cv2.VideoCapture.return_value = mock_capture
-        
+
         # Mock subprocess calls to avoid system calls
         mock_subprocess.run.return_value = MagicMock(returncode=1, stdout="", stderr="")
-        
+
         camera_manager = CameraManager(mock_settings)
         return camera_manager
 
@@ -99,10 +100,11 @@ def sample_network_camera_info() -> Dict[str, Any]:
 @pytest.fixture(autouse=True)
 def mock_platform_calls():
     """Mock platform-specific calls to avoid system dependencies."""
-    with patch('shell_sorter.camera_manager.platform.system') as mock_platform, \
-         patch('shell_sorter.camera_manager.subprocess.run') as mock_subprocess:
-        
+    with (
+        patch("shell_sorter.camera_manager.platform.system") as mock_platform,
+        patch("shell_sorter.camera_manager.subprocess.run") as mock_subprocess,
+    ):
         mock_platform.return_value = "Linux"  # Default to Linux for testing
         mock_subprocess.return_value = MagicMock(returncode=1, stdout="", stderr="")
-        
+
         yield
