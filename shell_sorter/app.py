@@ -1344,6 +1344,195 @@ async def update_shell_image_view_type(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+class ShellUpdateRequest(BaseModel):
+    """Request model for updating shell data."""
+    brand: str
+    shell_type: str
+    include: bool
+    view_type_updates: List[Dict[str, str]] = []
+
+
+@app.post("/api/ml/shells/{session_id}/update")
+async def update_shell(
+    session_id: str,
+    request: ShellUpdateRequest,
+    app_settings: Settings = Depends(get_settings),
+) -> Dict[str, Any]:
+    """Update shell data including metadata and view types."""
+    try:
+        data_dir = app_settings.data_directory
+        shell_file = data_dir / f"{session_id}.json"
+
+        if not shell_file.exists():
+            raise HTTPException(status_code=404, detail="Shell data not found")
+
+        # Load shell data
+        with open(shell_file, "r", encoding="utf-8") as f:
+            shell_data = json.load(f)
+
+        # Update basic shell metadata
+        shell_data["brand"] = request.brand.strip()
+        shell_data["shell_type"] = request.shell_type.strip()
+        shell_data["include"] = request.include
+
+        # Update view types for specific images
+        if request.view_type_updates and "captured_images" in shell_data:
+            for update in request.view_type_updates:
+                filename = update.get("filename")
+                new_view_type = update.get("view_type")
+                
+                # Update in captured_images
+                for image in shell_data["captured_images"]:
+                    if image.get("filename") == filename:
+                        image["view_type"] = new_view_type
+                        break
+
+        # Save updated shell data
+        with open(shell_file, "w", encoding="utf-8") as f:
+            json.dump(shell_data, f, indent=2, default=str)
+
+        logger.info(
+            "Updated shell data for session %s: brand=%s, type=%s, include=%s, view_type_updates=%d",
+            session_id, request.brand, request.shell_type, request.include, len(request.view_type_updates)
+        )
+
+        return {
+            "session_id": session_id,
+            "message": "Shell updated successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating shell: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.delete("/api/ml/shells/{session_id}")
+async def delete_shell(
+    session_id: str,
+    app_settings: Settings = Depends(get_settings),
+) -> Dict[str, str]:
+    """Delete a shell and all its associated images."""
+    try:
+        data_dir = app_settings.data_directory
+        shell_file = data_dir / f"{session_id}.json"
+        images_dir = Path("images")
+
+        if not shell_file.exists():
+            raise HTTPException(status_code=404, detail="Shell data not found")
+
+        # Load shell data to get image filenames
+        with open(shell_file, "r", encoding="utf-8") as f:
+            shell_data = json.load(f)
+
+        # Delete all associated image files
+        deleted_images = 0
+        image_filenames = shell_data.get("image_filenames", [])
+        for filename in image_filenames:
+            image_path = images_dir / filename
+            if image_path.exists():
+                try:
+                    image_path.unlink()
+                    deleted_images += 1
+                    logger.info("Deleted image file: %s", filename)
+                except Exception as e:
+                    logger.warning("Could not delete image %s: %s", filename, e)
+
+        # Delete metadata file if it exists
+        metadata_file = images_dir / f"{session_id}_metadata.json"
+        if metadata_file.exists():
+            try:
+                metadata_file.unlink()
+                logger.info("Deleted metadata file: %s", metadata_file.name)
+            except Exception as e:
+                logger.warning("Could not delete metadata file %s: %s", metadata_file.name, e)
+
+        # Delete composite image if it exists
+        composites_dir = data_dir / "composites"
+        composite_file = composites_dir / f"{session_id}_composite.jpg"
+        if composite_file.exists():
+            try:
+                composite_file.unlink()
+                logger.info("Deleted composite image: %s", composite_file.name)
+            except Exception as e:
+                logger.warning("Could not delete composite %s: %s", composite_file.name, e)
+
+        # Delete shell data file
+        shell_file.unlink()
+        logger.info("Deleted shell data file: %s", shell_file.name)
+
+        return {
+            "message": f"Shell deleted successfully (removed {deleted_images} images)"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error deleting shell %s: %s", session_id, e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.delete("/api/ml/shells/{session_id}/images/{filename}")
+async def delete_shell_image(
+    session_id: str,
+    filename: str,
+    app_settings: Settings = Depends(get_settings),
+) -> Dict[str, str]:
+    """Delete a specific image from a shell."""
+    try:
+        data_dir = app_settings.data_directory
+        shell_file = data_dir / f"{session_id}.json"
+        images_dir = Path("images")
+
+        if not shell_file.exists():
+            raise HTTPException(status_code=404, detail="Shell data not found")
+
+        # Load shell data
+        with open(shell_file, "r", encoding="utf-8") as f:
+            shell_data = json.load(f)
+
+        # Check if image exists in shell data
+        image_filenames = shell_data.get("image_filenames", [])
+        if filename not in image_filenames:
+            raise HTTPException(status_code=404, detail="Image not found in shell data")
+
+        # Remove from image_filenames list
+        shell_data["image_filenames"] = [f for f in image_filenames if f != filename]
+
+        # Remove from captured_images if it exists
+        if "captured_images" in shell_data:
+            shell_data["captured_images"] = [
+                img for img in shell_data["captured_images"] 
+                if img.get("filename") != filename
+            ]
+
+        # Delete the actual image file
+        image_path = images_dir / filename
+        if image_path.exists():
+            try:
+                image_path.unlink()
+                logger.info("Deleted image file: %s", filename)
+            except Exception as e:
+                logger.warning("Could not delete image file %s: %s", filename, e)
+
+        # Save updated shell data
+        with open(shell_file, "w", encoding="utf-8") as f:
+            json.dump(shell_data, f, indent=2, default=str)
+
+        logger.info("Removed image %s from shell %s", filename, session_id)
+
+        return {
+            "message": f"Image {filename} deleted successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error deleting image %s from shell %s: %s", filename, session_id, e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 async def _generate_composite_image(
     session_id: str, shell_data: Dict[str, Any], output_dir: Path
 ) -> Optional[Path]:

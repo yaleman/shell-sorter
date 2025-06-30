@@ -18,10 +18,14 @@ class MLTrainingInterface {
         document.getElementById('filter-type').addEventListener('change', () => this.applyFilters());
         document.getElementById('filter-include').addEventListener('change', () => this.applyFilters());
         
-        // View type selector event delegation (for dynamically created elements)
-        document.addEventListener('change', (event) => {
-            if (event.target.classList.contains('view-type-selector')) {
-                this.handleViewTypeChange(event.target);
+        // Edit and delete button event delegation
+        document.addEventListener('click', (event) => {
+            if (event.target.classList.contains('edit-shell-btn')) {
+                const sessionId = event.target.dataset.sessionId;
+                this.openShellEditModal(sessionId);
+            } else if (event.target.classList.contains('delete-shell-btn')) {
+                const sessionId = event.target.dataset.sessionId;
+                this.deleteShell(sessionId);
             }
         });
         
@@ -157,22 +161,21 @@ class MLTrainingInterface {
                             Captured: ${formattedDate} | Images: ${images.length} | Session: ${shell.session_id}
                         </div>
                     </div>
-                    <div class="shell-toggle">
-                        <label for="toggle-${shell.session_id}">Include in Training:</label>
-                        <input type="checkbox" id="toggle-${shell.session_id}" class="include-toggle" ${isIncluded ? 'checked' : ''}>
+                    <div class="shell-actions">
+                        <div class="shell-toggle">
+                            <label for="toggle-${shell.session_id}">Include in Training:</label>
+                            <input type="checkbox" id="toggle-${shell.session_id}" class="include-toggle" ${isIncluded ? 'checked' : ''}>
+                        </div>
+                        <button class="btn btn-sm btn-secondary edit-shell-btn" data-session-id="${shell.session_id}">Edit Shell</button>
+                        <button class="btn btn-sm btn-danger delete-shell-btn" data-session-id="${shell.session_id}">Delete</button>
                     </div>
                 </div>
                 <div class="shell-images">
                     ${sortedImages.map((image, index) => `
                         <div class="shell-image-container" data-image-index="${index}">
                             <img src="/images/${image.filename}" alt="Shell image" class="shell-image" onerror="this.style.display='none'">
-                            <div class="image-view-controls">
-                                <label class="view-type-label">${this.formatViewType(image.view_type)}</label>
-                                <select class="view-type-selector" data-session-id="${shell.session_id}" data-filename="${image.filename}">
-                                    <option value="unknown" ${image.view_type === 'unknown' ? 'selected' : ''}>Unknown</option>
-                                    <option value="side" ${image.view_type === 'side' ? 'selected' : ''}>Side View</option>
-                                    <option value="tail" ${image.view_type === 'tail' ? 'selected' : ''}>Tail View</option>
-                                </select>
+                            <div class="image-view-badge">
+                                <span class="view-type-badge view-type-${image.view_type || 'unknown'}">${this.formatViewType(image.view_type)}</span>
                             </div>
                         </div>
                     `).join('')}
@@ -195,49 +198,184 @@ class MLTrainingInterface {
         }
     }
 
-    async handleViewTypeChange(selector) {
-        const sessionId = selector.dataset.sessionId;
-        const filename = selector.dataset.filename;
-        const newViewType = selector.value;
+    openShellEditModal(sessionId) {
+        const shell = this.shells.find(s => s.session_id === sessionId);
+        if (!shell) {
+            this.showToast('Shell not found', 'error');
+            return;
+        }
+
+        // Create modal HTML
+        const modalHTML = `
+            <div class="modal-overlay" id="edit-modal-overlay">
+                <div class="edit-modal">
+                    <div class="modal-header">
+                        <h3>Edit Shell: ${shell.brand} ${shell.shell_type}</h3>
+                        <button class="modal-close" id="close-edit-modal">&times;</button>
+                    </div>
+                    <div class="modal-content">
+                        <div class="form-group">
+                            <label>Brand:</label>
+                            <input type="text" id="edit-brand" value="${shell.brand}">
+                        </div>
+                        <div class="form-group">
+                            <label>Shell Type:</label>
+                            <input type="text" id="edit-shell-type" value="${shell.shell_type}">
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="edit-include" ${shell.include !== false ? 'checked' : ''}>
+                                Include in Training
+                            </label>
+                        </div>
+                        <div class="images-section">
+                            <h4>Images</h4>
+                            <div class="edit-images">
+                                ${(shell.captured_images || shell.image_filenames.map(f => ({filename: f, view_type: 'unknown'}))).map(img => `
+                                    <div class="edit-image-item">
+                                        <img src="/images/${img.filename}" alt="Shell image" class="edit-image">
+                                        <div class="edit-image-controls">
+                                            <label>View Type:</label>
+                                            <select class="edit-view-type" data-filename="${img.filename}">
+                                                <option value="unknown" ${img.view_type === 'unknown' ? 'selected' : ''}>Unknown</option>
+                                                <option value="side" ${img.view_type === 'side' ? 'selected' : ''}>Side View</option>
+                                                <option value="tail" ${img.view_type === 'tail' ? 'selected' : ''}>Tail View</option>
+                                            </select>
+                                            <button class="btn btn-sm btn-danger delete-image-btn" data-filename="${img.filename}">Delete Image</button>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-primary" id="save-shell-changes">Save Changes</button>
+                        <button class="btn btn-secondary" id="cancel-edit-modal">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Add modal to page
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        // Add event listeners
+        document.getElementById('close-edit-modal').addEventListener('click', () => this.closeEditModal());
+        document.getElementById('cancel-edit-modal').addEventListener('click', () => this.closeEditModal());
+        document.getElementById('save-shell-changes').addEventListener('click', () => this.saveShellChanges(sessionId));
         
+        // Handle image deletion
+        document.querySelectorAll('.delete-image-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const filename = e.target.dataset.filename;
+                this.deleteImageFromShell(sessionId, filename);
+            });
+        });
+    }
+
+    closeEditModal() {
+        const modal = document.getElementById('edit-modal-overlay');
+        if (modal) {
+            modal.remove();
+        }
+    }
+
+    async saveShellChanges(sessionId) {
         try {
-            const response = await fetch(`/api/ml/shells/${sessionId}/view-type`, {
+            const brand = document.getElementById('edit-brand').value.trim();
+            const shellType = document.getElementById('edit-shell-type').value.trim();
+            const include = document.getElementById('edit-include').checked;
+
+            if (!brand || !shellType) {
+                this.showToast('Brand and shell type are required', 'error');
+                return;
+            }
+
+            // Collect view type changes
+            const viewTypeUpdates = [];
+            document.querySelectorAll('.edit-view-type').forEach(select => {
+                viewTypeUpdates.push({
+                    filename: select.dataset.filename,
+                    view_type: select.value
+                });
+            });
+
+            // Save basic shell data
+            const response = await fetch(`/api/ml/shells/${sessionId}/update`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    filename: filename,
-                    view_type: newViewType
+                    brand: brand,
+                    shell_type: shellType,
+                    include: include,
+                    view_type_updates: viewTypeUpdates
                 })
             });
 
             if (response.ok) {
-                // Update local data
-                const shell = this.shells.find(s => s.session_id === sessionId);
-                if (shell && shell.captured_images) {
-                    const image = shell.captured_images.find(img => img.filename === filename);
-                    if (image) {
-                        image.view_type = newViewType;
-                        // Update the label
-                        const container = selector.closest('.shell-image-container');
-                        const label = container.querySelector('.view-type-label');
-                        if (label) {
-                            label.textContent = this.formatViewType(newViewType);
-                        }
-                        // Re-render the shell to update sorting
-                        this.renderShells();
-                    }
-                }
-                this.showToast('View type updated successfully', 'success');
+                this.showToast('Shell updated successfully', 'success');
+                this.closeEditModal();
+                this.loadShells(); // Reload to show changes
             } else {
-                throw new Error(`Failed to update view type: ${response.statusText}`);
+                throw new Error(`Failed to update shell: ${response.statusText}`);
             }
         } catch (error) {
-            console.error('Error updating view type:', error);
-            this.showToast('Error updating view type: ' + error.message, 'error');
-            // Revert selector to previous value
-            selector.value = selector.dataset.originalValue || 'unknown';
+            console.error('Error saving shell changes:', error);
+            this.showToast('Error saving changes: ' + error.message, 'error');
+        }
+    }
+
+    async deleteShell(sessionId) {
+        const shell = this.shells.find(s => s.session_id === sessionId);
+        if (!shell) {
+            this.showToast('Shell not found', 'error');
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete the shell "${shell.brand} ${shell.shell_type}" and all its images? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/ml/shells/${sessionId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                this.showToast('Shell deleted successfully', 'success');
+                this.loadShells(); // Reload to show changes
+            } else {
+                throw new Error(`Failed to delete shell: ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('Error deleting shell:', error);
+            this.showToast('Error deleting shell: ' + error.message, 'error');
+        }
+    }
+
+    async deleteImageFromShell(sessionId, filename) {
+        if (!confirm(`Are you sure you want to delete the image "${filename}"? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/ml/shells/${sessionId}/images/${filename}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                this.showToast('Image deleted successfully', 'success');
+                // Reload the modal to show changes
+                this.closeEditModal();
+                this.openShellEditModal(sessionId);
+            } else {
+                throw new Error(`Failed to delete image: ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('Error deleting image:', error);
+            this.showToast('Error deleting image: ' + error.message, 'error');
         }
     }
 
