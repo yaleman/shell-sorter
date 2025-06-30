@@ -1586,6 +1586,139 @@ async def delete_shell_image(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+class RegionUpdateRequest(BaseModel):
+    """Request model for updating region data on an image."""
+    region_x: int
+    region_y: int
+    region_width: int
+    region_height: int
+
+
+@app.post("/api/ml/shells/{session_id}/images/{filename}/region")
+async def update_image_region(
+    session_id: str,
+    filename: str,
+    request: RegionUpdateRequest,
+    app_settings: Settings = Depends(get_settings),
+) -> Dict[str, str]:
+    """Update region data for a specific image in a shell."""
+    try:
+        data_dir = app_settings.data_directory
+        shell_file = data_dir / f"{session_id}.json"
+
+        if not shell_file.exists():
+            raise HTTPException(status_code=404, detail="Shell data not found")
+
+        # Load shell data
+        with open(shell_file, "r", encoding="utf-8") as f:
+            shell_data = json.load(f)
+
+        # Check if image exists in shell data
+        image_filenames = shell_data.get("image_filenames", [])
+        if filename not in image_filenames:
+            raise HTTPException(status_code=404, detail="Image not found in shell data")
+
+        # Update region in captured_images if it exists
+        if "captured_images" in shell_data:
+            for image in shell_data["captured_images"]:
+                if image.get("filename") == filename:
+                    image["region_x"] = request.region_x
+                    image["region_y"] = request.region_y
+                    image["region_width"] = request.region_width
+                    image["region_height"] = request.region_height
+                    break
+            else:
+                # Image not found in captured_images, create new entry
+                shell_data["captured_images"].append({
+                    "filename": filename,
+                    "region_x": request.region_x,
+                    "region_y": request.region_y,
+                    "region_width": request.region_width,
+                    "region_height": request.region_height,
+                    "view_type": "unknown",
+                    "camera_index": 0,
+                    "camera_name": "unknown"
+                })
+        else:
+            # Create captured_images structure
+            shell_data["captured_images"] = [{
+                "filename": filename,
+                "region_x": request.region_x,
+                "region_y": request.region_y,
+                "region_width": request.region_width,
+                "region_height": request.region_height,
+                "view_type": "unknown",
+                "camera_index": 0,
+                "camera_name": "unknown"
+            }]
+
+        # Save updated shell data
+        with open(shell_file, "w", encoding="utf-8") as f:
+            json.dump(shell_data, f, indent=2, default=str)
+
+        logger.info(
+            "Updated region for image %s in shell %s: (%d,%d) %dx%d",
+            filename, session_id, request.region_x, request.region_y,
+            request.region_width, request.region_height
+        )
+
+        return {"message": f"Region updated for image {filename}"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating region for image %s in shell %s: %s", filename, session_id, e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.delete("/api/ml/shells/{session_id}/images/{filename}/region")
+async def clear_image_region(
+    session_id: str,
+    filename: str,
+    app_settings: Settings = Depends(get_settings),
+) -> Dict[str, str]:
+    """Clear region data for a specific image in a shell."""
+    try:
+        data_dir = app_settings.data_directory
+        shell_file = data_dir / f"{session_id}.json"
+
+        if not shell_file.exists():
+            raise HTTPException(status_code=404, detail="Shell data not found")
+
+        # Load shell data
+        with open(shell_file, "r", encoding="utf-8") as f:
+            shell_data = json.load(f)
+
+        # Check if image exists in shell data
+        image_filenames = shell_data.get("image_filenames", [])
+        if filename not in image_filenames:
+            raise HTTPException(status_code=404, detail="Image not found in shell data")
+
+        # Clear region in captured_images if it exists
+        if "captured_images" in shell_data:
+            for image in shell_data["captured_images"]:
+                if image.get("filename") == filename:
+                    image["region_x"] = None
+                    image["region_y"] = None
+                    image["region_width"] = None
+                    image["region_height"] = None
+                    break
+
+        # Save updated shell data
+        with open(shell_file, "w", encoding="utf-8") as f:
+            json.dump(shell_data, f, indent=2, default=str)
+
+        logger.info("Cleared region for image %s in shell %s", filename, session_id)
+
+        return {"message": f"Region cleared for image {filename}"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error clearing region for image %s in shell %s: %s", filename, session_id, e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 async def _generate_composite_image(
     session_id: str, shell_data: Dict[str, Any], output_dir: Path
 ) -> Optional[Path]:

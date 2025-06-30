@@ -288,20 +288,56 @@ class MLTrainingInterface {
                                 Include in Training
                             </label>
                         </div>
+                        <div class="composite-section">
+                            <h4>Composite Image</h4>
+                            <div class="composite-preview-modal">
+                                <img src="/api/composites/${shell.session_id}" alt="Composite image" class="composite-image-modal" 
+                                     onerror="this.parentElement.innerHTML='<div class=\\'no-composite\\'>No composite image available. Generate composites first.</div>'">
+                            </div>
+                        </div>
+                        
                         <div class="images-section">
-                            <h4>Images</h4>
+                            <h4>Images & Regions</h4>
                             <div class="edit-images">
-                                ${(shell.captured_images || shell.image_filenames.map(f => ({filename: f, view_type: 'unknown'}))).map(img => `
-                                    <div class="edit-image-item">
-                                        <img src="/images/${img.filename}" alt="Shell image" class="edit-image">
+                                ${(shell.captured_images || shell.image_filenames.map(f => ({filename: f, view_type: 'unknown'}))).map((img, index) => `
+                                    <div class="edit-image-item" data-image-index="${index}">
+                                        <div class="edit-image-container">
+                                            <img src="/images/${img.filename}" alt="Shell image" class="edit-image" id="edit-image-${index}">
+                                            <div class="region-overlay-container" id="region-overlay-container-${index}">
+                                                ${img.region_x !== null && img.region_x !== undefined ? 
+                                                    `<div class="region-overlay-edit" id="region-overlay-${index}" 
+                                                          data-region-x="${img.region_x}" 
+                                                          data-region-y="${img.region_y}" 
+                                                          data-region-width="${img.region_width}" 
+                                                          data-region-height="${img.region_height}">
+                                                     </div>` : ''
+                                                }
+                                            </div>
+                                        </div>
                                         <div class="edit-image-controls">
-                                            <label>View Type:</label>
-                                            <select class="edit-view-type" data-filename="${img.filename}">
-                                                <option value="unknown" ${img.view_type === 'unknown' ? 'selected' : ''}>Unknown</option>
-                                                <option value="side" ${img.view_type === 'side' ? 'selected' : ''}>Side View</option>
-                                                <option value="tail" ${img.view_type === 'tail' ? 'selected' : ''}>Tail View</option>
-                                            </select>
-                                            <button class="btn btn-sm btn-danger delete-image-btn" data-filename="${img.filename}">Delete Image</button>
+                                            <div class="control-row">
+                                                <label>View Type:</label>
+                                                <select class="edit-view-type" data-filename="${img.filename}">
+                                                    <option value="unknown" ${(img.view_type || 'unknown') === 'unknown' ? 'selected' : ''}>Unknown</option>
+                                                    <option value="side" ${img.view_type === 'side' ? 'selected' : ''}>Side View</option>
+                                                    <option value="tail" ${img.view_type === 'tail' ? 'selected' : ''}>Tail View</option>
+                                                </select>
+                                            </div>
+                                            <div class="control-row">
+                                                <button class="btn btn-sm btn-primary edit-region-btn" data-image-index="${index}" data-filename="${img.filename}">
+                                                    ${img.region_x !== null && img.region_x !== undefined ? 'Edit Region' : 'Select Region'}
+                                                </button>
+                                                ${img.region_x !== null && img.region_x !== undefined ? 
+                                                    `<button class="btn btn-sm btn-warning clear-region-btn" data-image-index="${index}" data-filename="${img.filename}">Clear Region</button>` 
+                                                    : ''
+                                                }
+                                                <button class="btn btn-sm btn-danger delete-image-btn" data-filename="${img.filename}">Delete Image</button>
+                                            </div>
+                                            ${img.region_x !== null && img.region_x !== undefined ? 
+                                                `<div class="region-info">
+                                                    Region: ${img.region_x},${img.region_y} (${img.region_width}x${img.region_height})
+                                                 </div>` : ''
+                                            }
                                         </div>
                                     </div>
                                 `).join('')}
@@ -335,6 +371,27 @@ class MLTrainingInterface {
                 this.deleteImageFromShell(sessionId, filename);
             });
         });
+        
+        // Handle region editing
+        document.querySelectorAll('.edit-region-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const imageIndex = parseInt(e.target.dataset.imageIndex);
+                const filename = e.target.dataset.filename;
+                this.startRegionEdit(sessionId, imageIndex, filename);
+            });
+        });
+        
+        // Handle region clearing
+        document.querySelectorAll('.clear-region-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const imageIndex = parseInt(e.target.dataset.imageIndex);
+                const filename = e.target.dataset.filename;
+                this.clearRegionFromImage(sessionId, imageIndex, filename);
+            });
+        });
+        
+        // Initialize region overlays
+        setTimeout(() => this.initializeRegionOverlays(), 100);
     }
 
     closeEditModal() {
@@ -469,6 +526,245 @@ class MLTrainingInterface {
         } catch (error) {
             console.error('Error deleting image:', error);
             this.showToast('Error deleting image: ' + error.message, 'error');
+        }
+    }
+
+    initializeRegionOverlays() {
+        // Initialize region overlays for images that have regions
+        document.querySelectorAll('.region-overlay-edit').forEach(overlay => {
+            const regionX = parseInt(overlay.dataset.regionX);
+            const regionY = parseInt(overlay.dataset.regionY);
+            const regionWidth = parseInt(overlay.dataset.regionWidth);
+            const regionHeight = parseInt(overlay.dataset.regionHeight);
+            
+            // Find the corresponding image
+            const container = overlay.closest('.edit-image-container');
+            const image = container.querySelector('.edit-image');
+            
+            if (image && image.complete) {
+                this.updateRegionOverlay(overlay, image, regionX, regionY, regionWidth, regionHeight);
+            } else if (image) {
+                image.addEventListener('load', () => {
+                    this.updateRegionOverlay(overlay, image, regionX, regionY, regionWidth, regionHeight);
+                });
+            }
+        });
+    }
+
+    updateRegionOverlay(overlay, image, regionX, regionY, regionWidth, regionHeight) {
+        const scaleX = image.clientWidth / image.naturalWidth;
+        const scaleY = image.clientHeight / image.naturalHeight;
+        
+        const left = regionX * scaleX;
+        const top = regionY * scaleY;
+        const width = regionWidth * scaleX;
+        const height = regionHeight * scaleY;
+        
+        overlay.style.left = left + 'px';
+        overlay.style.top = top + 'px';
+        overlay.style.width = width + 'px';
+        overlay.style.height = height + 'px';
+        overlay.style.display = 'block';
+    }
+
+    startRegionEdit(sessionId, imageIndex, filename) {
+        const image = document.getElementById(`edit-image-${imageIndex}`);
+        const container = image.closest('.edit-image-container');
+        
+        if (!image || !container) {
+            this.showToast('Image not found', 'error');
+            return;
+        }
+
+        // Create or get overlay
+        let overlay = document.getElementById(`region-overlay-${imageIndex}`);
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = `region-overlay-${imageIndex}`;
+            overlay.className = 'region-overlay-edit';
+            container.appendChild(overlay);
+        }
+
+        // Initialize region selection on this image
+        this.initializeRegionSelection(sessionId, imageIndex, filename, image, overlay);
+    }
+
+    initializeRegionSelection(sessionId, imageIndex, filename, image, overlay) {
+        let isSelecting = false;
+        let startX = 0;
+        let startY = 0;
+        let currentSelection = null;
+
+        const getImageCoordinates = (event) => {
+            const rect = image.getBoundingClientRect();
+            const scaleX = image.naturalWidth / image.clientWidth;
+            const scaleY = image.naturalHeight / image.clientHeight;
+            
+            const x = Math.round((event.clientX - rect.left) * scaleX);
+            const y = Math.round((event.clientY - rect.top) * scaleY);
+            
+            return { x, y };
+        };
+
+        const updateOverlay = (x1, y1, x2, y2) => {
+            const rect = image.getBoundingClientRect();
+            const scaleX = image.clientWidth / image.naturalWidth;
+            const scaleY = image.clientHeight / image.naturalHeight;
+            
+            const left = Math.min(x1, x2) * scaleX;
+            const top = Math.min(y1, y2) * scaleY;
+            const width = Math.abs(x2 - x1) * scaleX;
+            const height = Math.abs(y2 - y1) * scaleY;
+            
+            overlay.style.left = left + 'px';
+            overlay.style.top = top + 'px';
+            overlay.style.width = width + 'px';
+            overlay.style.height = height + 'px';
+            overlay.style.display = 'block';
+        };
+
+        const updateSelection = (x1, y1, x2, y2) => {
+            const minX = Math.min(x1, x2);
+            const minY = Math.min(y1, y2);
+            const maxX = Math.max(x1, x2);
+            const maxY = Math.max(y1, y2);
+            const width = maxX - minX;
+            const height = maxY - minY;
+            
+            currentSelection = { x: minX, y: minY, width, height };
+        };
+
+        // Mouse events for region selection
+        const handleMouseDown = (event) => {
+            if (event.button !== 0) return; // Only left mouse button
+            
+            isSelecting = true;
+            const coords = getImageCoordinates(event);
+            startX = coords.x;
+            startY = coords.y;
+            
+            image.style.cursor = 'crosshair';
+            event.preventDefault();
+        };
+
+        const handleMouseMove = (event) => {
+            if (!isSelecting) return;
+            
+            const coords = getImageCoordinates(event);
+            updateOverlay(startX, startY, coords.x, coords.y);
+            updateSelection(startX, startY, coords.x, coords.y);
+            
+            event.preventDefault();
+        };
+
+        const handleMouseUp = (event) => {
+            if (!isSelecting) return;
+            
+            isSelecting = false;
+            image.style.cursor = 'default';
+            
+            const coords = getImageCoordinates(event);
+            updateSelection(startX, startY, coords.x, coords.y);
+            
+            // Show save/cancel buttons
+            this.showRegionSaveDialog(sessionId, imageIndex, filename, currentSelection);
+            
+            event.preventDefault();
+        };
+
+        // Add event listeners
+        image.addEventListener('mousedown', handleMouseDown);
+        image.addEventListener('mousemove', handleMouseMove);
+        image.addEventListener('mouseup', handleMouseUp);
+        image.addEventListener('contextmenu', (e) => e.preventDefault());
+        
+        // Store cleanup function
+        image._regionCleanup = () => {
+            image.removeEventListener('mousedown', handleMouseDown);
+            image.removeEventListener('mousemove', handleMouseMove);
+            image.removeEventListener('mouseup', handleMouseUp);
+            image.style.cursor = 'default';
+        };
+
+        this.showToast('Click and drag to select a region on the image', 'info');
+    }
+
+    showRegionSaveDialog(sessionId, imageIndex, filename, selection) {
+        if (!selection || selection.width < 10 || selection.height < 10) {
+            this.showToast('Region is too small. Please select a larger area.', 'warning');
+            return;
+        }
+
+        const confirmed = confirm(`Save region: ${selection.x},${selection.y} (${selection.width}x${selection.height})?`);
+        
+        if (confirmed) {
+            this.saveRegionToImage(sessionId, imageIndex, filename, selection);
+        } else {
+            // Clear the overlay
+            const overlay = document.getElementById(`region-overlay-${imageIndex}`);
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+        }
+
+        // Clean up event listeners
+        const image = document.getElementById(`edit-image-${imageIndex}`);
+        if (image && image._regionCleanup) {
+            image._regionCleanup();
+            delete image._regionCleanup;
+        }
+    }
+
+    async saveRegionToImage(sessionId, imageIndex, filename, selection) {
+        try {
+            const response = await fetch(`/api/ml/shells/${sessionId}/images/${filename}/region`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    region_x: selection.x,
+                    region_y: selection.y,
+                    region_width: selection.width,
+                    region_height: selection.height
+                })
+            });
+
+            if (response.ok) {
+                this.showToast('Region saved successfully', 'success');
+                // Reload the modal to show changes
+                this.closeEditModal();
+                this.openShellEditModal(sessionId);
+            } else {
+                throw new Error(`Failed to save region: ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('Error saving region:', error);
+            this.showToast('Error saving region: ' + error.message, 'error');
+        }
+    }
+
+    async clearRegionFromImage(sessionId, imageIndex, filename) {
+        if (!confirm('Are you sure you want to clear the region for this image?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/ml/shells/${sessionId}/images/${filename}/region`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                this.showToast('Region cleared successfully', 'success');
+                // Reload the modal to show changes
+                this.closeEditModal();
+                this.openShellEditModal(sessionId);
+            } else {
+                throw new Error(`Failed to clear region: ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('Error clearing region:', error);
+            this.showToast('Error clearing region: ' + error.message, 'error');
         }
     }
 
