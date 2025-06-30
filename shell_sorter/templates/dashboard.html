@@ -65,28 +65,32 @@
                                 <span class="camera-status status-{{ 'active' if camera.is_active else 'inactive' }}">
                                     {{ 'Active' if camera.is_active else 'Inactive' }}
                                 </span>
-                            </div>
-                            <div class="camera-settings">
-                                <div class="view-type-control">
-                                    <label>View Type:</label>
-                                    <select class="view-type-select" data-camera-index="{{ camera.index }}">
-                                        <option value="">Select type...</option>
-                                        <option value="side" {% if camera.view_type == 'side' %}selected{% endif %}>Side View</option>
-                                        <option value="tail" {% if camera.view_type == 'tail' %}selected{% endif %}>Tail View</option>
-                                    </select>
-                                </div>
-                                {% if camera.view_type in ['side', 'tail'] %}
-                                <div class="region-control">
-                                    <button class="btn btn-sm btn-secondary region-select-btn" data-camera-index="{{ camera.index }}">
-                                        {% if camera.region_x is not none %}Edit Region{% else %}Select Region{% endif %}
-                                    </button>
-                                    {% if camera.region_x is not none %}
-                                    <span class="region-info">{{ camera.region_x }},{{ camera.region_y }} ({{ camera.region_width }}x{{ camera.region_height }})</span>
-                                    <button class="btn btn-sm btn-danger region-clear-btn" data-camera-index="{{ camera.index }}">Clear</button>
+                                <div class="camera-controls-inline">
+                                    <div class="view-type-control">
+                                        <label>View:</label>
+                                        <select class="view-type-select" data-camera-index="{{ camera.index }}">
+                                            <option value="">Select...</option>
+                                            <option value="side" {% if camera.view_type == 'side' %}selected{% endif %}>Side</option>
+                                            <option value="tail" {% if camera.view_type == 'tail' %}selected{% endif %}>Tail</option>
+                                        </select>
+                                    </div>
+                                    {% if camera.view_type in ['side', 'tail'] %}
+                                    <div class="region-control">
+                                        <button class="btn btn-sm btn-secondary region-select-btn" data-camera-index="{{ camera.index }}">
+                                            {% if camera.region_x is not none %}Edit Region{% else %}Select Region{% endif %}
+                                        </button>
+                                        {% if camera.region_x is not none %}
+                                        <button class="btn btn-sm btn-danger region-clear-btn" data-camera-index="{{ camera.index }}">Clear</button>
+                                        {% endif %}
+                                    </div>
                                     {% endif %}
                                 </div>
-                                {% endif %}
                             </div>
+                            {% if camera.region_x is not none %}
+                            <div class="camera-region-info">
+                                <span class="region-info">Region: {{ camera.region_x }},{{ camera.region_y }} ({{ camera.region_width }}x{{ camera.region_height }})</span>
+                            </div>
+                            {% endif %}
                             {% if camera.is_active %}
                             <div class="camera-feed" 
                                  data-camera-index="{{ camera.index }}"
