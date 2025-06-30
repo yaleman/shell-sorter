@@ -109,7 +109,9 @@ class TestCameraManager:
         mock_capture.isOpened.return_value = False
         mock_cv2.VideoCapture.return_value = mock_capture
         
-        cameras = mock_camera_manager.detect_cameras()
+        # Mock detect_esphome_cameras to return empty list quickly
+        with patch.object(mock_camera_manager, 'detect_esphome_cameras', return_value=[]):
+            cameras = mock_camera_manager.detect_cameras()
         
         assert len(cameras) == 0
         assert len(mock_camera_manager.cameras) == 0
@@ -129,7 +131,9 @@ class TestCameraManager:
         
         mock_cv2.VideoCapture.side_effect = mock_video_capture
         
-        cameras = mock_camera_manager.detect_cameras()
+        # Mock detect_esphome_cameras to return empty list quickly
+        with patch.object(mock_camera_manager, 'detect_esphome_cameras', return_value=[]):
+            cameras = mock_camera_manager.detect_cameras()
         
         assert len(cameras) == 1
         assert cameras[0].index == 0
