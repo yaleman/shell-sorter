@@ -9,6 +9,8 @@ import subprocess
 import platform
 import json
 from io import BytesIO
+import aiohttp  # type: ignore[import-not-found]
+import asyncio
 
 import cv2  # type: ignore[import-not-found]
 from PIL import Image
@@ -38,6 +40,10 @@ class CameraInfo:
     region_y: Optional[int] = None
     region_width: Optional[int] = None
     region_height: Optional[int] = None
+    # Network camera support
+    is_network_camera: bool = False
+    stream_url: Optional[str] = None
+    hostname: Optional[str] = None
 
 
 class CameraManager:
@@ -199,10 +205,87 @@ class CameraManager:
         # Final fallback
         return f"Camera {camera_index}"
 
+    def detect_esphome_cameras(self) -> List[CameraInfo]:
+        """Detect ESPHome cameras on the network."""
+        # Run async detection in event loop
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If we're already in an event loop, create a task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, self._detect_esphome_cameras_async())
+                    return future.result(timeout=10)
+            else:
+                return asyncio.run(self._detect_esphome_cameras_async())
+        except Exception as e:
+            logger.warning("Failed to detect ESPHome cameras: %s", e)
+            return []
+    
+    async def _detect_esphome_cameras_async(self) -> List[CameraInfo]:
+        """Async method to detect ESPHome cameras on the network."""
+        esphome_cameras = []
+        # List of ESPHome devices to check
+        esphome_hosts = [
+            "esp32cam1.local",
+            "shell-sorter-controller.local",  # Main controller might have camera too
+        ]
+        
+        timeout = aiohttp.ClientTimeout(total=5)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            for i, hostname in enumerate(esphome_hosts):
+                try:
+                    # Check if the device is reachable and has a camera
+                    camera_url = f"http://{hostname}/camera"
+                    async with session.get(camera_url) as response:
+                        if response.status == 200 and "image" in response.headers.get("content-type", ""):
+                            # This is a valid camera stream
+                            # Try to get image dimensions from the first frame
+                            image_data = await response.read()
+                            
+                            # Default resolution for ESPHome cameras
+                            width, height = 800, 600
+                            
+                            # Try to parse image headers to get actual dimensions
+                            try:
+                                img = Image.open(BytesIO(image_data))
+                                width, height = img.size
+                            except Exception:
+                                # Keep default resolution
+                                pass
+                            
+                            camera_info = CameraInfo(
+                                index=1000 + i,  # Use high indices to avoid conflicts with USB cameras
+                                name=f"ESPHome Camera ({hostname})",
+                                resolution=(width, height),
+                                is_active=False,
+                                is_selected=True,  # Auto-select network cameras
+                                is_network_camera=True,
+                                stream_url=camera_url,
+                                hostname=hostname,
+                            )
+                            
+                            # Load camera configuration from user config if available
+                            if self.settings:
+                                self._load_camera_config(camera_info)
+                            
+                            esphome_cameras.append(camera_info)
+                            logger.info("Detected ESPHome camera: %s at %s", camera_info.name, hostname)
+                            
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    logger.debug("ESPHome camera not found at %s: %s", hostname, e)
+                    continue
+                except Exception as e:
+                    logger.debug("Error checking ESPHome camera at %s: %s", hostname, e)
+                    continue
+                    
+        return esphome_cameras
+
     def detect_cameras(self) -> List[CameraInfo]:
-        """Detect all available cameras."""
+        """Detect all available cameras (USB and network)."""
         cameras = []
 
+        # Detect USB cameras first
         # Try camera indices 0-9
         for i in range(10):
             cap = cv2.VideoCapture(i)
@@ -234,6 +317,12 @@ class CameraManager:
 
             cap.release()
 
+        # Detect ESPHome network cameras
+        esphome_cameras = self.detect_esphome_cameras()
+        cameras.extend(esphome_cameras)
+
+        logger.info("Detected %d cameras (%d USB, %d ESPHome)", 
+                   len(cameras), len(cameras) - len(esphome_cameras), len(esphome_cameras))
         return cameras
 
     def get_cameras(self) -> List[CameraInfo]:
@@ -356,31 +445,49 @@ class CameraManager:
                 logger.warning("Camera %d not found in detected cameras", camera_index)
                 return False
 
+            camera_info = self.cameras[camera_index]
+            
             # Stop existing stream if running
             self.stop_camera_stream(camera_index)
 
-            # Create new capture with timeout
-            logger.info("Opening camera %d...", camera_index)
-            cap = self._open_camera_with_timeout(camera_index, timeout=3.0)
-            if cap is None:
-                logger.error("Failed to open camera %d within timeout", camera_index)
-                return False
+            if camera_info.is_network_camera:
+                # Handle network camera (ESPHome)
+                logger.info("Starting network camera stream %d (%s)...", camera_index, camera_info.hostname)
+                
+                # For network cameras, we don't use OpenCV capture, just prepare for streaming
+                self.stop_streaming[camera_index] = threading.Event()
+                self.latest_frames[camera_index] = None
+                
+                # Start network streaming thread
+                thread = threading.Thread(
+                    target=self._stream_network_camera, args=(camera_index,), daemon=True
+                )
+                self.streaming_threads[camera_index] = thread
+                thread.start()
+                
+            else:
+                # Handle USB camera
+                logger.info("Opening USB camera %d...", camera_index)
+                cap = self._open_camera_with_timeout(camera_index, timeout=3.0)
+                if cap is None:
+                    logger.error("Failed to open camera %d within timeout", camera_index)
+                    return False
 
-            # Set camera properties for better performance
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            cap.set(cv2.CAP_PROP_FPS, 30)
+                # Set camera properties for better performance
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                cap.set(cv2.CAP_PROP_FPS, 30)
 
-            self.active_captures[camera_index] = cap
-            self.stop_streaming[camera_index] = threading.Event()
-            self.latest_frames[camera_index] = None
+                self.active_captures[camera_index] = cap
+                self.stop_streaming[camera_index] = threading.Event()
+                self.latest_frames[camera_index] = None
 
-            # Start streaming thread
-            thread = threading.Thread(
-                target=self._stream_camera, args=(camera_index,), daemon=True
-            )
-            self.streaming_threads[camera_index] = thread
-            thread.start()
+                # Start USB camera streaming thread
+                thread = threading.Thread(
+                    target=self._stream_camera, args=(camera_index,), daemon=True
+                )
+                self.streaming_threads[camera_index] = thread
+                thread.start()
 
             self.cameras[camera_index].is_active = True
             logger.info("Started streaming from camera %d", camera_index)
@@ -456,6 +563,71 @@ class CameraManager:
 
         logger.info("Stopped streaming thread for camera %d", camera_index)
 
+    def _stream_network_camera(self, camera_index: int) -> None:
+        """Stream frames from a network camera (ESPHome) in a separate thread."""
+        camera_info = self.cameras[camera_index]
+        stop_event = self.stop_streaming[camera_index]
+
+        logger.info("Started network streaming thread for camera %d (%s)", camera_index, camera_info.hostname)
+
+        # Run async streaming in this thread
+        try:
+            asyncio.run(self._async_stream_network_camera(camera_index, camera_info, stop_event))
+        except Exception as e:
+            logger.error("Error in network camera %d streaming: %s", camera_index, e)
+
+        logger.info("Stopped network streaming thread for camera %d", camera_index)
+
+    async def _async_stream_network_camera(self, camera_index: int, camera_info: CameraInfo, stop_event: threading.Event) -> None:
+        """Async method to stream frames from a network camera."""
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            while not stop_event.is_set():
+                try:
+                    # Fetch frame from ESPHome camera
+                    async with session.get(camera_info.stream_url) as response:
+                        if response.status == 200:
+                            frame_data = await response.read()
+                            
+                            # Store latest frame
+                            self.latest_frames[camera_index] = frame_data
+                        else:
+                            logger.warning("Failed to fetch frame from network camera %d: HTTP %d", 
+                                         camera_index, response.status)
+
+                    # Delay for network cameras (slower refresh rate) with stop check
+                    await asyncio.sleep(0.2)  # ~5fps for network cameras
+                    if stop_event.is_set():
+                        break
+
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    logger.warning("Network error for camera %d: %s", camera_index, e)
+                    await asyncio.sleep(2.0)  # Wait longer on network errors
+                    if stop_event.is_set():
+                        break
+                except Exception as e:
+                    logger.error("Error in async network camera %d streaming: %s", camera_index, e)
+                    break
+
+    async def _capture_network_image_async(self, camera_info: CameraInfo) -> Optional[bytes]:
+        """Async method to capture an image from a network camera."""
+        timeout = aiohttp.ClientTimeout(total=15)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(camera_info.stream_url) as response:
+                    if response.status == 200:
+                        image_bytes: bytes = await response.read()
+                        return image_bytes
+                    else:
+                        logger.error("Failed to capture from network camera: HTTP %d", response.status)
+                        return None
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            logger.error("Network error capturing image: %s", e)
+            return None
+        except Exception as e:
+            logger.error("Error capturing network image: %s", e)
+            return None
+
     def get_latest_frame(self, camera_index: int) -> Optional[bytes]:
         """Get the latest frame from a camera as JPEG bytes."""
         return self.latest_frames.get(camera_index)
@@ -506,39 +678,72 @@ class CameraManager:
         camera_info = self.cameras[camera_index]
 
         try:
-            # Open camera for high-resolution capture
-            cap = self._open_camera_with_timeout(camera_index, timeout=5.0)
-            if cap is None:
-                logger.error(
-                    "Failed to open camera %d for high-resolution capture", camera_index
-                )
-                return None
+            if camera_info.is_network_camera:
+                # Handle network camera capture
+                logger.info("Capturing high-resolution image from network camera %d", camera_index)
+                
+                # Get image from ESPHome camera using async method
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # If we're already in an event loop, create a task
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(asyncio.run, self._capture_network_image_async(camera_info))
+                            image_data = future.result(timeout=15)
+                    else:
+                        image_data = asyncio.run(self._capture_network_image_async(camera_info))
+                        
+                    if image_data is None:
+                        logger.error("Failed to capture from network camera %d", camera_index)
+                        return None
+                        
+                    # Convert response to PIL Image
+                    pil_image = Image.open(BytesIO(image_data))
+                    
+                    # Convert to RGB if needed
+                    if pil_image.mode != 'RGB':
+                        pil_image = pil_image.convert('RGB')  # type: ignore[assignment]
+                        
+                except Exception as e:
+                    logger.error("Error capturing from network camera %d: %s", camera_index, e)
+                    return None
+                    
+            else:
+                # Handle USB camera capture
+                # Open camera for high-resolution capture
+                cap = self._open_camera_with_timeout(camera_index, timeout=5.0)
+                if cap is None:
+                    logger.error(
+                        "Failed to open camera %d for high-resolution capture", camera_index
+                    )
+                    return None
 
-            # Get maximum resolution supported by the camera
-            max_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            max_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                # Get maximum resolution supported by the camera
+                max_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                max_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-            # Try to set to maximum resolution if different from current
-            if (
-                max_width != camera_info.resolution[0]
-                or max_height != camera_info.resolution[1]
-            ):
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_info.resolution[0])
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_info.resolution[1])
+                # Try to set to maximum resolution if different from current
+                if (
+                    max_width != camera_info.resolution[0]
+                    or max_height != camera_info.resolution[1]
+                ):
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_info.resolution[0])
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_info.resolution[1])
 
-            # Capture frame
-            ret, frame = cap.read()
-            cap.release()
+                # Capture frame
+                ret, frame = cap.read()
+                cap.release()
 
-            if not ret or frame is None:
-                logger.error("Failed to capture frame from camera %d", camera_index)
-                return None
+                if not ret or frame is None:
+                    logger.error("Failed to capture frame from camera %d", camera_index)
+                    return None
 
-            # Convert BGR to RGB for PIL
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                # Convert BGR to RGB for PIL
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Create PIL Image
-            pil_image = Image.fromarray(frame_rgb)
+                # Create PIL Image
+                pil_image = Image.fromarray(frame_rgb)  # type: ignore[assignment]
 
             # Add EXIF metadata
             exif_dict: Dict[str, Any] = {

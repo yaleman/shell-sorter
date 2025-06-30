@@ -11,6 +11,7 @@ This application controls an ammunition shell case sorting machine that uses com
 - Never allow a bare "type: ignore" comment
 - Never use global variables
 - Never use inline javascript or css in a web page unless there's no other way to solve the problem
+- If you're thinking about implementing backwards compatibility, check with the user first
 
 ## Architecture
 

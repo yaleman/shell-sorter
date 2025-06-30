@@ -1,10 +1,12 @@
 # Shell Sorter
 
-An automated ammunition shell case sorting machine that uses computer vision and machine learning to identify and sort different types of shell cases.
+An automated ammunition shell case sorting machine that uses computer vision and
+machine learning to identify and sort different types of shell cases.
 
 ## System Overview
 
-The Shell Sorter is a complete hardware and software solution for automatically processing and cataloging ammunition shell cases. The system combines:
+The Shell Sorter is a complete hardware and software solution for automatically
+processing and cataloging ammunition shell cases. The system combines:
 
 - **Computer Vision**: Multi-camera setup for high-quality shell case imaging
 - **Machine Learning**: Automated case type identification and classification
@@ -48,7 +50,7 @@ The system requires an ESP32 development board with the following connections:
 
 #### GPIO Pin Assignments
 
-```
+```text
 ESP32 Pin  | Component              | Connection Notes
 -----------+------------------------+------------------------------------------
 GPIO18     | Case Ready Sensor      | Binary sensor with internal pullup
@@ -63,7 +65,7 @@ GND        | Common Ground          | Connect to all component grounds
 
 #### Wiring Diagram
 
-```
+```text
 ESP32                          Components
 -----                          ----------
 
@@ -82,15 +84,20 @@ GND   ---- All component grounds
 
 #### Important Notes
 
-- **Servo Power**: While servos can run on 3.3V, they perform better with 5V external supply
-- **Vibration Motor**: Requires appropriate driver circuit (transistor/relay) for higher current
-- **Sensor Types**: Any normally-open binary sensors work (limit switches, proximity sensors)
-- **WiFi Setup**: ESP32 will create fallback AP "Shell-Sorter-Fallback" (password: shellsorter123)
+- **Servo Power**: While servos can run on 3.3V, they perform better with 5V
+  external supply
+- **Vibration Motor**: Requires appropriate driver circuit (transistor/relay)
+  for higher current
+- **Sensor Types**: Any normally-open binary sensors work (limit switches,
+  proximity sensors)
+- **WiFi Setup**: ESP32 will create fallback AP "Shell-Sorter-Fallback"
+  (password: shellsorter123)
 
 ### Network Configuration
 
 1. **Initial Setup**: Connect to fallback AP and configure WiFi credentials
-2. **Device Access**: After WiFi connection, device available at `shell-sorter-controller.local`
+2. **Device Access**: After WiFi connection, device available at
+   `shell-sorter-controller.local`
 3. **Web Interface**: ESPHome web server on port 80 (admin/shellsorter)
 
 ## Software Installation
@@ -168,19 +175,19 @@ just esphome-flash /dev/ttyUSB0
 
 ## API Reference
 
-### Machine Control
+### Machine Control API
 
 - `POST /api/machine/next-case` - Trigger complete case advancement sequence
 - `GET /api/machine/sensors` - Get real-time sensor status
 - `GET /api/machine/hardware-status` - Check ESP32 connectivity
 
-### Camera Management
+### Camera Management API
 
 - `GET /api/cameras` - List available cameras
 - `POST /api/cameras/capture` - Capture images from selected cameras
 - `GET /api/cameras/{index}/stream` - Live camera feed
 
-### Data Management
+### Data Management API
 
 - `GET /tagging/{session_id}` - Shell tagging interface
 - `POST /api/shells/save` - Save tagged shell data
@@ -234,4 +241,15 @@ just fmt
 7. User tags images with shell metadata
 8. Data saved with image references
 
-This sequence can be triggered via web interface or physical button for flexible operation modes.
+This sequence can be triggered via web interface or physical button for flexible
+operation modes.
+
+## TODO
+
+- [ ] The composite image doesn't match the capture region
+- [ ] the shell training data ui only partially shows the images, it should show
+      the full image (shrunk to fit)
+- [ ] the shell training data ui should just show what view each image is with a
+      badge, and there should be an edit ui for the individual training object
+      that lets me update things, change the regions, or delete the object and
+      associated images
