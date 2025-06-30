@@ -922,9 +922,10 @@ select:focus, input:focus {
 .shell-image {
     width: 100%;
     height: 120px;
-    object-fit: cover;
+    object-fit: contain;
     border-radius: 5px;
     border: 1px solid #ddd;
+    background-color: #f9f9f9;
 }
 
 .image-view-controls {
