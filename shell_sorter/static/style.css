@@ -477,18 +477,6 @@ select:focus, input:focus {
     font-size: 0.8rem;
 }
 
-.overlay-checkbox {
-    display: none; /* Hidden by default, shown by JavaScript when cameras are active */
-    align-items: center;
-    gap: 5px;
-    font-size: 0.9rem;
-    color: #333;
-    cursor: pointer;
-}
-
-.overlay-checkbox input[type="checkbox"] {
-    margin: 0;
-}
 
 .camera-region-overlay {
     position: absolute;

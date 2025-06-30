@@ -127,7 +127,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const nextCaseBtn = document.getElementById('next-case-btn');
     const mlTrainingBtn = document.getElementById('ml-training-btn');
     const configBtn = document.getElementById('config-btn');
-    const showOverlayCheckbox = document.getElementById('show-overlay-checkbox');
 
     if (captureImagesBtn) {
         captureImagesBtn.addEventListener('click', async function() {
@@ -589,28 +588,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        // Update overlay checkbox visibility
-        updateOverlayCheckboxVisibility();
+        // Always show overlays when cameras are active
+        showRegionOverlays();
     }
     
-    function updateOverlayCheckboxVisibility() {
-        const overlayCheckbox = document.querySelector('.overlay-checkbox');
-        if (!overlayCheckbox) return;
-        
-        // Check if any cameras are active
-        const activeCameras = document.querySelectorAll('.camera-status.status-active');
-        const hasActiveCameras = activeCameras.length > 0;
-        
-        if (hasActiveCameras) {
-            overlayCheckbox.style.display = 'flex';
-        } else {
-            overlayCheckbox.style.display = 'none';
-            // Hide any visible overlays when no active cameras
-            toggleRegionOverlays(false);
-        }
-        
-        console.log(`Overlay checkbox ${hasActiveCameras ? 'shown' : 'hidden'} - active cameras: ${activeCameras.length}`);
-    }
 
     function updateStatusDisplay(status) {
         const statusIndicator = document.querySelector('.status-indicator');
@@ -625,25 +606,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Handle overlay checkbox
-    if (showOverlayCheckbox) {
-        showOverlayCheckbox.addEventListener('change', function() {
-            toggleRegionOverlays(this.checked);
-        });
-        
-        // Initialize overlay state on page load
-        initializeOverlayCheckbox();
+    // Initialize overlay state on page load - always show overlays
+    initializeOverlays();
+    
+    function initializeOverlays() {
+        // Always show overlays when available
+        showRegionOverlays();
     }
     
-    function initializeOverlayCheckbox() {
-        // Initialize overlays based on checkbox state (default is checked)
-        if (showOverlayCheckbox) {
-            // Apply the current checkbox state to overlays
-            toggleRegionOverlays(showOverlayCheckbox.checked);
-        }
-    }
-    
-    function toggleRegionOverlays(show) {
+    function showRegionOverlays() {
         let overlays = document.querySelectorAll('.camera-region-overlay');
         
         // If no overlays exist, try to create them from region buttons
@@ -655,38 +626,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // If still no overlays after trying to create them, only show message if truly no regions exist
-        if (overlays.length === 0 && show) {
-            const regionsInUI = document.querySelectorAll('.region-info');
-            const hasRegionData = Array.from(regionsInUI).some(regionInfo => 
-                regionInfo.textContent && regionInfo.textContent.trim() !== ''
-            );
-            
-            if (!hasRegionData) {
-                showToast('No camera regions selected yet. Set up regions first.', 'info');
-                if (showOverlayCheckbox) {
-                    showOverlayCheckbox.checked = false;
-                }
-                return;
-            } else {
-                // We have region data but couldn't create overlays - this is a bug, show error
-                console.error('Failed to create overlays despite having region data');
-                showToast('Could not create region overlays. Check console for details.', 'error');
-                if (showOverlayCheckbox) {
-                    showOverlayCheckbox.checked = false;
-                }
-                return;
-            }
-        }
-        
+        // Show all overlays
         overlays.forEach(overlay => {
-            if (show) {
-                updateOverlayPosition(overlay);
-                overlay.style.display = 'block';
-            } else {
-                overlay.style.display = 'none';
-            }
+            updateOverlayPosition(overlay);
+            overlay.style.display = 'block';
         });
+        
+        console.log(`Showing ${overlays.length} region overlays`);
     }
     
     function createMissingOverlays() {
