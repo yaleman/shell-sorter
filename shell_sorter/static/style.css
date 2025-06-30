@@ -108,9 +108,9 @@ main {
 
 .control-row {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
-    gap: 20px;
+    gap: 40px;
     flex-wrap: wrap;
 }
 
