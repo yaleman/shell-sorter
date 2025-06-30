@@ -1,3 +1,10 @@
+"""Configuration management for the Shell Sorter application.
+
+This module provides configuration classes for managing application settings,
+camera configurations, and user preferences. It uses Pydantic for validation
+and supports environment variable overrides.
+"""
+
 from pathlib import Path
 from typing import Optional, Any, Dict, Literal
 import json
