@@ -278,9 +278,3 @@ just fmt
 
 This sequence can be triggered via web interface or physical button for flexible
 operation modes.
-
-## TODO
-
-- [ ] The composite image doesn't match the capture region
-- [ ] load the default set of shell data when the training UI loads. it's Ok,
-      because it's all over the LAN.

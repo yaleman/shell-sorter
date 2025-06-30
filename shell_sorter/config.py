@@ -90,6 +90,10 @@ class Settings(BaseSettings):  # type: ignore
         default=["esp32cam1.local"],
         description="List of ESPHome camera hostnames to detect",
     )
+    auto_detect_cameras: bool = Field(
+        default=False,
+        description="Automatically detect and configure cameras on startup",
+    )
 
     def get_config_path(self) -> Path:
         """Get the path to the user config file."""
@@ -167,6 +171,10 @@ class UserConfig(BaseModel):
     network_camera_hostnames: list[str] = Field(
         default=["esp32cam1.local"],
         description="List of ESPHome camera hostnames to detect",
+    )
+    auto_detect_cameras: bool = Field(
+        default=False,
+        description="Automatically detect and configure cameras on startup",
     )
 
     def get_camera_config(self, camera_name: str) -> CameraConfig:

@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // UI Elements
     const backToDashboardBtn = document.getElementById('back-to-dashboard-btn');
     const autoStartCamerasCheckbox = document.getElementById('auto-start-cameras');
+    const autoDetectCamerasCheckbox = document.getElementById('auto-detect-cameras');
     const esphomeHostnameInput = document.getElementById('esphome-hostname');
     const networkCamerasList = document.getElementById('network-cameras-list');
     const addNetworkCameraBtn = document.getElementById('add-network-camera-btn');
@@ -15,6 +16,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Configuration state
     let configData = {
         auto_start_cameras: false,
+        auto_detect_cameras: false,
         esphome_hostname: 'shell-sorter-controller.local',
         network_camera_hostnames: ['esp32cam1.local'],
         cameras: []
@@ -35,6 +37,14 @@ document.addEventListener('DOMContentLoaded', function() {
         autoStartCamerasCheckbox.addEventListener('change', function() {
             configData.auto_start_cameras = this.checked;
             console.log('Auto-start cameras:', configData.auto_start_cameras);
+        });
+    }
+
+    // Auto-detect cameras checkbox
+    if (autoDetectCamerasCheckbox) {
+        autoDetectCamerasCheckbox.addEventListener('change', function() {
+            configData.auto_detect_cameras = this.checked;
+            console.log('Auto-detect cameras:', configData.auto_detect_cameras);
         });
     }
 
@@ -231,6 +241,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Update auto-start checkbox
         if (autoStartCamerasCheckbox) {
             autoStartCamerasCheckbox.checked = configData.auto_start_cameras || false;
+        }
+        
+        // Update auto-detect checkbox
+        if (autoDetectCamerasCheckbox) {
+            autoDetectCamerasCheckbox.checked = configData.auto_detect_cameras || false;
         }
         
         // Update ESPHome hostname input

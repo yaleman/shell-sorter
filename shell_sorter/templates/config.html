@@ -31,6 +31,14 @@
                     </div>
                     
                     <div class="form-group">
+                        <label for="auto-detect-cameras">
+                            <input type="checkbox" id="auto-detect-cameras">
+                            Auto-detect cameras on startup
+                        </label>
+                        <small class="form-help">Automatically detect and configure available cameras when the application starts</small>
+                    </div>
+                    
+                    <div class="form-group">
                         <label for="esphome-hostname">ESPHome Device Hostname</label>
                         <input type="text" id="esphome-hostname" value="{{ esphome_hostname }}" placeholder="shell-sorter-controller.local">
                         <small class="form-help">Hostname or IP address of the ESPHome device for hardware control</small>

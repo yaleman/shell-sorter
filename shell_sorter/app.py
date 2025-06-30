@@ -944,18 +944,21 @@ async def get_configuration(
 ) -> Dict[str, Any]:
     """Get current system configuration."""
     try:
-        # Get network camera hostnames from user config
+        # Get configuration from user config
         try:
             user_config_data = app_settings.load_user_config()
             from .config import UserConfig
             user_config = UserConfig(**user_config_data)
             network_camera_hostnames = user_config.network_camera_hostnames
+            auto_detect_cameras = user_config.auto_detect_cameras
         except Exception:
             # Fall back to application settings
             network_camera_hostnames = app_settings.network_camera_hostnames
+            auto_detect_cameras = app_settings.auto_detect_cameras
         
         config_data = {
             "auto_start_cameras": getattr(camera_manager, 'auto_start_cameras', False),
+            "auto_detect_cameras": auto_detect_cameras,
             "esphome_hostname": app_settings.esphome_hostname,
             "network_camera_hostnames": network_camera_hostnames,
             "cameras": [
@@ -1002,26 +1005,32 @@ async def save_configuration(
                 monitor.update_hostname(new_hostname)
                 logger.info("Updated ESPHome hostname to: %s", new_hostname)
         
-        # Save network camera hostnames setting
-        if "network_camera_hostnames" in config:
-            hostnames = config["network_camera_hostnames"]
-            if isinstance(hostnames, list):
-                # Load current user config
-                try:
-                    user_config_data = app_settings.load_user_config()
-                    from .config import UserConfig
-                    user_config = UserConfig(**user_config_data)
-                except Exception:
-                    user_config = UserConfig()
-                
-                # Update network camera hostnames
-                user_config.network_camera_hostnames = [
-                    hostname.strip() for hostname in hostnames if hostname.strip()
-                ]
-                
-                # Save to user config file
-                app_settings.save_user_config(user_config.model_dump())
-                logger.info("Updated network camera hostnames: %s", user_config.network_camera_hostnames)
+        # Save network camera hostnames and auto-detect settings
+        if "network_camera_hostnames" in config or "auto_detect_cameras" in config:
+            # Load current user config
+            try:
+                user_config_data = app_settings.load_user_config()
+                from .config import UserConfig
+                user_config = UserConfig(**user_config_data)
+            except Exception:
+                user_config = UserConfig()
+            
+            # Update network camera hostnames
+            if "network_camera_hostnames" in config:
+                hostnames = config["network_camera_hostnames"]
+                if isinstance(hostnames, list):
+                    user_config.network_camera_hostnames = [
+                        hostname.strip() for hostname in hostnames if hostname.strip()
+                    ]
+                    logger.info("Updated network camera hostnames: %s", user_config.network_camera_hostnames)
+            
+            # Update auto-detect cameras setting
+            if "auto_detect_cameras" in config:
+                user_config.auto_detect_cameras = bool(config["auto_detect_cameras"])
+                logger.info("Updated auto-detect cameras: %s", user_config.auto_detect_cameras)
+            
+            # Save to user config file
+            app_settings.save_user_config(user_config.model_dump())
         
         # Save configuration to file
         camera_manager.save_config()
