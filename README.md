@@ -289,5 +289,5 @@ operation modes.
 
 ### Medium Priority
 
-- **Remove 'clear' button from cameras on the dashboard** (Pending)
+- **Remove 'clear' button from cameras on the dashboard** (Completed)
   - _ID: remove-clear-btn_

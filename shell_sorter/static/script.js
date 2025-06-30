@@ -525,27 +525,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const cameraIndex = parseInt(e.target.dataset.cameraIndex);
             window.location.href = `/region-selection/${cameraIndex}`;
         }
-        else if (e.target.classList.contains('region-clear-btn')) {
-            const cameraIndex = parseInt(e.target.dataset.cameraIndex);
-            
-            try {
-                const response = await fetch(`/api/cameras/${cameraIndex}/region`, {
-                    method: 'DELETE'
-                });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    showToast(result.message, 'success');
-                    setTimeout(() => location.reload(), 500);
-                } else {
-                    const error = await response.text();
-                    showToast('Error clearing region: ' + error, 'error');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                showToast('Error clearing region: ' + error.message, 'error');
-            }
-        }
         else if (e.target.classList.contains('autofocus-btn')) {
             const cameraIndex = parseInt(e.target.dataset.cameraIndex);
             
