@@ -265,6 +265,12 @@ class MLTrainingInterface {
             return;
         }
 
+        // Get unique shell types for dropdown
+        const shellTypes = [...new Set(this.shells.map(s => s.shell_type))].sort();
+        const shellTypeOptions = shellTypes.map(type => 
+            `<option value="${type}" ${type === shell.shell_type ? 'selected' : ''}>${type}</option>`
+        ).join('');
+
         // Create modal HTML
         const modalHTML = `
             <div class="modal-overlay" id="edit-modal-overlay">
@@ -280,7 +286,12 @@ class MLTrainingInterface {
                         </div>
                         <div class="form-group">
                             <label>Shell Type:</label>
-                            <input type="text" id="edit-shell-type" value="${shell.shell_type}">
+                            <select id="edit-shell-type">
+                                <option value="">Select shell type...</option>
+                                ${shellTypeOptions}
+                                <option value="__custom__">Custom (enter below)</option>
+                            </select>
+                            <input type="text" id="edit-shell-type-custom" placeholder="Enter custom shell type" style="display: none; margin-top: 8px;">
                         </div>
                         <div class="form-group">
                             <label>
@@ -409,6 +420,22 @@ class MLTrainingInterface {
             });
         });
         
+        // Handle shell type dropdown
+        const shellTypeSelect = document.getElementById('edit-shell-type');
+        const shellTypeCustom = document.getElementById('edit-shell-type-custom');
+        
+        if (shellTypeSelect && shellTypeCustom) {
+            shellTypeSelect.addEventListener('change', (e) => {
+                if (e.target.value === '__custom__') {
+                    shellTypeCustom.style.display = 'block';
+                    shellTypeCustom.focus();
+                } else {
+                    shellTypeCustom.style.display = 'none';
+                    shellTypeCustom.value = '';
+                }
+            });
+        }
+        
         // Initialize region overlays
         setTimeout(() => this.initializeRegionOverlays(), 100);
     }
@@ -452,8 +479,17 @@ class MLTrainingInterface {
     async saveShellChanges(sessionId) {
         try {
             const brand = document.getElementById('edit-brand').value.trim();
-            const shellType = document.getElementById('edit-shell-type').value.trim();
+            const shellTypeSelect = document.getElementById('edit-shell-type').value;
+            const shellTypeCustom = document.getElementById('edit-shell-type-custom').value.trim();
             const include = document.getElementById('edit-include').checked;
+
+            // Determine the actual shell type
+            let shellType = '';
+            if (shellTypeSelect === '__custom__') {
+                shellType = shellTypeCustom;
+            } else if (shellTypeSelect) {
+                shellType = shellTypeSelect;
+            }
 
             if (!brand || !shellType) {
                 this.showToast('Brand and shell type are required', 'error');
