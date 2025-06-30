@@ -1228,6 +1228,62 @@ async def generate_composite_images(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@app.get("/api/composites/{session_id}")
+async def get_composite_image(
+    session_id: str,
+    app_settings: Settings = Depends(get_settings),
+) -> StreamingResponse:
+    """Get composite image for a session, creating it if it doesn't exist."""
+    try:
+        data_dir = app_settings.data_directory
+        composites_dir = data_dir / "composites"
+        composites_dir.mkdir(exist_ok=True)
+        
+        composite_path = composites_dir / f"{session_id}_composite.jpg"
+        
+        # If composite doesn't exist, try to create it
+        if not composite_path.exists():
+            shell_file = data_dir / f"{session_id}.json"
+            if shell_file.exists():
+                try:
+                    with open(shell_file, "r", encoding="utf-8") as f:
+                        shell_data = json.load(f)
+                    
+                    # Generate composite image
+                    created_path = await _generate_composite_image(
+                        session_id, shell_data, composites_dir
+                    )
+                    
+                    if not created_path:
+                        raise HTTPException(status_code=404, detail="Could not create composite image")
+                        
+                except Exception as e:
+                    logger.error("Error auto-creating composite for %s: %s", session_id, e)
+                    raise HTTPException(status_code=500, detail="Failed to create composite image")
+            else:
+                raise HTTPException(status_code=404, detail="Shell data not found")
+        
+        # Serve the composite image
+        if composite_path.exists():
+            def iterfile() -> Generator[bytes, None, None]:
+                with open(composite_path, "rb") as f:
+                    yield from f
+            
+            return StreamingResponse(
+                iterfile(),
+                media_type="image/jpeg",
+                headers={"Cache-Control": "no-cache"}
+            )
+        else:
+            raise HTTPException(status_code=404, detail="Composite image not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error serving composite image for %s: %s", session_id, e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @app.post("/api/ml/shells/{session_id}/view-type")
 async def update_shell_image_view_type(
     session_id: str,

@@ -52,6 +52,9 @@ class MLTrainingInterface {
             this.renderShells();
             this.updateButtonStates();
             
+            // Check for existing composite images
+            this.checkExistingComposites();
+            
             this.showToast(`Loaded ${data.summary.total} shells (${data.summary.included} included)`, 'success');
             
         } catch (error) {
@@ -175,7 +178,9 @@ class MLTrainingInterface {
                     `).join('')}
                 </div>
                 <div class="composite-preview" id="composite-${shell.session_id}" style="display: none;">
-                    <img src="/data/composites/${shell.session_id}_composite.jpg" alt="Composite image" class="composite-image" onerror="this.style.display='none'">
+                    <img src="/api/composites/${shell.session_id}" alt="Composite image" class="composite-image" 
+                         onload="this.parentElement.style.display='block'" 
+                         onerror="this.parentElement.style.display='none'">
                 </div>
             </div>
         `;
@@ -421,6 +426,31 @@ class MLTrainingInterface {
             toast.classList.remove('show');
             setTimeout(() => toast.remove(), 300);
         }, 5000);
+    }
+
+    async checkExistingComposites() {
+        // Check for existing composite images for included shells
+        const includedShells = this.shells.filter(s => s.include !== false);
+        
+        for (const shell of includedShells) {
+            try {
+                // Try to load the composite image to see if it exists
+                const response = await fetch(`/api/composites/${shell.session_id}`, {
+                    method: 'HEAD' // Just check if it exists without downloading
+                });
+                
+                if (response.ok) {
+                    // Composite exists, show it
+                    const compositePreview = document.getElementById(`composite-${shell.session_id}`);
+                    if (compositePreview) {
+                        compositePreview.style.display = 'block';
+                    }
+                }
+            } catch (error) {
+                // Composite doesn't exist or error occurred, leave it hidden
+                console.debug(`No composite found for ${shell.session_id}`);
+            }
+        }
     }
 }
 
