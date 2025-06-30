@@ -431,6 +431,70 @@ class CameraManager:
 
         return True
 
+    def trigger_autofocus(self, camera_index: int) -> bool:
+        """Trigger autofocus for a camera, focusing on the center of the region if set."""
+        if camera_index not in self.cameras:
+            logger.warning("Camera %d not found", camera_index)
+            return False
+
+        camera_info = self.cameras[camera_index]
+        
+        # Network cameras don't support autofocus control
+        if camera_info.is_network_camera:
+            logger.info("Autofocus not supported for network camera %d", camera_index)
+            return False
+
+        try:
+            # Use existing capture if active, otherwise open temporarily
+            if camera_index in self.active_captures:
+                cap = self.active_captures[camera_index]
+                should_close = False
+            else:
+                cap = self._open_camera_with_timeout(camera_index, timeout=3.0)
+                if cap is None:
+                    logger.error("Failed to open camera %d for autofocus", camera_index)
+                    return False
+                should_close = True
+
+            # Disable autofocus briefly then re-enable to trigger
+            cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+            import time
+            time.sleep(0.1)
+            cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
+            
+            # If we have a region, try to set focus point (not all cameras support this)
+            if (camera_info.region_x is not None and camera_info.region_y is not None 
+                and camera_info.region_width is not None and camera_info.region_height is not None):
+                # Calculate center of region
+                center_x = camera_info.region_x + camera_info.region_width // 2
+                center_y = camera_info.region_y + camera_info.region_height // 2
+                
+                # Try to set focus point (may not be supported by all cameras)
+                try:
+                    # Some cameras support CAP_PROP_FOCUS_POINT_X/Y
+                    cap.set(cv2.CAP_PROP_FOCUS_POINT_X, center_x)
+                    cap.set(cv2.CAP_PROP_FOCUS_POINT_Y, center_y)
+                except Exception:
+                    # Focus point setting not supported, just use general autofocus
+                    pass
+                
+                logger.info("Triggered autofocus for camera %d at region center (%d, %d)", 
+                          camera_index, center_x, center_y)
+            else:
+                logger.info("Triggered autofocus for camera %d (no region set)", camera_index)
+
+            # Give camera time to focus
+            time.sleep(1.0)
+
+            if should_close:
+                cap.release()
+
+            return True
+
+        except Exception as e:
+            logger.error("Error triggering autofocus for camera %d: %s", camera_index, e)
+            return False
+
     def _open_camera_with_timeout(
         self, camera_index: int, timeout: float = 3.0
     ) -> Optional[cv2.VideoCapture]:
@@ -488,10 +552,28 @@ class CameraManager:
                     logger.error("Failed to open camera %d within timeout", camera_index)
                     return False
 
-                # Set camera properties for better performance
+                # Set camera properties for better performance and autofocus
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
                 cap.set(cv2.CAP_PROP_FPS, 30)
+                
+                # Enable autofocus if supported
+                cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
+                
+                # Allow camera to stabilize
+                import time
+                time.sleep(2.0)
+                
+                # Test camera by reading a few frames
+                for _ in range(5):
+                    ret, _ = cap.read()
+                    if ret:
+                        break
+                    time.sleep(0.1)
+                else:
+                    logger.error("Camera %d failed initial frame test", camera_index)
+                    cap.release()
+                    return False
 
                 self.active_captures[camera_index] = cap
                 self.stop_streaming[camera_index] = threading.Event()
@@ -550,6 +632,8 @@ class CameraManager:
         """Internal method to stream frames from a camera."""
         cap = self.active_captures[camera_index]
         stop_event = self.stop_streaming[camera_index]
+        consecutive_failures = 0
+        max_failures = 10
 
         logger.info("Started streaming thread for camera %d", camera_index)
 
@@ -557,12 +641,23 @@ class CameraManager:
             try:
                 ret, frame = cap.read()
                 if not ret:
-                    logger.warning("Failed to read frame from camera %d", camera_index)
+                    consecutive_failures += 1
+                    logger.warning("Failed to read frame from camera %d (failure %d/%d)", 
+                                 camera_index, consecutive_failures, max_failures)
+                    
+                    if consecutive_failures >= max_failures:
+                        logger.error("Camera %d reached maximum consecutive failures, stopping stream", 
+                                   camera_index)
+                        break
+                    
                     if stop_event.wait(
-                        0.1
-                    ):  # Wait with timeout for responsive shutdown
+                        0.5
+                    ):  # Longer wait on failure for camera recovery
                         break
                     continue
+                else:
+                    # Reset failure counter on successful read
+                    consecutive_failures = 0
 
                 # Encode frame as JPEG
                 _, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])

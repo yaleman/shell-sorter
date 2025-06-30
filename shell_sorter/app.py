@@ -656,6 +656,30 @@ async def clear_camera_region(
     raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
 
 
+@app.post("/api/cameras/{camera_index}/autofocus")
+async def trigger_camera_autofocus(camera_index: int) -> Dict[str, Any]:
+    """Trigger autofocus for a camera, focusing on region center if set."""
+    success = camera_manager.trigger_autofocus(camera_index)
+    if success:
+        camera_info = camera_manager.cameras.get(camera_index)
+        if camera_info and (camera_info.region_x is not None and camera_info.region_y is not None 
+                           and camera_info.region_width is not None and camera_info.region_height is not None):
+            center_x = camera_info.region_x + camera_info.region_width // 2
+            center_y = camera_info.region_y + camera_info.region_height // 2
+            return {
+                "message": f"Triggered autofocus for camera {camera_index} at region center",
+                "camera_index": camera_index,
+                "focus_point": {"x": center_x, "y": center_y}
+            }
+        else:
+            return {
+                "message": f"Triggered autofocus for camera {camera_index}",
+                "camera_index": camera_index,
+                "focus_point": None
+            }
+    raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found or autofocus failed")
+
+
 # Machine Control Endpoints
 
 

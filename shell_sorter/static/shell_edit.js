@@ -118,6 +118,9 @@ class ShellEditInterface {
                             `<button class="btn btn-sm btn-warning clear-region-btn" data-image-index="${index}" data-filename="${img.filename}">Clear Region</button>` 
                             : ''
                         }
+                        <button class="btn btn-sm btn-info autofocus-btn" data-camera-index="${img.camera_index || 0}" title="Focus camera on region center">
+                            🎯 Autofocus
+                        </button>
                         <button class="btn btn-sm btn-danger delete-image-btn" data-filename="${img.filename}">Delete Image</button>
                     </div>
                     ${img.region_x !== null && img.region_x !== undefined ? 
@@ -152,6 +155,14 @@ class ShellEditInterface {
                 const imageIndex = parseInt(e.target.dataset.imageIndex);
                 const filename = e.target.dataset.filename;
                 this.clearRegionFromImage(imageIndex, filename);
+            });
+        });
+        
+        // Handle autofocus
+        document.querySelectorAll('.autofocus-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const cameraIndex = parseInt(e.target.dataset.cameraIndex);
+                this.triggerAutofocus(cameraIndex);
             });
         });
         
@@ -539,6 +550,31 @@ class ShellEditInterface {
         } catch (error) {
             console.error('Error clearing region:', error);
             this.showToast('Error clearing region: ' + error.message, 'error');
+        }
+    }
+
+    async triggerAutofocus(cameraIndex) {
+        try {
+            this.showToast('Triggering autofocus...', 'info');
+            
+            const response = await fetch(`/api/cameras/${cameraIndex}/autofocus`, {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                if (result.focus_point) {
+                    this.showToast(`Autofocus triggered at region center (${result.focus_point.x}, ${result.focus_point.y})`, 'success');
+                } else {
+                    this.showToast('Autofocus triggered successfully', 'success');
+                }
+            } else {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || `Failed to trigger autofocus: ${response.statusText}`);
+            }
+        } catch (error) {
+            console.error('Error triggering autofocus:', error);
+            this.showToast('Error triggering autofocus: ' + error.message, 'error');
         }
     }
 

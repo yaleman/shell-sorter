@@ -1461,7 +1461,7 @@ select:focus, input:focus {
 }
 
 .shell-edit-content {
-    max-width: 1400px;
+    max-width: 95%;
     margin: 0 auto;
 }
 
@@ -1477,7 +1477,7 @@ select:focus, input:focus {
 
 .shell-edit-split {
     display: grid;
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: 2fr 1fr;
     gap: 30px;
     margin-bottom: 30px;
 }
