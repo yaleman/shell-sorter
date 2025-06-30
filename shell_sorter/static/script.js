@@ -546,6 +546,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 showToast('Error clearing region: ' + error.message, 'error');
             }
         }
+        else if (e.target.classList.contains('autofocus-btn')) {
+            const cameraIndex = parseInt(e.target.dataset.cameraIndex);
+            
+            try {
+                showToast('Triggering autofocus...', 'info');
+                
+                const response = await fetch(`/api/cameras/${cameraIndex}/autofocus`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.focus_point) {
+                        showToast(`Autofocus triggered at region center (${result.focus_point.x}, ${result.focus_point.y})`, 'success');
+                    } else {
+                        showToast('Autofocus triggered successfully', 'success');
+                    }
+                } else {
+                    const errorData = await response.json();
+                    showToast('Error triggering autofocus: ' + (errorData.detail || response.statusText), 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showToast('Error triggering autofocus: ' + error.message, 'error');
+            }
+        }
     });
 
     async function updateCameraFeeds() {

@@ -78,6 +78,9 @@
                                         {% if camera.region_x is not none %}
                                         <button class="btn btn-sm btn-danger region-clear-btn" data-camera-index="{{ camera.index }}">Clear</button>
                                         {% endif %}
+                                        {% if camera.is_active and not camera.is_network_camera %}
+                                        <button class="btn btn-sm btn-info autofocus-btn" data-camera-index="{{ camera.index }}" title="Focus camera on region center">🎯 Focus</button>
+                                        {% endif %}
                                     </div>
                                     {% endif %}
                                 </div>
