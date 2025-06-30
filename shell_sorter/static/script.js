@@ -261,11 +261,82 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Initial ESPHome status check
-    updateESPHomeStatus();
+    // Adaptive ESPHome status monitoring
+    let esphomeStatusInterval = null;
+    let isControllerOnline = false;
     
-    // Auto-refresh ESPHome status every 5 seconds for more responsive updates
-    const esphomeStatusInterval = setInterval(updateESPHomeStatus, 5000);
+    async function updateESPHomeStatusWithAdaptivePolling() {
+        await updateESPHomeStatus();
+        
+        // Clear existing interval
+        if (esphomeStatusInterval) {
+            clearInterval(esphomeStatusInterval);
+        }
+        
+        // Set interval based on current status
+        const pollInterval = isControllerOnline ? 5000 : 1000; // 5s when online, 1s when offline
+        esphomeStatusInterval = setInterval(updateESPHomeStatusWithAdaptivePolling, pollInterval);
+    }
+    
+    // Enhanced updateESPHomeStatus to track online state
+    const originalUpdateESPHomeStatus = updateESPHomeStatus;
+    updateESPHomeStatus = async function() {
+        try {
+            const response = await fetch('/api/machine/esphome-status');
+            if (response.ok) {
+                const status = await response.json();
+                const statusElement = document.getElementById('esphome-status');
+                const statusText = document.getElementById('esphome-status-text');
+                
+                if (statusElement && statusText) {
+                    // Remove all status classes
+                    statusElement.className = 'status-indicator';
+                    
+                    const wasOnline = isControllerOnline;
+                    isControllerOnline = status.online;
+                    
+                    if (status.online) {
+                        statusElement.classList.add('esphome-status-online');
+                        statusText.textContent = 'Online';
+                    } else {
+                        statusElement.classList.add('esphome-status-offline');
+                        statusText.textContent = 'Offline';
+                    }
+                    
+                    // If status changed, update polling interval
+                    if (wasOnline !== isControllerOnline && esphomeStatusInterval) {
+                        clearInterval(esphomeStatusInterval);
+                        const pollInterval = isControllerOnline ? 5000 : 1000;
+                        esphomeStatusInterval = setInterval(updateESPHomeStatusWithAdaptivePolling, pollInterval);
+                        console.log(`Controller status changed, polling every ${pollInterval/1000}s`);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching ESPHome status:', error);
+            const statusElement = document.getElementById('esphome-status');
+            const statusText = document.getElementById('esphome-status-text');
+            
+            if (statusElement && statusText) {
+                statusElement.className = 'status-indicator esphome-status-offline';
+                statusText.textContent = 'Error';
+            }
+            
+            // Set to offline state on error
+            const wasOnline = isControllerOnline;
+            isControllerOnline = false;
+            
+            // Update polling interval if needed
+            if (wasOnline !== isControllerOnline && esphomeStatusInterval) {
+                clearInterval(esphomeStatusInterval);
+                esphomeStatusInterval = setInterval(updateESPHomeStatusWithAdaptivePolling, 1000);
+                console.log('Controller error, polling every 1s');
+            }
+        }
+    };
+    
+    // Initial status check and start adaptive polling
+    updateESPHomeStatusWithAdaptivePolling();
     
     // Clean up intervals when page unloads
     window.addEventListener('beforeunload', function() {
