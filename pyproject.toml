@@ -12,10 +12,10 @@ dependencies = [
     "uvicorn>=0.32.1",
     "jinja2>=3.1.4",
     "python-multipart>=0.0.12",
-    "opencv-python>=4.10.0",
     "aiohttp>=3.10.0",
     "pillow>=10.0.0",
     "piexif>=1.1.3",
+    "opencv-contrib-python-headless>=4.11.0.86",
 ]
 
 [project.scripts]
@@ -28,4 +28,13 @@ build-backend = "hatchling.build"
 [tool.pylint.messages_control]
 disable = [
     "W0718",  # broad-exception-caught
+]
+
+[tool.pylint.typecheck]
+# Ignore missing members for cv2 module (OpenCV has dynamic attributes)
+ignored-modules = ["cv2"]
+
+[dependency-groups]
+dev = [
+    "opencv-stubs[opencv]>=0.0.12",
 ]
