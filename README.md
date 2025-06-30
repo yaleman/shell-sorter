@@ -278,3 +278,13 @@ just fmt
 
 This sequence can be triggered via web interface or physical button for flexible
 operation modes.
+
+## Current Development Tasks
+
+### High Priority
+- **Fix camera index/name mapping to handle OS reordering of USB cameras** (Pending)
+  - *ID: camera-index-fix*
+
+### Medium Priority  
+- **Remove 'clear' button from cameras on the dashboard** (Pending)
+  - *ID: remove-clear-btn*
