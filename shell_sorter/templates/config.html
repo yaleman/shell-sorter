@@ -35,6 +35,22 @@
                         <input type="text" id="esphome-hostname" value="{{ esphome_hostname }}" placeholder="shell-sorter-controller.local">
                         <small class="form-help">Hostname or IP address of the ESPHome device for hardware control</small>
                     </div>
+                    
+                    <div class="form-group">
+                        <label for="network-cameras">Network Camera Hostnames</label>
+                        <div class="network-cameras-config">
+                            <div id="network-cameras-list" class="network-cameras-list">
+                                {% for hostname in network_camera_hostnames %}
+                                <div class="network-camera-item">
+                                    <input type="text" class="network-camera-hostname" value="{{ hostname }}" placeholder="esp32cam1.local">
+                                    <button type="button" class="btn btn-sm btn-danger remove-network-camera-btn">Remove</button>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <button type="button" id="add-network-camera-btn" class="btn btn-sm btn-secondary">Add Network Camera</button>
+                        </div>
+                        <small class="form-help">List of ESPHome camera device hostnames to automatically detect</small>
+                    </div>
                 </div>
             </section>
 

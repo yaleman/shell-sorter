@@ -225,11 +225,26 @@ class CameraManager:
     async def _detect_esphome_cameras_async(self) -> List[CameraInfo]:
         """Async method to detect ESPHome cameras on the network."""
         esphome_cameras = []
-        # List of ESPHome devices to check
-        esphome_hosts = [
-            "esp32cam1.local",
-            "shell-sorter-controller.local",  # Main controller might have camera too
-        ]
+        
+        # Get ESPHome camera hostnames from configuration
+        esphome_hosts = []
+        if self.settings:
+            # Try to get from user config first
+            try:
+                user_config_data = self.settings.load_user_config()
+                user_config = UserConfig(**user_config_data)
+                esphome_hosts = user_config.network_camera_hostnames.copy()
+            except Exception as e:
+                logger.debug("Failed to load network camera hostnames from user config: %s", e)
+                # Fall back to application settings
+                esphome_hosts = self.settings.network_camera_hostnames.copy()
+        else:
+            # Default fallback
+            esphome_hosts = ["esp32cam1.local"]
+            
+        # Also check main controller in case it has camera
+        if self.settings and self.settings.esphome_hostname not in esphome_hosts:
+            esphome_hosts.append(self.settings.esphome_hostname)
         
         timeout = aiohttp.ClientTimeout(total=5)
         async with aiohttp.ClientSession(timeout=timeout) as session:

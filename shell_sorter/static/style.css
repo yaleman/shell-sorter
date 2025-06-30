@@ -1136,3 +1136,49 @@ select:focus, input:focus {
         flex-direction: column;
     }
 }
+
+/* Network Camera Configuration Styles */
+.network-cameras-config {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 15px;
+    background-color: #f9f9f9;
+}
+
+.network-cameras-list {
+    margin-bottom: 15px;
+}
+
+.network-camera-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    padding: 10px;
+    background-color: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+}
+
+.network-camera-hostname {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.network-camera-hostname:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.remove-network-camera-btn {
+    flex-shrink: 0;
+}
+
+#add-network-camera-btn {
+    width: auto;
+    align-self: flex-start;
+}

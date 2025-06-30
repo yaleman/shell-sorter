@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const backToDashboardBtn = document.getElementById('back-to-dashboard-btn');
     const autoStartCamerasCheckbox = document.getElementById('auto-start-cameras');
     const esphomeHostnameInput = document.getElementById('esphome-hostname');
+    const networkCamerasList = document.getElementById('network-cameras-list');
+    const addNetworkCameraBtn = document.getElementById('add-network-camera-btn');
     const refreshCamerasBtn = document.getElementById('refresh-cameras-btn');
     const clearAllCamerasBtn = document.getElementById('clear-all-cameras-btn');
     const saveConfigBtn = document.getElementById('save-config-btn');
@@ -14,6 +16,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let configData = {
         auto_start_cameras: false,
         esphome_hostname: 'shell-sorter-controller.local',
+        network_camera_hostnames: ['esp32cam1.local'],
         cameras: []
     };
 
@@ -40,6 +43,13 @@ document.addEventListener('DOMContentLoaded', function() {
         esphomeHostnameInput.addEventListener('change', function() {
             configData.esphome_hostname = this.value.trim();
             console.log('ESPHome hostname:', configData.esphome_hostname);
+        });
+    }
+
+    // Add network camera button
+    if (addNetworkCameraBtn) {
+        addNetworkCameraBtn.addEventListener('click', function() {
+            addNetworkCameraItem('');
         });
     }
 
@@ -75,7 +85,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Handle camera deletion using event delegation
+    // Handle camera deletion and network camera actions using event delegation
     document.addEventListener('click', async function(e) {
         if (e.target.classList.contains('delete-camera-btn')) {
             const cameraIndex = parseInt(e.target.dataset.cameraIndex);
@@ -85,6 +95,17 @@ document.addEventListener('DOMContentLoaded', function() {
             if (confirm(`Are you sure you want to delete camera "${cameraName}"? This will remove all settings for this camera including regions and view type.`)) {
                 await deleteCamera(cameraIndex);
             }
+        } else if (e.target.classList.contains('remove-network-camera-btn')) {
+            const networkCameraItem = e.target.closest('.network-camera-item');
+            networkCameraItem.remove();
+            updateNetworkCamerasFromUI();
+        }
+    });
+
+    // Handle network camera hostname changes using event delegation
+    document.addEventListener('input', function(e) {
+        if (e.target.classList.contains('network-camera-hostname')) {
+            updateNetworkCamerasFromUI();
         }
     });
 
@@ -217,8 +238,52 @@ document.addEventListener('DOMContentLoaded', function() {
             esphomeHostnameInput.value = configData.esphome_hostname || 'shell-sorter-controller.local';
         }
 
+        // Update network cameras list
+        updateNetworkCamerasList();
+
         // Update cameras list
         updateCamerasList();
+    }
+
+    function addNetworkCameraItem(hostname) {
+        if (!networkCamerasList) return;
+
+        const networkCameraItem = document.createElement('div');
+        networkCameraItem.className = 'network-camera-item';
+        networkCameraItem.innerHTML = `
+            <input type="text" class="network-camera-hostname" value="${hostname}" placeholder="esp32cam1.local">
+            <button type="button" class="btn btn-sm btn-danger remove-network-camera-btn">Remove</button>
+        `;
+        
+        networkCamerasList.appendChild(networkCameraItem);
+        
+        // Update configuration immediately
+        updateNetworkCamerasFromUI();
+    }
+
+    function updateNetworkCamerasList() {
+        if (!networkCamerasList) return;
+
+        // Clear existing items
+        networkCamerasList.innerHTML = '';
+
+        // Add items from configuration
+        const hostnames = configData.network_camera_hostnames || ['esp32cam1.local'];
+        hostnames.forEach(hostname => {
+            addNetworkCameraItem(hostname);
+        });
+    }
+
+    function updateNetworkCamerasFromUI() {
+        if (!networkCamerasList) return;
+
+        const hostnameInputs = networkCamerasList.querySelectorAll('.network-camera-hostname');
+        const hostnames = Array.from(hostnameInputs)
+            .map(input => input.value.trim())
+            .filter(hostname => hostname.length > 0);
+        
+        configData.network_camera_hostnames = hostnames;
+        console.log('Network camera hostnames:', configData.network_camera_hostnames);
     }
 
     function updateCamerasList() {
