@@ -7,8 +7,10 @@ from unittest.mock import patch, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from shell_sorter.app import app
+from shell_sorter.app import app, get_settings
 from shell_sorter.camera_manager import CameraInfo
+
+# pylint: disable=redefined-outer-name  # pytest fixtures
 
 
 @pytest.fixture
@@ -75,7 +77,7 @@ def mock_camera_manager_for_api():
 class TestCameraAPI:
     """Test camera-related API endpoints."""
 
-    def test_get_cameras(self, test_client: TestClient, mock_camera_manager_for_api):
+    def test_get_cameras(self, test_client: TestClient, mock_camera_manager_for_api):  # pylint: disable=unused-argument
         """Test getting list of cameras."""
         response = test_client.get("/api/cameras")
 
@@ -108,7 +110,7 @@ class TestCameraAPI:
         mock_camera_manager_for_api.select_cameras.assert_called_once_with([0, 1000])
 
     def test_start_selected_cameras(
-        self, test_client: TestClient, mock_camera_manager_for_api
+        self, test_client: TestClient, mock_camera_manager_for_api  # pylint: disable=unused-argument
     ):
         """Test starting selected cameras."""
         response = test_client.post("/api/cameras/start-selected")
@@ -148,7 +150,7 @@ class TestCameraAPI:
         )
 
     def test_set_camera_view_type_invalid(
-        self, test_client: TestClient, mock_camera_manager_for_api
+        self, test_client: TestClient, mock_camera_manager_for_api  # pylint: disable=unused-argument
     ):
         """Test setting invalid camera view type."""
         response = test_client.post(
@@ -178,7 +180,7 @@ class TestCameraAPI:
         )
 
     def test_set_camera_region_invalid(
-        self, test_client: TestClient, mock_camera_manager_for_api
+        self, test_client: TestClient, mock_camera_manager_for_api  # pylint: disable=unused-argument
     ):
         """Test setting invalid camera region."""
         response = test_client.post(
@@ -237,7 +239,7 @@ class TestCameraAPI:
         assert data["focus_point"]["x"] == 200  # center_x = 100 + 200/2
         assert data["focus_point"]["y"] == 200  # center_y = 100 + 200/2
 
-    def test_camera_stream(self, test_client: TestClient, mock_camera_manager_for_api):
+    def test_camera_stream(self, test_client: TestClient, mock_camera_manager_for_api):  # pylint: disable=unused-argument
         """Test camera stream endpoint."""
         # Mock get_latest_frame to return None immediately to break the infinite loop
         mock_camera_manager_for_api.get_latest_frame.side_effect = [b"fake_frame", None]
@@ -350,7 +352,7 @@ class TestMLAPI:
         }
 
         shell_file = data_dir / "test_session.json"
-        with open(shell_file, "w") as f:
+        with open(shell_file, "w", encoding="utf-8") as f:
             json.dump(shell_data, f)
 
         # Mock settings to point to isolated directory
@@ -358,7 +360,6 @@ class TestMLAPI:
         mock_settings.data_directory = data_dir
 
         # Override the dependency
-        from shell_sorter.app import get_settings
         test_client.app.dependency_overrides[get_settings] = lambda: mock_settings
 
         try:
@@ -399,7 +400,6 @@ class TestMLAPI:
         mock_settings.data_directory = data_dir
 
         # Override the dependency
-        from shell_sorter.app import get_settings
         test_client.app.dependency_overrides[get_settings] = lambda: mock_settings
 
         try:
