@@ -8,7 +8,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 
-class NoCacheMiddleware(BaseHTTPMiddleware):
+class NoCacheMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
     """Middleware to add no-cache headers to prevent browser caching."""
 
     async def dispatch(
