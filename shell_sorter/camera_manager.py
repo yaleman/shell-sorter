@@ -368,7 +368,9 @@ class CameraManager:
         # If we have vendor/product ID, that's our primary identifier
         if camera_info.vendor_id and camera_info.product_id:
             if camera_info.serial_number:
-                primary_id = f"{camera_info.vendor_id}:{camera_info.product_id}:{camera_info.serial_number}"
+                primary_id = (
+                    f"{camera_info.vendor_id}:{camera_info.product_id}:{camera_info.serial_number}"
+                )
             else:
                 primary_id = f"{camera_info.vendor_id}:{camera_info.product_id}:{camera_info.name}"
         else:

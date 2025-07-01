@@ -9,13 +9,15 @@ from pydantic import BaseModel, Field
 
 class ViewType(StrEnum):
     """Enumeration for camera view types."""
+
     SIDE = "side"
-    TAIL = "tail" 
+    TAIL = "tail"
     UNKNOWN = "unknown"
 
 
 class CameraRegion(BaseModel):
     """Camera region information for image processing."""
+
     view_type: ViewType = ViewType.UNKNOWN
     region_x: Optional[int] = None
     region_y: Optional[int] = None
@@ -25,6 +27,7 @@ class CameraRegion(BaseModel):
 
 class CapturedImage(BaseModel):
     """Information about a captured image including camera and region data."""
+
     camera_index: int
     filename: str
     camera_name: str
@@ -36,6 +39,8 @@ class CapturedImage(BaseModel):
 
 
 class Shell(BaseModel):
+    """Model representing a shell case with metadata and captured images."""
+
     date_captured: datetime = Field(
         default_factory=datetime.now, description="Date when the shell was captured"
     )
@@ -43,7 +48,8 @@ class Shell(BaseModel):
     shell_type: str
     image_filenames: list[str]
     captured_images: Optional[List[CapturedImage]] = Field(
-        default=None, description="Detailed information about captured images including camera regions"
+        default=None,
+        description="Detailed information about captured images including camera regions",
     )
     include: bool = Field(
         default=True, description="Whether to include this shell in the training set."

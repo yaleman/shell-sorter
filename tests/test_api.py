@@ -110,7 +110,9 @@ class TestCameraAPI:
         mock_camera_manager_for_api.select_cameras.assert_called_once_with([0, 1000])
 
     def test_start_selected_cameras(
-        self, test_client: TestClient, mock_camera_manager_for_api  # pylint: disable=unused-argument
+        self,
+        test_client: TestClient,
+        mock_camera_manager_for_api,  # pylint: disable=unused-argument
     ):
         """Test starting selected cameras."""
         response = test_client.post("/api/cameras/start-selected")
@@ -150,7 +152,9 @@ class TestCameraAPI:
         )
 
     def test_set_camera_view_type_invalid(
-        self, test_client: TestClient, mock_camera_manager_for_api  # pylint: disable=unused-argument
+        self,
+        test_client: TestClient,
+        mock_camera_manager_for_api,  # pylint: disable=unused-argument
     ):
         """Test setting invalid camera view type."""
         response = test_client.post(
@@ -180,7 +184,9 @@ class TestCameraAPI:
         )
 
     def test_set_camera_region_invalid(
-        self, test_client: TestClient, mock_camera_manager_for_api  # pylint: disable=unused-argument
+        self,
+        test_client: TestClient,
+        mock_camera_manager_for_api,  # pylint: disable=unused-argument
     ):
         """Test setting invalid camera region."""
         response = test_client.post(

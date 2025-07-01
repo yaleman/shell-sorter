@@ -1414,7 +1414,7 @@ async def update_shell_image_view_type(
         if new_view_type not in valid_view_types:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid view type. Must be one of: {[vt.value for vt in valid_view_types]}",
+                detail=f"Invalid view type. Must be one of: {[vt.value for vt in valid_view_types]}"
             )
 
         # Load shell data from data directory (not image directory)
