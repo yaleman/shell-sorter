@@ -1414,7 +1414,7 @@ async def update_shell_image_view_type(
         if new_view_type not in valid_view_types:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid view type. Must be one of: {[vt.value for vt in valid_view_types]}"
+                detail=f"Invalid view type. Must be one of: {[vt.value for vt in valid_view_types]}",
             )
 
         # Load shell data from data directory (not image directory)
@@ -1956,10 +1956,8 @@ def _apply_region_processing(img: Any, region_info: Dict[str, Any]) -> Any:
         h, w = img.shape[:2]
 
         # Convert to int (we know they're not None due to the check above)
-        assert region_x is not None
-        assert region_y is not None
-        assert region_width is not None
-        assert region_height is not None
+        if None in [region_x, region_y, region_width, region_height]:
+            raise ValueError("Region information is incomplete")
         region_x_int = int(region_x)
         region_y_int = int(region_y)
         region_width_int = int(region_width)
@@ -1984,9 +1982,6 @@ def _apply_region_processing(img: Any, region_info: Dict[str, Any]) -> Any:
 
 def _apply_tail_view_processing(img: Any) -> Any:
     """Apply circular detection and filtering for tail view cameras."""
-    if cv2 is None or np is None:
-        return img
-
     try:
         # Convert to grayscale for circle detection
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)

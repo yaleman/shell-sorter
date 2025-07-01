@@ -26,9 +26,13 @@ shell-sorter = "shell_sorter.app:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.pylint]
+max-line-length = 120
+load-plugins = ["pylint_pydantic"]
+
 [tool.pylint.messages_control]
 disable = [
-    "W0718",  # broad-exception-caught
+    "W0718", # broad-exception-caught
 ]
 
 [tool.pylint.typecheck]
@@ -44,4 +48,5 @@ dev = [
     "httpx>=0.25.0",
     "pylint-pytest>=1.1.8",
     "pylint>=3.3.7",
+    "pylint-pydantic>=0.3.5",
 ]

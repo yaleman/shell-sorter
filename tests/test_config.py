@@ -44,7 +44,7 @@ class TestUserConfig:
         """Test UserConfig default values."""
         config = UserConfig()
 
-        assert config.camera_configs == {}
+        assert not config.camera_configs
         assert config.network_camera_hostnames == ["esp32cam1.local"]
         assert config.auto_detect_cameras is False
 

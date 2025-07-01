@@ -8,6 +8,7 @@ import platform
 import subprocess
 import threading
 import time
+from copy import copy
 from dataclasses import dataclass
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple
@@ -212,6 +213,60 @@ class CameraManager:
         # Final fallback
         return f"Camera {camera_index}"
 
+    def _get_macos_camera_hardware_info(
+        self, camera_index: int
+    ) -> Dict[str, Optional[str]]:
+        """Extract camera hardware information on macOS by parsing system_profiler output."""
+        hardware_info: Dict[str, Optional[str]] = {
+            "device_path": None,
+            "vendor_id": None,
+            "product_id": None,
+            "serial_number": None,
+        }
+
+        try:
+            # Get camera data from system_profiler
+            result = subprocess.run(
+                ["system_profiler", "SPRawCameraDataType", "-json"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+
+            if result.returncode == 0:
+                try:
+                    data = json.loads(result.stdout)
+                    camera_data = data.get("SPRawCameraDataType", [])
+
+                    # Try to match camera by index or find the best match
+                    if camera_data and len(camera_data) > camera_index:
+                        camera_info = camera_data[camera_index]
+
+                        # Extract hardware identifiers
+                        hardware_info["vendor_id"] = camera_info.get("_vendorId")
+                        hardware_info["product_id"] = camera_info.get("_productId")
+                        hardware_info["serial_number"] = camera_info.get(
+                            "_serialNumber"
+                        )
+
+                        # Device path is constructed for macOS
+                        hardware_info["device_path"] = f"/dev/video{camera_index}"
+
+                except json.JSONDecodeError:
+                    logger.debug("Failed to parse system_profiler JSON output")
+
+        except (
+            subprocess.TimeoutExpired,
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+        ):
+            logger.debug(
+                "Failed to get macOS camera hardware info for camera %d", camera_index
+            )
+
+        return hardware_info
+
     def _get_camera_hardware_info(self, camera_index: int) -> Dict[str, Optional[str]]:
         """Get hardware identification information for a camera."""
         hardware_info: Dict[str, Optional[str]] = {
@@ -286,28 +341,9 @@ class CameraManager:
                         pass
 
             elif system == "Darwin":  # macOS
-                # Try to get device info from system_profiler
-                try:
-                    result = subprocess.run(
-                        ["system_profiler", "SPUSBDataType", "-json"],
-                        capture_output=True,
-                        text=True,
-                        timeout=15,
-                        check=False,
-                    )
-                    if result.returncode == 0:
-                        # TODO: Match camera to USB device by parsing the tree
-                        # This is complex because we need to correlate video device with USB device
-                        # data = json.loads(result.stdout)
-                        # usb_devices = data.get("SPUSBDataType", [])
-                        pass
-                except (
-                    subprocess.TimeoutExpired,
-                    subprocess.CalledProcessError,
-                    FileNotFoundError,
-                    json.JSONDecodeError,
-                ):
-                    pass
+                # Get camera hardware info using macOS-specific method
+                macos_info = self._get_macos_camera_hardware_info(camera_index)
+                hardware_info.update(macos_info)
 
             elif system == "Windows":
                 # Try to get device info from Windows
@@ -368,9 +404,7 @@ class CameraManager:
         # If we have vendor/product ID, that's our primary identifier
         if camera_info.vendor_id and camera_info.product_id:
             if camera_info.serial_number:
-                primary_id = (
-                    f"{camera_info.vendor_id}:{camera_info.product_id}:{camera_info.serial_number}"
-                )
+                primary_id = f"{camera_info.vendor_id}:{camera_info.product_id}:{camera_info.serial_number}"
             else:
                 primary_id = f"{camera_info.vendor_id}:{camera_info.product_id}:{camera_info.name}"
         else:
@@ -409,7 +443,7 @@ class CameraManager:
             try:
                 user_config_data = self.settings.load_user_config()
                 user_config = UserConfig(**user_config_data)
-                esphome_hosts = user_config.network_camera_hostnames.copy()
+                esphome_hosts = copy(user_config.network_camera_hostnames)
             except Exception as e:
                 logger.debug(
                     "Failed to load network camera hostnames from user config: %s", e

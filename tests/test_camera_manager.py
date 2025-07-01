@@ -8,6 +8,8 @@ import pytest
 from shell_sorter.camera_manager import CameraManager, CameraInfo
 from shell_sorter.config import Settings
 
+# pylint: disable=protected-access  # Testing private methods is necessary
+
 
 class TestCameraInfo:
     """Test CameraInfo dataclass functionality."""
@@ -159,7 +161,9 @@ class TestCameraManager:
         assert not cameras[0].is_network_camera
 
     def test_camera_configuration_save_and_load(
-        self, mock_camera_manager: CameraManager, tmp_path  # pylint: disable=unused-argument
+        self,
+        mock_camera_manager: CameraManager,
+        tmp_path,  # pylint: disable=unused-argument
     ):
         """Test saving and loading camera configuration."""
         # Create a test camera
@@ -388,9 +392,8 @@ class TestCameraManager:
         """Test ESPHome camera detection when no network cameras available."""
         with patch("shell_sorter.camera_manager.aiohttp.ClientSession") as mock_session:
             # Mock network failure
-            mock_session.return_value.__aenter__.return_value.get.return_value.__aenter__.side_effect = (
-                Exception("Network error")
-            )
+            mock_get = mock_session.return_value.__aenter__.return_value.get
+            mock_get.return_value.__aenter__.side_effect = Exception("Network error")
 
             cameras = mock_camera_manager.detect_esphome_cameras()
 
@@ -410,9 +413,8 @@ class TestCameraManager:
             patch("shell_sorter.camera_manager.aiohttp.ClientSession") as mock_session,
             patch("shell_sorter.camera_manager.Image.open") as mock_image,
         ):
-            mock_session.return_value.__aenter__.return_value.get.return_value.__aenter__.return_value = (
-                mock_response
-            )
+            mock_get = mock_session.return_value.__aenter__.return_value.get
+            mock_get.return_value.__aenter__.return_value = mock_response
             mock_image.return_value.size = (800, 600)
 
             cameras = mock_camera_manager.detect_esphome_cameras()
