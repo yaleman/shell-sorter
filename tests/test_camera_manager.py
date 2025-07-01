@@ -24,9 +24,7 @@ class TestCameraInfo:
         assert camera.hardware_id == "1234:5678:ABC123"
         assert not camera.is_network_camera
 
-    def test_network_camera_info_creation(
-        self, sample_network_camera_info: Dict[str, Any]
-    ):
+    def test_network_camera_info_creation(self, sample_network_camera_info: Dict[str, Any]):
         """Test creating a network CameraInfo object."""
         camera = CameraInfo(**sample_network_camera_info)
 
@@ -57,9 +55,7 @@ class TestCameraManager:
         # The fallback now includes the backend name on macOS
         assert name in ["Camera 0", "Camera 0 (AVFOUNDATION)"]
 
-    def test_get_camera_hardware_info_fallback(
-        self, mock_camera_manager: CameraManager
-    ):
+    def test_get_camera_hardware_info_fallback(self, mock_camera_manager: CameraManager):
         """Test hardware info extraction fallback."""
         hardware_info = mock_camera_manager._get_camera_hardware_info(0)
 
@@ -83,9 +79,7 @@ class TestCameraManager:
         hardware_id = mock_camera_manager._generate_hardware_id(camera_info)
         assert hardware_id == "1234:5678:ABC123"
 
-    def test_generate_hardware_id_network_camera(
-        self, mock_camera_manager: CameraManager
-    ):
+    def test_generate_hardware_id_network_camera(self, mock_camera_manager: CameraManager):
         """Test hardware ID generation for network cameras."""
         camera_info = CameraInfo(
             index=1000,
@@ -111,9 +105,7 @@ class TestCameraManager:
         assert hardware_id == "/dev/video0:Unknown Camera"
 
     @patch("shell_sorter.camera_manager.cv2")
-    def test_detect_cameras_no_cameras(
-        self, mock_cv2, mock_camera_manager: CameraManager
-    ):
+    def test_detect_cameras_no_cameras(self, mock_cv2, mock_camera_manager: CameraManager):
         """Test camera detection when no cameras are available."""
         # Mock cv2.VideoCapture to return unopened captures
         mock_capture = MagicMock()
@@ -121,18 +113,14 @@ class TestCameraManager:
         mock_cv2.VideoCapture.return_value = mock_capture
 
         # Mock detect_esphome_cameras to return empty list quickly
-        with patch.object(
-            mock_camera_manager, "detect_esphome_cameras", return_value=[]
-        ):
+        with patch.object(mock_camera_manager, "detect_esphome_cameras", return_value=[]):
             cameras = mock_camera_manager.detect_cameras()
 
         assert len(cameras) == 0
         assert len(mock_camera_manager.cameras) == 0
 
     @patch("shell_sorter.camera_manager.cv2")
-    def test_detect_cameras_with_usb_camera(
-        self, mock_cv2, mock_camera_manager: CameraManager
-    ):
+    def test_detect_cameras_with_usb_camera(self, mock_cv2, mock_camera_manager: CameraManager):
         """Test camera detection with one USB camera."""
 
         # Mock cv2.VideoCapture for camera 0
@@ -140,9 +128,7 @@ class TestCameraManager:
             mock_capture = MagicMock()
             if index == 0:
                 mock_capture.isOpened.return_value = True
-                mock_capture.get.side_effect = (
-                    lambda prop: 640 if prop == mock_cv2.CAP_PROP_FRAME_WIDTH else 480
-                )
+                mock_capture.get.side_effect = lambda prop: 640 if prop == mock_cv2.CAP_PROP_FRAME_WIDTH else 480
             else:
                 mock_capture.isOpened.return_value = False
             return mock_capture
@@ -150,9 +136,7 @@ class TestCameraManager:
         mock_cv2.VideoCapture.side_effect = mock_video_capture
 
         # Mock detect_esphome_cameras to return empty list quickly
-        with patch.object(
-            mock_camera_manager, "detect_esphome_cameras", return_value=[]
-        ):
+        with patch.object(mock_camera_manager, "detect_esphome_cameras", return_value=[]):
             cameras = mock_camera_manager.detect_cameras()
 
         assert len(cameras) == 1
@@ -281,9 +265,7 @@ class TestCameraManager:
             assert camera.region_height is None
 
     @patch("shell_sorter.camera_manager.cv2")
-    def test_trigger_autofocus_usb_camera(
-        self, mock_cv2, mock_camera_manager: CameraManager
-    ):
+    def test_trigger_autofocus_usb_camera(self, mock_cv2, mock_camera_manager: CameraManager):
         """Test triggering autofocus on USB camera."""
         camera = CameraInfo(
             index=0,
@@ -349,12 +331,8 @@ class TestCameraManager:
 
     def test_clear_cameras(self, mock_camera_manager: CameraManager):
         """Test clearing all cameras from configuration."""
-        camera1 = CameraInfo(
-            index=0, name="Camera 1", resolution=(640, 480), hardware_id="cam1"
-        )
-        camera2 = CameraInfo(
-            index=1, name="Camera 2", resolution=(640, 480), hardware_id="cam2"
-        )
+        camera1 = CameraInfo(index=0, name="Camera 1", resolution=(640, 480), hardware_id="cam1")
+        camera2 = CameraInfo(index=1, name="Camera 2", resolution=(640, 480), hardware_id="cam2")
 
         mock_camera_manager.cameras[0] = camera1
         mock_camera_manager.cameras[1] = camera2
@@ -386,9 +364,7 @@ class TestCameraManager:
             assert True
 
     @pytest.mark.asyncio
-    async def test_detect_esphome_cameras_no_network(
-        self, mock_camera_manager: CameraManager
-    ):
+    async def test_detect_esphome_cameras_no_network(self, mock_camera_manager: CameraManager):
         """Test ESPHome camera detection when no network cameras available."""
         with patch("shell_sorter.camera_manager.aiohttp.ClientSession") as mock_session:
             # Mock network failure
@@ -400,9 +376,7 @@ class TestCameraManager:
             assert len(cameras) == 0
 
     @pytest.mark.asyncio
-    async def test_detect_esphome_cameras_with_camera(
-        self, mock_camera_manager: CameraManager
-    ):
+    async def test_detect_esphome_cameras_with_camera(self, mock_camera_manager: CameraManager):
         """Test ESPHome camera detection with available camera."""
         mock_response = AsyncMock()
         mock_response.status = 200

@@ -38,9 +38,7 @@ class HardwareController:
         self.base_url = f"http://{self.config.host}:{self.config.port}"
         self.auth = aiohttp.BasicAuth(self.config.username, self.config.password)
         self.command_history: List[ESPCommand] = []
-        self._command_broadcast_callback: Optional[
-            Callable[[Dict[str, Any]], Coroutine[Any, Any, None]]
-        ] = None
+        self._command_broadcast_callback: Optional[Callable[[Dict[str, Any]], Coroutine[Any, Any, None]]] = None
 
     async def _make_request(
         self, endpoint: str, method: str = "GET", data: Optional[Dict[str, Any]] = None
@@ -51,9 +49,7 @@ class HardwareController:
         command_desc = f"{method} {endpoint}"
 
         try:
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=5)
-            ) as session:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
                 if method == "GET":
                     async with session.get(url, auth=self.auth) as response:
                         response_text = await response.text()
@@ -70,12 +66,11 @@ class HardwareController:
 
                         if response.status == 200:
                             return await response.json()  # type: ignore[no-any-return]
-                        else:
-                            logger.error(
-                                "ESPHome request failed: %s %s",
-                                response.status,
-                                response_text,
-                            )
+                        logger.error(
+                            "ESPHome request failed: %s %s",
+                            response.status,
+                            response_text,
+                        )
                             return None
 
                 elif method == "POST":
@@ -94,12 +89,11 @@ class HardwareController:
 
                         if response.status == 200:
                             return await response.json()  # type: ignore[no-any-return]
-                        else:
-                            logger.error(
-                                "ESPHome request failed: %s %s",
-                                response.status,
-                                response_text,
-                            )
+                        logger.error(
+                            "ESPHome request failed: %s %s",
+                            response.status,
+                            response_text,
+                        )
                             return None
 
                 return None
@@ -120,9 +114,7 @@ class HardwareController:
             self._add_command_to_history(cmd)
             return None
 
-    def set_command_broadcast_callback(
-        self, callback: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]]
-    ) -> None:
+    def set_command_broadcast_callback(self, callback: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]]) -> None:
         """Set callback for broadcasting commands to WebSocket clients."""
         self._command_broadcast_callback = callback
 
@@ -164,12 +156,8 @@ class HardwareController:
             result = await self._make_request("/sensor")
             if result:
                 return {
-                    "case_ready": result.get("case_ready_to_feed", {}).get(
-                        "state", False
-                    ),
-                    "case_in_camera": result.get("case_in_camera_view", {}).get(
-                        "state", False
-                    ),
+                    "case_ready": result.get("case_ready_to_feed", {}).get("state", False),
+                    "case_in_camera": result.get("case_in_camera_view", {}).get("state", False),
                 }
             return {"case_ready": False, "case_in_camera": False}
         except Exception as e:
@@ -202,9 +190,7 @@ class HardwareController:
         """Activate vibration motor for specified duration."""
         try:
             # Turn on vibration motor
-            result = await self._make_request(
-                "/switch/vibration_motor/turn_on", method="POST"
-            )
+            result = await self._make_request("/switch/vibration_motor/turn_on", method="POST")
             if not result:
                 return False
 
@@ -214,15 +200,12 @@ class HardwareController:
             await asyncio.sleep(duration_seconds)
 
             # Turn off vibration motor
-            result = await self._make_request(
-                "/switch/vibration_motor/turn_off", method="POST"
-            )
+            result = await self._make_request("/switch/vibration_motor/turn_off", method="POST")
             if result:
                 logger.info("Vibration motor deactivated")
                 return True
-            else:
-                logger.error("Failed to deactivate vibration motor")
-                return False
+            logger.error("Failed to deactivate vibration motor")
+            return False
 
         except Exception as e:
             logger.error("Error controlling vibration motor: %s", e)

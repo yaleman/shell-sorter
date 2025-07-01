@@ -26,9 +26,15 @@ shell-sorter = "shell_sorter.app:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.ruff]
+line-length = 120
+
 [tool.pylint]
 max-line-length = 120
 load-plugins = ["pylint_pydantic"]
+
+[tool.pylint.format]
+max-line-length = 120
 
 [tool.pylint.messages_control]
 disable = [

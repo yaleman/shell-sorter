@@ -40,12 +40,8 @@ class CaseType:
     def from_dict(cls, data: Dict[str, Any]) -> "CaseType":
         """Create from dictionary."""
         case_type = cls(data["name"], data["designation"], data.get("brand"))
-        case_type.reference_images = [
-            Path(img) for img in data.get("reference_images", [])
-        ]
-        case_type.training_images = [
-            Path(img) for img in data.get("training_images", [])
-        ]
+        case_type.reference_images = [Path(img) for img in data.get("reference_images", [])]
+        case_type.training_images = [Path(img) for img in data.get("training_images", [])]
         case_type.created_at = data.get("created_at", datetime.now().isoformat())
         case_type.updated_at = data.get("updated_at", datetime.now().isoformat())
         return case_type
@@ -80,18 +76,14 @@ class MLTrainer:
     def save_case_types(self) -> None:
         """Save case types to storage."""
         try:
-            data = {
-                name: case_type.to_dict() for name, case_type in self.case_types.items()
-            }
+            data = {name: case_type.to_dict() for name, case_type in self.case_types.items()}
             with open(self.case_types_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
             logger.info("Saved %d case types", len(self.case_types))
         except OSError as e:
             logger.error("Error saving case types: %s", e)
 
-    def add_case_type(
-        self, name: str, designation: str, brand: Optional[str] = None
-    ) -> CaseType:
+    def add_case_type(self, name: str, designation: str, brand: Optional[str] = None) -> CaseType:
         """Add a new case type."""
         case_type = CaseType(name, designation, brand)
         self.case_types[name] = case_type
@@ -122,9 +114,7 @@ class MLTrainer:
             case_type.reference_images.append(target_path)
             case_type.updated_at = datetime.now().isoformat()
             self.save_case_types()
-            logger.info(
-                "Added reference image for %s: %s", case_type_name, image_path.name
-            )
+            logger.info("Added reference image for %s: %s", case_type_name, image_path.name)
             return True
         except (OSError, shutil.Error) as e:
             logger.error("Error adding reference image: %s", e)
@@ -146,9 +136,7 @@ class MLTrainer:
             case_type.training_images.append(target_path)
             case_type.updated_at = datetime.now().isoformat()
             self.save_case_types()
-            logger.info(
-                "Added training image for %s: %s", case_type_name, image_path.name
-            )
+            logger.info("Added training image for %s: %s", case_type_name, image_path.name)
             return True
         except (OSError, shutil.Error) as e:
             logger.error("Error adding training image: %s", e)
@@ -167,8 +155,7 @@ class MLTrainer:
                 "brand": case_type.brand,
                 "reference_count": len(case_type.reference_images),
                 "training_count": len(case_type.training_images),
-                "ready_for_training": len(case_type.training_images)
-                >= 10,  # Minimum images for training
+                "ready_for_training": len(case_type.training_images) >= 10,  # Minimum images for training
                 "updated_at": case_type.updated_at,
             }
         return summary
@@ -224,9 +211,7 @@ class MLTrainer:
 
             if shell_count >= 1:  # Reduce minimum requirement for testing
                 trainable_types.append(case_type_name)
-                logger.info(
-                    "Case type %s has %d shell samples", case_type_name, shell_count
-                )
+                logger.info("Case type %s has %d shell samples", case_type_name, shell_count)
 
         if not trainable_types:
             return (

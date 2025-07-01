@@ -180,11 +180,7 @@ class CameraManager:
                     if result.returncode == 0:
                         lines = result.stdout.split("\n")
                         camera_names = [
-                            line.strip()
-                            for line in lines
-                            if line.strip()
-                            and "Name" not in line
-                            and "----" not in line
+                            line.strip() for line in lines if line.strip() and "Name" not in line and "----" not in line
                         ]
                         if camera_index < len(camera_names):
                             return camera_names[camera_index]
@@ -206,16 +202,12 @@ class CameraManager:
                 cap.release()
 
         except Exception as e:
-            logger.debug(
-                "Error getting camera device name for camera %d: %s", camera_index, e
-            )
+            logger.debug("Error getting camera device name for camera %d: %s", camera_index, e)
 
         # Final fallback
         return f"Camera {camera_index}"
 
-    def _get_macos_camera_hardware_info(
-        self, camera_index: int
-    ) -> Dict[str, Optional[str]]:
+    def _get_macos_camera_hardware_info(self, camera_index: int) -> Dict[str, Optional[str]]:
         """Extract camera hardware information on macOS by parsing system_profiler output."""
         hardware_info: Dict[str, Optional[str]] = {
             "device_path": None,
@@ -246,9 +238,7 @@ class CameraManager:
                         # Extract hardware identifiers
                         hardware_info["vendor_id"] = camera_info.get("_vendorId")
                         hardware_info["product_id"] = camera_info.get("_productId")
-                        hardware_info["serial_number"] = camera_info.get(
-                            "_serialNumber"
-                        )
+                        hardware_info["serial_number"] = camera_info.get("_serialNumber")
 
                         # Device path is constructed for macOS
                         hardware_info["device_path"] = f"/dev/video{camera_index}"
@@ -261,9 +251,7 @@ class CameraManager:
             subprocess.CalledProcessError,
             FileNotFoundError,
         ):
-            logger.debug(
-                "Failed to get macOS camera hardware info for camera %d", camera_index
-            )
+            logger.debug("Failed to get macOS camera hardware info for camera %d", camera_index)
 
         return hardware_info
 
@@ -301,17 +289,11 @@ class CameraManager:
                         lines = result.stdout.split("\n")
                         for line in lines:
                             if line.startswith("ID_VENDOR_ID="):
-                                hardware_info["vendor_id"] = line.split("=", 1)[
-                                    -1
-                                ].strip()
+                                hardware_info["vendor_id"] = line.split("=", 1)[-1].strip()
                             elif line.startswith("ID_MODEL_ID="):
-                                hardware_info["product_id"] = line.split("=", 1)[
-                                    -1
-                                ].strip()
+                                hardware_info["product_id"] = line.split("=", 1)[-1].strip()
                             elif line.startswith("ID_SERIAL_SHORT="):
-                                hardware_info["serial_number"] = line.split("=", 1)[
-                                    -1
-                                ].strip()
+                                hardware_info["serial_number"] = line.split("=", 1)[-1].strip()
                 except (
                     subprocess.TimeoutExpired,
                     subprocess.CalledProcessError,
@@ -374,9 +356,7 @@ class CameraManager:
                     pass
 
         except Exception as e:
-            logger.debug(
-                "Error getting camera hardware info for camera %d: %s", camera_index, e
-            )
+            logger.debug("Error getting camera hardware info for camera %d: %s", camera_index, e)
 
         return hardware_info
 
@@ -421,9 +401,7 @@ class CameraManager:
                 asyncio.get_running_loop()
                 # If we're already in an event loop, create a task
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(
-                        asyncio.run, self._detect_esphome_cameras_async()
-                    )
+                    future = executor.submit(asyncio.run, self._detect_esphome_cameras_async())
                     return future.result(timeout=10)
             except RuntimeError:
                 # No event loop running, run directly
@@ -445,9 +423,7 @@ class CameraManager:
                 user_config = UserConfig(**user_config_data)
                 esphome_hosts = copy(user_config.network_camera_hostnames)
             except Exception as e:
-                logger.debug(
-                    "Failed to load network camera hostnames from user config: %s", e
-                )
+                logger.debug("Failed to load network camera hostnames from user config: %s", e)
                 # Fall back to application settings
                 esphome_hosts = self.settings.network_camera_hostnames.copy()
         else:
@@ -465,9 +441,7 @@ class CameraManager:
                     # Check if the device is reachable and has a camera
                     camera_url = f"http://{hostname}/camera"
                     async with session.get(camera_url) as response:
-                        if response.status == 200 and "image" in response.headers.get(
-                            "content-type", ""
-                        ):
+                        if response.status == 200 and "image" in response.headers.get("content-type", ""):
                             # This is a valid camera stream
                             # Try to get image dimensions from the first frame
                             image_data = await response.read()
@@ -484,8 +458,7 @@ class CameraManager:
                                 pass
 
                             camera_info = CameraInfo(
-                                index=1000
-                                + i,  # Use high indices to avoid conflicts with USB cameras
+                                index=1000 + i,  # Use high indices to avoid conflicts with USB cameras
                                 name=f"ESPHome Camera ({hostname})",
                                 resolution=(width, height),
                                 is_active=False,
@@ -496,9 +469,7 @@ class CameraManager:
                             )
 
                             # Generate stable hardware ID for network camera
-                            camera_info.hardware_id = self._generate_hardware_id(
-                                camera_info
-                            )
+                            camera_info.hardware_id = self._generate_hardware_id(camera_info)
 
                             # Load camera configuration from user config if available
                             if self.settings:
@@ -560,9 +531,7 @@ class CameraManager:
                 cameras.append(camera_info)
                 self.cameras[i] = camera_info
 
-                logger.info(
-                    "Detected camera %d with resolution %dx%d", i, width, height
-                )
+                logger.info("Detected camera %d with resolution %dx%d", i, width, height)
 
             cap.release()
 
@@ -613,9 +582,7 @@ class CameraManager:
                     hardware_id_to_camera[camera.hardware_id] = camera
 
             # Check for hardware ID matches
-            matched_hardware_ids = known_hardware_ids.intersection(
-                hardware_id_to_camera.keys()
-            )
+            matched_hardware_ids = known_hardware_ids.intersection(hardware_id_to_camera.keys())
 
             if matched_hardware_ids:
                 logger.info(
@@ -638,9 +605,7 @@ class CameraManager:
                 logger.info("No cameras matched known hardware IDs")
 
             # Report any previously known cameras that are now missing
-            missing_hardware_ids = known_hardware_ids - set(
-                hardware_id_to_camera.keys()
-            )
+            missing_hardware_ids = known_hardware_ids - set(hardware_id_to_camera.keys())
             if missing_hardware_ids:
                 logger.warning(
                     "Previously configured cameras not found: %s",
@@ -679,9 +644,7 @@ class CameraManager:
         """Get list of selected cameras."""
         return [cam for cam in self.cameras.values() if cam.is_selected]
 
-    def set_camera_view_type(
-        self, camera_index: int, view_type: Optional[Literal["side", "tail"]]
-    ) -> bool:
+    def set_camera_view_type(self, camera_index: int, view_type: Optional[Literal["side", "tail"]]) -> bool:
         """Set the view type for a camera."""
         if camera_index not in self.cameras:
             logger.warning("Camera %d not found", camera_index)
@@ -697,9 +660,7 @@ class CameraManager:
 
         return True
 
-    def set_camera_region(
-        self, camera_index: int, x: int, y: int, width: int, height: int
-    ) -> bool:
+    def set_camera_region(self, camera_index: int, x: int, y: int, width: int, height: int) -> bool:
         """Set the region of interest for a camera."""
         if camera_index not in self.cameras:
             logger.warning("Camera %d not found", camera_index)
@@ -711,9 +672,7 @@ class CameraManager:
         camera.region_width = width
         camera.region_height = height
 
-        logger.info(
-            "Set camera %d region to (%d,%d) %dx%d", camera_index, x, y, width, height
-        )
+        logger.info("Set camera %d region to (%d,%d) %dx%d", camera_index, x, y, width, height)
 
         # Save to user config
         if self.settings:
@@ -803,9 +762,7 @@ class CameraManager:
                     center_y,
                 )
             else:
-                logger.info(
-                    "Triggered autofocus for camera %d (no region set)", camera_index
-                )
+                logger.info("Triggered autofocus for camera %d (no region set)", camera_index)
 
             # Give camera time to focus
             time.sleep(1.0)
@@ -816,14 +773,10 @@ class CameraManager:
             return True
 
         except Exception as e:
-            logger.error(
-                "Error triggering autofocus for camera %d: %s", camera_index, e
-            )
+            logger.error("Error triggering autofocus for camera %d: %s", camera_index, e)
             return False
 
-    def _open_camera_with_timeout(
-        self, camera_index: int, timeout: float = 3.0
-    ) -> Optional[cv2.VideoCapture]:
+    def _open_camera_with_timeout(self, camera_index: int, timeout: float = 3.0) -> Optional[cv2.VideoCapture]:
         """Open camera with timeout to prevent hanging."""
 
         def open_camera() -> Optional[cv2.VideoCapture]:
@@ -838,9 +791,7 @@ class CameraManager:
             try:
                 return future.result(timeout=timeout)
             except concurrent.futures.TimeoutError:
-                logger.warning(
-                    "Camera %d open timed out after %gs", camera_index, timeout
-                )
+                logger.warning("Camera %d open timed out after %gs", camera_index, timeout)
                 return None
 
     def start_camera_stream(self, camera_index: int) -> bool:
@@ -881,9 +832,7 @@ class CameraManager:
                 logger.info("Opening USB camera %d...", camera_index)
                 cap = self._open_camera_with_timeout(camera_index, timeout=3.0)
                 if cap is None:
-                    logger.error(
-                        "Failed to open camera %d within timeout", camera_index
-                    )
+                    logger.error("Failed to open camera %d within timeout", camera_index)
                     return False
 
                 # Set camera properties for better performance and autofocus
@@ -914,9 +863,7 @@ class CameraManager:
                 self.latest_frames[camera_index] = None
 
                 # Start USB camera streaming thread
-                thread = threading.Thread(
-                    target=self._stream_camera, args=(camera_index,), daemon=True
-                )
+                thread = threading.Thread(target=self._stream_camera, args=(camera_index,), daemon=True)
                 self.streaming_threads[camera_index] = thread
                 thread.start()
 
@@ -990,9 +937,7 @@ class CameraManager:
                         )
                         break
 
-                    if stop_event.wait(
-                        0.5
-                    ):  # Longer wait on failure for camera recovery
+                    if stop_event.wait(0.5):  # Longer wait on failure for camera recovery
                         break
                     continue
                 else:
@@ -1026,9 +971,7 @@ class CameraManager:
 
         # Run async streaming in this thread
         try:
-            asyncio.run(
-                self._async_stream_network_camera(camera_index, camera_info, stop_event)
-            )
+            asyncio.run(self._async_stream_network_camera(camera_index, camera_info, stop_event))
         except Exception as e:
             logger.error("Error in network camera %d streaming: %s", camera_index, e)
 
@@ -1074,9 +1017,7 @@ class CameraManager:
                     )
                     break
 
-    async def _capture_network_image_async(
-        self, camera_info: CameraInfo
-    ) -> Optional[bytes]:
+    async def _capture_network_image_async(self, camera_info: CameraInfo) -> Optional[bytes]:
         """Async method to capture an image from a network camera."""
         timeout = aiohttp.ClientTimeout(total=15)
         try:
@@ -1168,14 +1109,10 @@ class CameraManager:
                             )
                             image_data = future.result(timeout=15)
                     else:
-                        image_data = asyncio.run(
-                            self._capture_network_image_async(camera_info)
-                        )
+                        image_data = asyncio.run(self._capture_network_image_async(camera_info))
 
                     if image_data is None:
-                        logger.error(
-                            "Failed to capture from network camera %d", camera_index
-                        )
+                        logger.error("Failed to capture from network camera %d", camera_index)
                         return None
 
                     # Convert response to PIL Image
@@ -1186,9 +1123,7 @@ class CameraManager:
                         pil_image = pil_image.convert("RGB")  # type: ignore[assignment]
 
                 except Exception as e:
-                    logger.error(
-                        "Error capturing from network camera %d: %s", camera_index, e
-                    )
+                    logger.error("Error capturing from network camera %d: %s", camera_index, e)
                     return None
 
             else:
@@ -1207,10 +1142,7 @@ class CameraManager:
                 max_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
                 # Try to set to maximum resolution if different from current
-                if (
-                    max_width != camera_info.resolution[0]
-                    or max_height != camera_info.resolution[1]
-                ):
+                if max_width != camera_info.resolution[0] or max_height != camera_info.resolution[1]:
                     cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_info.resolution[0])
                     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_info.resolution[1])
 
@@ -1255,11 +1187,7 @@ class CameraManager:
                     user_comment_tag = tag_num
                     break
 
-            if (
-                user_comment_tag
-                and camera_info.view_type
-                and exif_dict["Exif"] is not None
-            ):
+            if user_comment_tag and camera_info.view_type and exif_dict["Exif"] is not None:
                 # UserComment needs special encoding
                 comment = f"view_type:{camera_info.view_type}"
                 # Prefix with character code (ASCII)
@@ -1321,9 +1249,7 @@ class CameraManager:
                 logger.info("Waiting for camera %d thread to finish...", camera_index)
                 thread.join(timeout=2.0)
                 if thread.is_alive():
-                    logger.warning(
-                        "Camera %d thread did not finish cleanly", camera_index
-                    )
+                    logger.warning("Camera %d thread did not finish cleanly", camera_index)
 
         # Clear all data structures
         self.cameras.clear()
@@ -1369,9 +1295,7 @@ class CameraManager:
                         camera_info.hardware_id,
                     )
                     # Save the config under the new hardware ID
-                    user_config.set_camera_config(
-                        camera_info.hardware_id, camera_config
-                    )
+                    user_config.set_camera_config(camera_info.hardware_id, camera_config)
                     # Remove the old name-based config
                     if camera_info.name in user_config.camera_configs:
                         del user_config.camera_configs[camera_info.name]
@@ -1426,9 +1350,7 @@ class CameraManager:
             # Remove any legacy name-based config if it exists
             if camera_info.name in user_config.camera_configs:
                 del user_config.camera_configs[camera_info.name]
-                logger.debug(
-                    "Removed legacy camera config for name: %s", camera_info.name
-                )
+                logger.debug("Removed legacy camera config for name: %s", camera_info.name)
 
             # Save to file
             success = self.settings.save_user_config(user_config.model_dump())
@@ -1468,10 +1390,7 @@ class CameraManager:
                     user_config = UserConfig(**user_config_data)
 
                     # Remove by hardware ID (primary method)
-                    if (
-                        camera_info.hardware_id
-                        and camera_info.hardware_id in user_config.camera_configs
-                    ):
+                    if camera_info.hardware_id and camera_info.hardware_id in user_config.camera_configs:
                         del user_config.camera_configs[camera_info.hardware_id]
                         logger.debug(
                             "Removed camera config by hardware ID: %s",
@@ -1481,9 +1400,7 @@ class CameraManager:
                     # Also remove any legacy name-based config
                     if camera_info.name in user_config.camera_configs:
                         del user_config.camera_configs[camera_info.name]
-                        logger.debug(
-                            "Removed legacy camera config by name: %s", camera_info.name
-                        )
+                        logger.debug("Removed legacy camera config by name: %s", camera_info.name)
 
                     self.settings.save_user_config(user_config.model_dump())
                 except Exception as e:
@@ -1511,9 +1428,7 @@ class CameraManager:
             for cam in self.cameras.values():
                 if cam.hardware_id:
                     camera_configs_to_remove.append(cam.hardware_id)
-                camera_configs_to_remove.append(
-                    cam.name
-                )  # Also remove legacy name-based configs
+                camera_configs_to_remove.append(cam.name)  # Also remove legacy name-based configs
 
             self.cameras.clear()
 

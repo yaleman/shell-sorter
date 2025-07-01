@@ -7,7 +7,9 @@ default:
 
 # Run linting checks
 lint:
-    uv run ruff check shell_sorter/
+    uv run ruff check shell_sorter/ tests
+    uv run ruff format --check shell_sorter/ tests
+    uv run pylint tests shell_sorter/
 
 # Run type checking
 mypy:
@@ -15,7 +17,7 @@ mypy:
 
 # Run tests
 test:
-    uv run pytest
+    uv run pytest -s -v
 
 # Run all checks
 check: lint mypy test esphome-check

@@ -108,9 +108,7 @@ class TestSettings:
         # Should return the default config file path
         config_file = settings.get_config_path()
         assert config_file.name == "shell-sorter.json"
-        assert "/.config/" in str(config_file) or str(config_file).endswith(
-            "shell-sorter.json"
-        )
+        assert "/.config/" in str(config_file) or str(config_file).endswith("shell-sorter.json")
 
     def test_load_user_config_nonexistent(self, mock_settings: Settings):
         """Test loading user config when file doesn't exist."""
@@ -119,9 +117,7 @@ class TestSettings:
         try:
             # Get a non-existent path
             nonexistent_path = Path("/tmp/this_file_should_not_exist_12345.json")
-            with patch.object(
-                type(mock_settings), "get_config_path", return_value=nonexistent_path
-            ):
+            with patch.object(type(mock_settings), "get_config_path", return_value=nonexistent_path):
                 result = mock_settings.load_user_config()
                 # If we get here, the method returns defaults instead of raising
                 assert isinstance(result, dict)
@@ -220,9 +216,7 @@ class TestSettings:
 
     def test_network_camera_hostnames_validation(self):
         """Test network camera hostnames validation."""
-        settings = Settings(
-            network_camera_hostnames=["esp32cam1.local", "esp32cam2.local"]
-        )
+        settings = Settings(network_camera_hostnames=["esp32cam1.local", "esp32cam2.local"])
 
         assert len(settings.network_camera_hostnames) == 2
         assert "esp32cam1.local" in settings.network_camera_hostnames
@@ -237,9 +231,7 @@ class TestConfigIntegration:
         config_file = tmp_path / "config.json"
 
         # Create settings
-        settings = Settings(
-            data_directory=tmp_path / "data", image_directory=tmp_path / "images"
-        )
+        settings = Settings(data_directory=tmp_path / "data", image_directory=tmp_path / "images")
 
         with patch.object(Settings, "get_config_path", return_value=config_file):
             # Create user config
@@ -271,9 +263,7 @@ class TestConfigIntegration:
             loaded_config = UserConfig(**loaded_data)
 
             # Verify camera configuration
-            retrieved_camera_config = loaded_config.get_camera_config(
-                "usb:1234:5678:ABC123"
-            )
+            retrieved_camera_config = loaded_config.get_camera_config("usb:1234:5678:ABC123")
             assert retrieved_camera_config.view_type == "side"
             assert retrieved_camera_config.region_x == 100
 
@@ -324,7 +314,5 @@ class TestConfigIntegration:
             usb_camera_config = user_config.get_camera_config("USB Camera 1")
             assert usb_camera_config.view_type == "side"
 
-            esphome_camera_config = user_config.get_camera_config(
-                "ESPHome Camera (esp32cam1.local)"
-            )
+            esphome_camera_config = user_config.get_camera_config("ESPHome Camera (esp32cam1.local)")
             assert esphome_camera_config.view_type == "tail"

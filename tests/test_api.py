@@ -65,9 +65,7 @@ def mock_camera_manager_for_api():
         mock_manager.set_camera_region.return_value = True
         mock_manager.clear_camera_region.return_value = True
         mock_manager.trigger_autofocus.return_value = True
-        mock_manager.capture_all_selected_high_resolution.return_value = {
-            0: "fake_image_filename.jpg"
-        }
+        mock_manager.capture_all_selected_high_resolution.return_value = {0: "fake_image_filename.jpg"}
         mock_manager.capture_high_resolution_image.return_value = b"fake_image_data"
         mock_manager.get_latest_frame.return_value = b"fake_frame_data"
 
@@ -123,9 +121,7 @@ class TestCameraAPI:
         assert "selected_cameras" in data
         assert "message" in data
 
-    def test_stop_all_cameras(
-        self, test_client: TestClient, mock_camera_manager_for_api
-    ):
+    def test_stop_all_cameras(self, test_client: TestClient, mock_camera_manager_for_api):
         """Test stopping all cameras."""
         response = test_client.post("/api/cameras/stop-all")
 
@@ -135,21 +131,15 @@ class TestCameraAPI:
         assert "message" in data
         mock_camera_manager_for_api.stop_all_cameras.assert_called_once()
 
-    def test_set_camera_view_type(
-        self, test_client: TestClient, mock_camera_manager_for_api
-    ):
+    def test_set_camera_view_type(self, test_client: TestClient, mock_camera_manager_for_api):
         """Test setting camera view type."""
-        response = test_client.post(
-            "/api/cameras/0/view-type", data={"view_type": "tail"}
-        )
+        response = test_client.post("/api/cameras/0/view-type", data={"view_type": "tail"})
 
         assert response.status_code == 200
         data = response.json()
 
         assert data["view_type"] == "tail"
-        mock_camera_manager_for_api.set_camera_view_type.assert_called_once_with(
-            0, "tail"
-        )
+        mock_camera_manager_for_api.set_camera_view_type.assert_called_once_with(0, "tail")
 
     def test_set_camera_view_type_invalid(
         self,
@@ -157,15 +147,11 @@ class TestCameraAPI:
         mock_camera_manager_for_api,  # pylint: disable=unused-argument
     ):
         """Test setting invalid camera view type."""
-        response = test_client.post(
-            "/api/cameras/0/view-type", data={"view_type": "invalid"}
-        )
+        response = test_client.post("/api/cameras/0/view-type", data={"view_type": "invalid"})
 
         assert response.status_code == 400
 
-    def test_set_camera_region(
-        self, test_client: TestClient, mock_camera_manager_for_api
-    ):
+    def test_set_camera_region(self, test_client: TestClient, mock_camera_manager_for_api):
         """Test setting camera region."""
         response = test_client.post(
             "/api/cameras/0/region",
@@ -179,9 +165,7 @@ class TestCameraAPI:
         assert data["region"]["y"] == 150
         assert data["region"]["width"] == 300
         assert data["region"]["height"] == 300
-        mock_camera_manager_for_api.set_camera_region.assert_called_once_with(
-            0, 150, 150, 300, 300
-        )
+        mock_camera_manager_for_api.set_camera_region.assert_called_once_with(0, 150, 150, 300, 300)
 
     def test_set_camera_region_invalid(
         self,
@@ -201,9 +185,7 @@ class TestCameraAPI:
 
         assert response.status_code == 400
 
-    def test_clear_camera_region(
-        self, test_client: TestClient, mock_camera_manager_for_api
-    ):
+    def test_clear_camera_region(self, test_client: TestClient, mock_camera_manager_for_api):
         """Test clearing camera region."""
         response = test_client.delete("/api/cameras/0/region")
 
@@ -213,9 +195,7 @@ class TestCameraAPI:
         assert "message" in data
         mock_camera_manager_for_api.clear_camera_region.assert_called_once_with(0)
 
-    def test_trigger_camera_autofocus(
-        self, test_client: TestClient, mock_camera_manager_for_api
-    ):
+    def test_trigger_camera_autofocus(self, test_client: TestClient, mock_camera_manager_for_api):
         """Test triggering camera autofocus."""
         response = test_client.post("/api/cameras/0/autofocus")
 
@@ -225,9 +205,7 @@ class TestCameraAPI:
         assert "message" in data
         mock_camera_manager_for_api.trigger_autofocus.assert_called_once_with(0)
 
-    def test_trigger_camera_autofocus_with_region(
-        self, test_client: TestClient, mock_camera_manager_for_api
-    ):
+    def test_trigger_camera_autofocus_with_region(self, test_client: TestClient, mock_camera_manager_for_api):
         """Test triggering autofocus with region returns focus point."""
         # Mock camera with region
         mock_camera = mock_camera_manager_for_api.cameras[0]
@@ -274,9 +252,7 @@ class TestConfigurationAPI:
 
     @patch("shell_sorter.app.camera_manager")
     @patch("shell_sorter.app.get_settings")
-    def test_get_configuration(
-        self, mock_get_settings, mock_camera_manager, test_client: TestClient
-    ):
+    def test_get_configuration(self, mock_get_settings, mock_camera_manager, test_client: TestClient):
         """Test getting system configuration."""
         # Mock settings
         mock_settings = MagicMock()
@@ -433,9 +409,7 @@ class TestRegionSelectionAPI:
     def test_region_selection_page(self, mock_camera_manager, test_client: TestClient):
         """Test region selection page rendering."""
         # Mock camera
-        mock_camera = CameraInfo(
-            index=0, name="Test Camera", resolution=(640, 480), is_active=True
-        )
+        mock_camera = CameraInfo(index=0, name="Test Camera", resolution=(640, 480), is_active=True)
         mock_camera_manager.cameras = {0: mock_camera}
 
         response = test_client.get("/region-selection/0")
@@ -444,9 +418,7 @@ class TestRegionSelectionAPI:
         assert "text/html" in response.headers["content-type"]
 
     @patch("shell_sorter.app.camera_manager")
-    def test_region_selection_nonexistent_camera(
-        self, mock_camera_manager, test_client: TestClient
-    ):
+    def test_region_selection_nonexistent_camera(self, mock_camera_manager, test_client: TestClient):
         """Test region selection for non-existent camera."""
         mock_camera_manager.cameras = {}
 
@@ -464,17 +436,13 @@ class TestErrorHandling:
             mock_manager.cameras = {}
             mock_manager.set_camera_view_type.return_value = False
 
-            response = test_client.post(
-                "/api/cameras/999/view-type", data={"view_type": "side"}
-            )
+            response = test_client.post("/api/cameras/999/view-type", data={"view_type": "side"})
 
             assert response.status_code == 404
 
     def test_invalid_view_type_error(self, test_client: TestClient):
         """Test invalid view type error handling."""
-        response = test_client.post(
-            "/api/cameras/0/view-type", data={"view_type": "invalid_type"}
-        )
+        response = test_client.post("/api/cameras/0/view-type", data={"view_type": "invalid_type"})
 
         assert response.status_code == 400
         data = response.json()

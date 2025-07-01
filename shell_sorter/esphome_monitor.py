@@ -145,8 +145,5 @@ class ESPHomeMonitor:
                 "online": self._is_online,
                 "hostname": self.hostname,
                 "last_check_time": self._last_check_time,
-                "monitoring_active": (
-                    self._monitoring_task is not None
-                    and not self._monitoring_task.done()
-                ),
+                "monitoring_active": (self._monitoring_task is not None and not self._monitoring_task.done()),
             }

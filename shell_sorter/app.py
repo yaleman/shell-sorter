@@ -491,9 +491,7 @@ async def select_cameras(
             }
         raise HTTPException(status_code=400, detail="Failed to select cameras")
     except Exception as e:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid request body: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=400, detail=f"Invalid request body: {str(e)}") from e
 
 
 def start_camera_background(camera_index: int) -> None:
@@ -598,13 +596,9 @@ async def set_camera_region(
     """Set the region of interest for a camera."""
     # Validate region parameters
     if width <= 0 or height <= 0:
-        raise HTTPException(
-            status_code=400, detail="Width and height must be positive values"
-        )
+        raise HTTPException(status_code=400, detail="Width and height must be positive values")
     if x < 0 or y < 0:
-        raise HTTPException(
-            status_code=400, detail="X and Y coordinates must be non-negative"
-        )
+        raise HTTPException(status_code=400, detail="X and Y coordinates must be non-negative")
 
     success = camera_manager.set_camera_region(camera_index, x, y, width, height)
     if success:
@@ -655,9 +649,7 @@ async def trigger_camera_autofocus(camera_index: int) -> Dict[str, Any]:
                 "camera_index": camera_index,
                 "focus_point": None,
             }
-    raise HTTPException(
-        status_code=404, detail=f"Camera {camera_index} not found or autofocus failed"
-    )
+    raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found or autofocus failed")
 
 
 # Machine Control Endpoints
@@ -672,13 +664,9 @@ async def trigger_next_case() -> Dict[str, str]:
 
         if success:
             logger.info("Next case sequence completed successfully")
-            return {
-                "message": "Next case sequence completed - case advanced to camera position"
-            }
+            return {"message": "Next case sequence completed - case advanced to camera position"}
         logger.warning("Next case sequence failed")
-        raise HTTPException(
-            status_code=500, detail="Failed to complete next case sequence"
-        )
+        raise HTTPException(status_code=500, detail="Failed to complete next case sequence")
 
     except Exception as e:
         logger.error("Error triggering next case: %s", e)
@@ -735,19 +723,12 @@ async def camera_stream(
         while True:
             frame_data = camera_manager.get_latest_frame(camera_index)
             if frame_data:
-                yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n\r\n" + frame_data + b"\r\n"
-                )
+                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_data + b"\r\n"
             else:
                 # Return a placeholder if no frame available
-                yield (
-                    b"--frame\r\nContent-Type: text/plain\r\n\r\nNo frame available\r\n"
-                )
+                yield b"--frame\r\nContent-Type: text/plain\r\n\r\nNo frame available\r\n"
 
-    return StreamingResponse(
-        generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame"
-    )
+    return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
 @app.post("/api/cameras/capture")
@@ -795,9 +776,7 @@ async def capture_images() -> Dict[str, Any]:
                 logger.warning("No frame available from camera %d", camera.index)
 
     if not captured_images:
-        raise HTTPException(
-            status_code=400, detail="No images could be captured from selected cameras"
-        )
+        raise HTTPException(status_code=400, detail="No images could be captured from selected cameras")
 
     # Save capture metadata for later use during shell data saving
     metadata_path = images_dir / f"{session_id}_metadata.json"
@@ -922,9 +901,7 @@ async def tagging_page(
                 )
 
     if not captured_images:
-        raise HTTPException(
-            status_code=404, detail="No captured images found for this session"
-        )
+        raise HTTPException(status_code=404, detail="No captured images found for this session")
 
     return templates.TemplateResponse(
         "tagging.html",
@@ -959,9 +936,7 @@ async def save_shell_data(
         if not shell_type:
             raise HTTPException(status_code=400, detail="shell_type is required")
         if not filenames_list or not isinstance(filenames_list, list):
-            raise HTTPException(
-                status_code=400, detail="image_filenames must be a non-empty list"
-            )
+            raise HTTPException(status_code=400, detail="image_filenames must be a non-empty list")
 
         # Load capture metadata if available
         captured_images_data = None
@@ -972,13 +947,9 @@ async def save_shell_data(
                     metadata = json.load(f)
                     # Convert to CapturedImage objects
 
-                    captured_images_data = [
-                        CapturedImage(**img_data) for img_data in metadata
-                    ]
+                    captured_images_data = [CapturedImage(**img_data) for img_data in metadata]
         except Exception as e:
-            logger.warning(
-                "Could not load capture metadata for session %s: %s", session_id, e
-            )
+            logger.warning("Could not load capture metadata for session %s: %s", session_id, e)
 
         # Create Shell object
         shell = Shell(
@@ -1115,9 +1086,7 @@ async def save_configuration(
             # Update auto-detect cameras setting
             if "auto_detect_cameras" in config:
                 user_config.auto_detect_cameras = bool(config["auto_detect_cameras"])
-                logger.info(
-                    "Updated auto-detect cameras: %s", user_config.auto_detect_cameras
-                )
+                logger.info("Updated auto-detect cameras: %s", user_config.auto_detect_cameras)
 
             # Save to user config file
             app_settings.save_user_config(user_config.model_dump())
@@ -1145,9 +1114,7 @@ async def delete_camera_config(camera_index: int) -> Dict[str, str]:
             logger.info("Deleted camera %d from configuration", camera_index)
             return {"message": f"Camera {camera_index} deleted successfully"}
         else:
-            raise HTTPException(
-                status_code=404, detail=f"Camera {camera_index} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
     except HTTPException:
         raise
     except Exception as e:
@@ -1307,9 +1274,7 @@ async def generate_composite_images(
 
                 # Generate composite image
                 session_id = json_file.stem
-                composite_path = await _generate_composite_image(
-                    session_id, shell_data, composites_dir
-                )
+                composite_path = await _generate_composite_image(session_id, shell_data, composites_dir)
 
                 if composite_path:
                     generated_count += 1
@@ -1354,22 +1319,14 @@ async def get_composite_image(
                         shell_data = json.load(f)
 
                     # Generate composite image
-                    created_path = await _generate_composite_image(
-                        session_id, shell_data, composites_dir
-                    )
+                    created_path = await _generate_composite_image(session_id, shell_data, composites_dir)
 
                     if not created_path:
-                        raise HTTPException(
-                            status_code=404, detail="Could not create composite image"
-                        )
+                        raise HTTPException(status_code=404, detail="Could not create composite image")
 
                 except Exception as e:
-                    logger.error(
-                        "Error auto-creating composite for %s: %s", session_id, e
-                    )
-                    raise HTTPException(
-                        status_code=500, detail="Failed to create composite image"
-                    ) from e
+                    logger.error("Error auto-creating composite for %s: %s", session_id, e)
+                    raise HTTPException(status_code=500, detail="Failed to create composite image") from e
             else:
                 raise HTTPException(status_code=404, detail="Shell data not found")
 
@@ -1420,9 +1377,7 @@ async def update_shell_image_view_type(
         # Load shell data from data directory (not image directory)
         shell_file = app_settings.data_directory / f"{session_id}.json"
         if not shell_file.exists():
-            raise HTTPException(
-                status_code=404, detail=f"Shell data not found for session {session_id}"
-            )
+            raise HTTPException(status_code=404, detail=f"Shell data not found for session {session_id}")
 
         with open(shell_file, "r", encoding="utf-8") as f:
             shell_data = json.load(f)
@@ -1570,9 +1525,7 @@ async def delete_shell(
                 metadata_file.unlink()
                 logger.info("Deleted metadata file: %s", metadata_file.name)
             except Exception as e:
-                logger.warning(
-                    "Could not delete metadata file %s: %s", metadata_file.name, e
-                )
+                logger.warning("Could not delete metadata file %s: %s", metadata_file.name, e)
 
         # Delete composite image if it exists
         composites_dir = data_dir / "composites"
@@ -1582,17 +1535,13 @@ async def delete_shell(
                 composite_file.unlink()
                 logger.info("Deleted composite image: %s", composite_file.name)
             except Exception as e:
-                logger.warning(
-                    "Could not delete composite %s: %s", composite_file.name, e
-                )
+                logger.warning("Could not delete composite %s: %s", composite_file.name, e)
 
         # Delete shell data file
         shell_file.unlink()
         logger.info("Deleted shell data file: %s", shell_file.name)
 
-        return {
-            "message": f"Shell deleted successfully (removed {deleted_images} images)"
-        }
+        return {"message": f"Shell deleted successfully (removed {deleted_images} images)"}
 
     except HTTPException:
         raise
@@ -1631,9 +1580,7 @@ async def delete_shell_image(
         # Remove from captured_images if it exists
         if "captured_images" in shell_data:
             shell_data["captured_images"] = [
-                img
-                for img in shell_data["captured_images"]
-                if img.get("filename") != filename
+                img for img in shell_data["captured_images"] if img.get("filename") != filename
             ]
 
         # Delete the actual image file
@@ -1656,9 +1603,7 @@ async def delete_shell_image(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            "Error deleting image %s from shell %s: %s", filename, session_id, e
-        )
+        logger.error("Error deleting image %s from shell %s: %s", filename, session_id, e)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
@@ -1837,14 +1782,10 @@ async def regenerate_shell_composite(
 
         # Check if shell is included in training
         if shell_data.get("include", True) is False:
-            raise HTTPException(
-                status_code=400, detail="Shell is not included in training"
-            )
+            raise HTTPException(status_code=400, detail="Shell is not included in training")
 
         # Generate composite for this shell
-        composite_path = await _generate_composite_image(
-            session_id, shell_data, composites_dir
-        )
+        composite_path = await _generate_composite_image(session_id, shell_data, composites_dir)
 
         if composite_path:
             logger.info(
@@ -1854,9 +1795,7 @@ async def regenerate_shell_composite(
             )
             return {"message": f"Composite image regenerated for shell {session_id}"}
         else:
-            raise HTTPException(
-                status_code=500, detail="Failed to generate composite image"
-            )
+            raise HTTPException(status_code=500, detail="Failed to generate composite image")
 
     except HTTPException:
         raise
@@ -1865,9 +1804,7 @@ async def regenerate_shell_composite(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-async def _generate_composite_image(
-    session_id: str, shell_data: Dict[str, Any], output_dir: Path
-) -> Optional[Path]:
+async def _generate_composite_image(session_id: str, shell_data: Dict[str, Any], output_dir: Path) -> Optional[Path]:
     """Generate a composite image from multiple shell images using region data."""
     if cv2 is None or np is None:
         logger.error("OpenCV or NumPy not available for composite image generation")
@@ -1914,9 +1851,7 @@ async def _generate_composite_image(
             # Pad bottom if needed
             if bottom.shape[1] > top.shape[1]:
                 pad_width = (bottom.shape[1] - top.shape[1]) // 2
-                top = cv2.copyMakeBorder(
-                    top, 0, 0, pad_width, pad_width, cv2.BORDER_CONSTANT
-                )
+                top = cv2.copyMakeBorder(top, 0, 0, pad_width, pad_width, cv2.BORDER_CONSTANT)
             composite = np.vstack([top, bottom])
         else:
             # 4+ images: create 2x2 grid

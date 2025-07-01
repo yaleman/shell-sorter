@@ -32,12 +32,8 @@ class Settings(BaseSettings):  # type: ignore
     debug: bool = Field(default=False, description="Enable debug mode")
 
     # Machine configuration
-    machine_name: str = Field(
-        default="Shell Sorter v1.0", description="Machine identifier"
-    )
-    max_sorting_jobs: int = Field(
-        default=10, description="Maximum concurrent sorting jobs"
-    )
+    machine_name: str = Field(default="Shell Sorter v1.0", description="Machine identifier")
+    max_sorting_jobs: int = Field(default=10, description="Maximum concurrent sorting jobs")
 
     # Camera configuration
     cameras: list[str] = Field(default_factory=list, description="Camera device paths")
@@ -45,24 +41,14 @@ class Settings(BaseSettings):  # type: ignore
     camera_resolution: str = Field(default="1920x1080", description="Camera resolution")
 
     # File storage paths
-    image_directory: Path = Field(
-        default=Path("./images"), description="Training images directory"
-    )
-    data_directory: Path = Field(
-        default=Path("./data"), description="Data directory for uploads and models"
-    )
-    models_directory: Path = Field(
-        default=Path("./data/models"), description="ML models directory"
-    )
-    references_directory: Path = Field(
-        default=Path("./data/references"), description="Reference images directory"
-    )
+    image_directory: Path = Field(default=Path("./images"), description="Training images directory")
+    data_directory: Path = Field(default=Path("./data"), description="Data directory for uploads and models")
+    models_directory: Path = Field(default=Path("./data/models"), description="ML models directory")
+    references_directory: Path = Field(default=Path("./data/references"), description="Reference images directory")
 
     # Machine Learning configuration
     ml_enabled: bool = Field(default=True, description="Enable ML case identification")
-    confidence_threshold: float = Field(
-        default=0.8, description="ML confidence threshold"
-    )
+    confidence_threshold: float = Field(default=0.8, description="ML confidence threshold")
     model_name: Optional[str] = Field(default=None, description="Active ML model name")
 
     # Supported case types
@@ -166,9 +152,7 @@ class CameraConfig(BaseModel):
 class UserConfig(BaseModel):
     """User configuration that persists across application restarts."""
 
-    camera_configs: Dict[str, CameraConfig] = Field(
-        default={}, description="Camera configurations by name"
-    )
+    camera_configs: Dict[str, CameraConfig] = Field(default={}, description="Camera configurations by name")
     network_camera_hostnames: List[str] = Field(
         default=["esp32cam1.local"],
         description="List of ESPHome camera hostnames to detect",

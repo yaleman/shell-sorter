@@ -41,9 +41,7 @@ class CapturedImage(BaseModel):
 class Shell(BaseModel):
     """Model representing a shell case with metadata and captured images."""
 
-    date_captured: datetime = Field(
-        default_factory=datetime.now, description="Date when the shell was captured"
-    )
+    date_captured: datetime = Field(default_factory=datetime.now, description="Date when the shell was captured")
     brand: str
     shell_type: str
     image_filenames: list[str]
@@ -51,6 +49,4 @@ class Shell(BaseModel):
         default=None,
         description="Detailed information about captured images including camera regions",
     )
-    include: bool = Field(
-        default=True, description="Whether to include this shell in the training set."
-    )
+    include: bool = Field(default=True, description="Whether to include this shell in the training set.")
