@@ -16,6 +16,7 @@
             <div class="header-right">
                 <button id="config-btn" class="btn btn-secondary">Configuration</button>
                 <button id="ml-training-btn" class="btn btn-info">ML Training</button>
+                <button id="show-debug-btn" class="btn btn-secondary">🔧 Debug Console</button>
                 <div id="esphome-status" class="status-indicator esphome-status-offline">
                     Controller: <span id="esphome-status-text">Checking...</span>
                 </div>
@@ -112,12 +113,12 @@
         </main>
 
         <!-- Debug Console -->
-        <section class="debug-console">
+        <section class="debug-console" id="debug-console" style="display: none;">
             <div class="debug-header">
                 <h3>🔧 ESP Controller Debug Console</h3>
                 <div class="debug-controls">
-                    <button id="debug-toggle-btn" class="btn btn-sm btn-secondary">Hide</button>
-                    <button id="debug-clear-btn" class="btn btn-sm btn-danger">Clear</button>
+                    <button id="debug-close-btn" class="btn btn-sm btn-danger">Close & Disconnect</button>
+                    <button id="debug-clear-btn" class="btn btn-sm btn-secondary">Clear</button>
                     <span class="debug-status">
                         <span class="debug-indicator" id="debug-indicator"></span>
                         <span id="debug-status-text">Idle</span>

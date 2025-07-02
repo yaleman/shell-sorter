@@ -105,6 +105,13 @@ esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
 - Manual vibration trigger with 1-second activation
 - Test sequence automation for system validation
 - Real-time hardware status updates via web interface
+- **ESP Controller Debug Console**: On-demand debugging interface with WebSocket-based real-time command monitoring
+  - Hidden by default to reduce unnecessary network connections
+  - User-activated via "Debug Console" button in dashboard header
+  - Real-time display of ESP controller HTTP commands and responses
+  - WebSocket connection with automatic reconnection for live updates
+  - Manual disconnect with "Close & Disconnect" button
+  - Debug log clearing and command history management
 
 ### Machine Learning
 
@@ -133,6 +140,11 @@ esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
 
 - Capture images from multiple cameras simultaneously with region metadata
 - Tag captured images with shell case metadata including camera regions
+- **Image Tagging Interface**: Comprehensive tagging system for captured shell case images
+  - Individual view type selection for each captured image (Side View/Tail View)
+  - Form validation requiring view type specification for all images
+  - Full image display with proper aspect ratio preservation
+  - Integration with camera region metadata and shell classification data
 - Store camera view types and region selections in training data
 - Upload and organize reference images
 - Manage training datasets per case type
@@ -166,8 +178,8 @@ esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
 
 ### Shell Data Management
 
-- `GET /tagging/{session_id}` - Shell tagging interface
-- `POST /api/shells/save` - Save tagged shell data
+- `GET /tagging/{session_id}` - Shell tagging interface with view type selectors
+- `POST /api/shells/save` - Save tagged shell data with view types and camera region metadata
 
 ### ML Management
 
@@ -188,6 +200,15 @@ esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
 - `DELETE /api/config/cameras/{camera_index}` - Delete camera configuration
 - `DELETE /api/config/cameras` - Clear all camera configurations
 - `POST /api/config/reset` - Reset configuration to defaults
+
+### Debug Console API
+
+- `GET /api/debug/esp-commands` - Get ESP controller command history (polling fallback)
+- `WebSocket /ws/debug/esp-commands` - Real-time ESP controller command stream
+  - Provides live updates of HTTP commands sent to ESP controller
+  - Includes command URLs, response status codes, and response data
+  - Automatic reconnection with exponential backoff
+  - Connection state management for on-demand debugging
 
 ## Configuration
 

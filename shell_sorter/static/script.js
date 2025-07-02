@@ -904,24 +904,51 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Debug Console functionality
     function initializeDebugConsole() {
-        const debugToggleBtn = document.getElementById('debug-toggle-btn');
+        const showDebugBtn = document.getElementById('show-debug-btn');
+        const debugConsole = document.getElementById('debug-console');
+        const debugCloseBtn = document.getElementById('debug-close-btn');
         const debugClearBtn = document.getElementById('debug-clear-btn');
         const debugContent = document.getElementById('debug-content');
         const debugLog = document.getElementById('debug-log');
         const debugIndicator = document.getElementById('debug-indicator');
         const debugStatusText = document.getElementById('debug-status-text');
 
-        let debugVisible = true;
+        let debugVisible = false;
         let debugHistory = [];
+        let isDebugConnected = false;
 
-        // Toggle debug console visibility
-        if (debugToggleBtn) {
-            debugToggleBtn.addEventListener('click', function() {
-                debugVisible = !debugVisible;
-                if (debugContent) {
-                    debugContent.style.display = debugVisible ? 'block' : 'none';
+        // Show debug console and connect WebSocket
+        if (showDebugBtn) {
+            showDebugBtn.addEventListener('click', function() {
+                debugVisible = true;
+                if (debugConsole) {
+                    debugConsole.style.display = 'block';
                 }
-                debugToggleBtn.textContent = debugVisible ? 'Hide' : 'Show';
+                showDebugBtn.style.display = 'none';
+                
+                // Connect WebSocket when console is shown
+                if (!isDebugConnected) {
+                    connectDebugWebSocket();
+                    addDebugEntry('info', 'Debug console connected');
+                }
+            });
+        }
+
+        // Close debug console and disconnect WebSocket
+        if (debugCloseBtn) {
+            debugCloseBtn.addEventListener('click', function() {
+                debugVisible = false;
+                if (debugConsole) {
+                    debugConsole.style.display = 'none';
+                }
+                if (showDebugBtn) {
+                    showDebugBtn.style.display = 'inline-block';
+                }
+                
+                // Disconnect WebSocket
+                disconnectDebugWebSocket();
+                addDebugEntry('info', 'Debug console disconnected');
+                showToast('Debug console closed and disconnected', 'info');
             });
         }
 
@@ -991,8 +1018,14 @@ document.addEventListener('DOMContentLoaded', function() {
         let debugWebSocket = null;
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 5;
+        let shouldReconnect = true;
 
         function connectDebugWebSocket() {
+            if (isDebugConnected) {
+                return; // Already connected
+            }
+            
+            shouldReconnect = true;
             try {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsUrl = `${protocol}//${window.location.host}/ws/debug/esp-commands`;
@@ -1004,6 +1037,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     debugStatusText.textContent = 'Connected';
                     debugIndicator.className = 'debug-indicator debug-info';
                     reconnectAttempts = 0;
+                    isDebugConnected = true;
                 };
                 
                 debugWebSocket.onmessage = function(event) {
@@ -1030,13 +1064,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log('Debug WebSocket disconnected');
                     debugStatusText.textContent = 'Disconnected';
                     debugIndicator.className = 'debug-indicator';
+                    isDebugConnected = false;
                     
-                    // Attempt to reconnect
-                    if (reconnectAttempts < maxReconnectAttempts) {
+                    // Only attempt to reconnect if we should (not manually disconnected)
+                    if (shouldReconnect && reconnectAttempts < maxReconnectAttempts) {
                         reconnectAttempts++;
                         console.log(`Attempting to reconnect WebSocket (${reconnectAttempts}/${maxReconnectAttempts})`);
                         setTimeout(connectDebugWebSocket, 2000 * reconnectAttempts);
-                    } else {
+                    } else if (shouldReconnect) {
                         addDebugEntry('error', 'WebSocket connection lost, falling back to polling');
                         fallbackToPolling();
                     }
@@ -1088,8 +1123,19 @@ document.addEventListener('DOMContentLoaded', function() {
             fetchESPHistory();
         }
 
-        // Start WebSocket connection
-        connectDebugWebSocket();
+        // Disconnect WebSocket function
+        function disconnectDebugWebSocket() {
+            shouldReconnect = false;
+            isDebugConnected = false;
+            if (debugWebSocket) {
+                debugWebSocket.close();
+                debugWebSocket = null;
+            }
+            debugStatusText.textContent = 'Idle';
+            debugIndicator.className = 'debug-indicator';
+        }
+
+        // Don't automatically connect - wait for user to show console
     }
 
     // Initialize debug console
