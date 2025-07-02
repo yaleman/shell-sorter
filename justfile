@@ -51,7 +51,6 @@ esphome-cam-monitor:
     esphome run esphome-esp32cam1.yaml
 
 esphome-check:
-    yamllint esphome-shell-sorter.yaml
-    yamllint esphome-esp32cam1.yaml
+    yamllint esphome*.yaml
     esphome config esphome-shell-sorter.yaml > /dev/null
     esphome config esphome-esp32cam1.yaml > /dev/null
