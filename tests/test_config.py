@@ -4,7 +4,27 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from shell_sorter.config import Settings, UserConfig, CameraConfig
+
+
+@pytest.fixture
+def temp_config_path(tmp_path: Path):
+    """Provide a temporary config path via environment variable."""
+    config_file = tmp_path / "test_shell_sorter_config.json"
+
+    # Set environment variable
+    old_value = os.environ.get("SHELL_SORTER_CONFIG_PATH")
+    os.environ["SHELL_SORTER_CONFIG_PATH"] = str(config_file)
+
+    yield config_file
+
+    # Cleanup
+    if old_value is not None:
+        os.environ["SHELL_SORTER_CONFIG_PATH"] = old_value
+    else:
+        os.environ.pop("SHELL_SORTER_CONFIG_PATH", None)
 
 
 class TestCameraConfig:
@@ -110,6 +130,15 @@ class TestSettings:
         assert config_file.name == "shell-sorter.json"
         assert "/.config/" in str(config_file) or str(config_file).endswith("shell-sorter.json")
 
+    def test_config_path_environment_override(self, temp_config_path: Path):
+        """Test that config path can be overridden via environment variable."""
+        settings = Settings()
+
+        # Should return the environment-specified path
+        config_file = settings.get_config_path()
+        assert config_file == temp_config_path
+        assert config_file.name == "test_shell_sorter_config.json"
+
     def test_load_user_config_nonexistent(self, mock_settings: Settings):
         """Test loading user config when file doesn't exist."""
         # Test that loading non-existent config file raises an exception
@@ -157,6 +186,34 @@ class TestSettings:
             # Load config
             loaded_config = settings.load_user_config()
             assert loaded_config == config_data
+
+    def test_save_and_load_user_config_with_env_var(self, temp_config_path: Path):
+        """Test saving and loading user config using environment variable."""
+        settings = Settings()
+
+        # Test data
+        config_data = {
+            "camera_configs": {
+                "test_camera": {
+                    "view_type": "tail",
+                    "region_x": 50,
+                    "region_y": 75,
+                    "region_width": 300,
+                    "region_height": 400,
+                }
+            },
+            "network_camera_hostnames": ["env-test.local"],
+            "auto_detect_cameras": False,
+        }
+
+        # Save config
+        result = settings.save_user_config(config_data)
+        assert result is True
+        assert temp_config_path.exists()
+
+        # Load config
+        loaded_config = settings.load_user_config()
+        assert loaded_config == config_data
 
     def test_save_user_config_creates_directory(self, tmp_path: Path):
         """Test that saving user config creates parent directory."""

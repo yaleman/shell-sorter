@@ -7,6 +7,7 @@ and supports environment variable overrides.
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
@@ -88,6 +89,14 @@ class Settings(BaseSettings):  # type: ignore
 
     def get_config_path(self) -> Path:
         """Get the path to the user config file."""
+        # Allow override via environment variable for testing
+        config_path_override = os.getenv("SHELL_SORTER_CONFIG_PATH")
+        if config_path_override:
+            config_path = Path(config_path_override)
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            return config_path
+
+        # Default to ~/.config/shell-sorter.json
         config_dir = Path.home() / ".config"
         config_dir.mkdir(exist_ok=True)
         return config_dir / "shell-sorter.json"
