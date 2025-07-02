@@ -71,7 +71,7 @@ class HardwareController:
                             response.status,
                             response_text,
                         )
-                            return None
+                        return None
 
                 elif method == "POST":
                     async with session.post(url, auth=self.auth, json=data) as response:
@@ -94,13 +94,9 @@ class HardwareController:
                             response.status,
                             response_text,
                         )
-                            return None
-
-                return None
 
         except asyncio.TimeoutError:
             logger.error("ESPHome request timed out: %s", endpoint)
-            return None
         except Exception as e:
             logger.error("ESPHome request error: %s", e)
             # Log failed command to history
@@ -112,7 +108,7 @@ class HardwareController:
                 response=f"Error: {str(e)}",
             )
             self._add_command_to_history(cmd)
-            return None
+        return None
 
     def set_command_broadcast_callback(self, callback: Callable[[Dict[str, Any]], Coroutine[Any, Any, None]]) -> None:
         """Set callback for broadcasting commands to WebSocket clients."""

@@ -6,7 +6,6 @@ import signal
 import sys
 import uuid
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, Generator, List, Literal, Optional
@@ -30,72 +29,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+
 
 from .camera_manager import CameraManager
 from .config import Settings, UserConfig
+from .debug_manager import DebugWebSocketManager
 from .esphome_monitor import ESPHomeMonitor
+from .forms import RegionUpdateRequest, ShellUpdateRequest, TrainModelRequest
 from .hardware_controller import HardwareController
 from .middleware import NoCacheMiddleware
 from .ml_trainer import MLTrainer
 from .shell import CapturedImage, Shell, ViewType
 
-
-@dataclass
-class Status:
-    """Data class to represent the status of the sorting machine."""
-
-    status: str = "idle"
-    last_update: str = datetime.now().isoformat()
-
-    def set_running(self) -> bool:
-        """Set the status to running and update the last update time.
-        Returns:
-            bool: True if status was changed, False if already running.
-        """
-        if self.status == "running":
-            return False
-        self.status = "running"
-        self.last_update = datetime.now().isoformat()
-        return True
-
-    def stop_sorting(self) -> None:
-        """Stop the sorting process and set status to idle."""
-        self.status = "idle"
-        self.last_update = datetime.now().isoformat()
-
-
-class MachineController:
-    """Controls the sorting machine state and job management."""
-
-    def __init__(self) -> None:
-        self.machine_status: Status = Status()
-
-        self.sorting_jobs: List[Dict[str, Any]] = []
-
-    def get_status(self) -> Dict[str, Any]:
-        """Get current machine status."""
-        return {
-            "status": self.machine_status.status,
-            "last_update": self.machine_status.last_update,
-        }
-
-    def get_jobs(self) -> List[Dict[str, Any]]:
-        """Get all sorting jobs."""
-        return self.sorting_jobs
-
-    def get_recent_jobs(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent jobs in reverse chronological order."""
-        return self.sorting_jobs[-limit:][::-1]
-
-    def start_sorting(self) -> None:
-        """Start a new sorting job."""
-        self.machine_status.set_running()
-
-    def stop_sorting(self) -> None:
-        """Stop the current sorting job."""
-        self.machine_status.stop_sorting()
-
+from .machine_controller import MachineController
 
 # Initialize settings on startup
 settings = Settings.new()
@@ -105,49 +51,6 @@ ml_trainer = MLTrainer(settings)
 
 # Initialize machine controller
 machine_controller = MachineController()
-
-
-# Initialize debug WebSocket manager early (needed for hardware controller callback)
-class DebugWebSocketManager:
-    """Manage WebSocket connections for debug console."""
-
-    def __init__(self) -> None:
-        self.active_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket) -> None:
-        """Accept a new WebSocket connection."""
-        await websocket.accept()
-        self.active_connections.append(websocket)
-        logger.info(
-            "Debug WebSocket connected, total connections: %d",
-            len(self.active_connections),
-        )
-
-    def disconnect(self, websocket: WebSocket) -> None:
-        """Remove a WebSocket connection."""
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-        logger.info(
-            "Debug WebSocket disconnected, total connections: %d",
-            len(self.active_connections),
-        )
-
-    async def broadcast_command(self, command_data: Dict[str, Any]) -> None:
-        """Broadcast command data to all connected clients."""
-        if not self.active_connections:
-            return
-
-        disconnected_connections = []
-        for connection in self.active_connections:
-            try:
-                await connection.send_json(command_data)
-            except Exception as e:
-                logger.warning("Failed to send to WebSocket connection: %s", e)
-                disconnected_connections.append(connection)
-
-        # Remove failed connections
-        for connection in disconnected_connections:
-            self.disconnect(connection)
 
 
 # Global WebSocket manager for debug console
@@ -409,12 +312,6 @@ async def upload_training_image(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-class TrainModelRequest(BaseModel):
-    """Request model for training ML model."""
-
-    case_types: Optional[List[str]] = None
-
-
 @app.post("/api/train-model")
 async def train_model(
     request: TrainModelRequest,
@@ -449,6 +346,9 @@ async def detect_cameras() -> List[Dict[str, Any]]:
             "region_y": cam.region_y,
             "region_width": cam.region_width,
             "region_height": cam.region_height,
+            "is_network_camera": cam.is_network_camera,
+            "stream_url": cam.stream_url,
+            "hostname": cam.hostname,
         }
         for cam in cameras
     ]
@@ -470,6 +370,9 @@ async def get_cameras() -> List[Dict[str, Any]]:
             "region_y": cam.region_y,
             "region_width": cam.region_width,
             "region_height": cam.region_height,
+            "is_network_camera": cam.is_network_camera,
+            "stream_url": cam.stream_url,
+            "hostname": cam.hostname,
         }
         for cam in cameras
     ]
@@ -643,12 +546,11 @@ async def trigger_camera_autofocus(camera_index: int) -> Dict[str, Any]:
                 "camera_index": camera_index,
                 "focus_point": {"x": center_x, "y": center_y},
             }
-        else:
-            return {
-                "message": f"Triggered autofocus for camera {camera_index}",
-                "camera_index": camera_index,
-                "focus_point": None,
-            }
+        return {
+            "message": f"Triggered autofocus for camera {camera_index}",
+            "camera_index": camera_index,
+            "focus_point": None,
+        }
     raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found or autofocus failed")
 
 
@@ -917,6 +819,7 @@ async def tagging_page(
 @app.post("/api/shells/save")
 async def save_shell_data(
     request: Request,
+    shell_data: Shell,
     app_settings: Settings = Depends(get_settings),
 ) -> Dict[str, Any]:
     """Save tagged shell data to JSON file."""
@@ -1113,8 +1016,7 @@ async def delete_camera_config(camera_index: int) -> Dict[str, str]:
             camera_manager.save_config()
             logger.info("Deleted camera %d from configuration", camera_index)
             return {"message": f"Camera {camera_index} deleted successfully"}
-        else:
-            raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
+        raise HTTPException(status_code=404, detail=f"Camera {camera_index} not found")
     except HTTPException:
         raise
     except Exception as e:
@@ -1342,8 +1244,7 @@ async def get_composite_image(
                 media_type="image/jpeg",
                 headers={"Cache-Control": "no-cache"},
             )
-        else:
-            raise HTTPException(status_code=404, detail="Composite image not found")
+        raise HTTPException(status_code=404, detail="Composite image not found")
 
     except HTTPException:
         raise
@@ -1419,15 +1320,6 @@ async def update_shell_image_view_type(
     except Exception as e:
         logger.error("Error updating shell image view type: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-class ShellUpdateRequest(BaseModel):
-    """Request model for updating shell data."""
-
-    brand: str
-    shell_type: str
-    include: bool
-    view_type_updates: List[Dict[str, str]] = []
 
 
 @app.post("/api/ml/shells/{session_id}/update")
@@ -1605,15 +1497,6 @@ async def delete_shell_image(
     except Exception as e:
         logger.error("Error deleting image %s from shell %s: %s", filename, session_id, e)
         raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-class RegionUpdateRequest(BaseModel):
-    """Request model for updating region data on an image."""
-
-    region_x: int
-    region_y: int
-    region_width: int
-    region_height: int
 
 
 @app.post("/api/ml/shells/{session_id}/images/{filename}/region")
@@ -1794,8 +1677,8 @@ async def regenerate_shell_composite(
                 composite_path,
             )
             return {"message": f"Composite image regenerated for shell {session_id}"}
-        else:
-            raise HTTPException(status_code=500, detail="Failed to generate composite image")
+
+        raise HTTPException(status_code=500, detail="Failed to generate composite image")
 
     except HTTPException:
         raise

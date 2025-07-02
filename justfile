@@ -4,7 +4,6 @@
 default:
     just --list
 
-
 # Run linting checks
 lint:
     uv run ruff check shell_sorter/ tests
@@ -32,19 +31,23 @@ run:
     uv run shell-sorter
 
 # Flash ESPHome configuration to device
-esphome-flash DEVICE:
+esphome-flash:
     esphome upload esphome-shell-sorter.yaml
 
 # flash and monitor the device
-esphome-monitor DEVICE:
+esphome-monitor:
     esphome run esphome-shell-sorter.yaml
 
+# Build ESPHome configuration for shell sorter
+esphome-cam-build:
+    esphome compile esphome-esp32cam1.yaml
+
 # Flash ESP32 Camera configuration to device
-esphome-cam-flash DEVICE:
+esphome-cam-flash: esphome-cam-build
     esphome upload esphome-esp32cam1.yaml
 
 # flash and monitor the ESP32 camera device
-esphome-cam-monitor DEVICE:
+esphome-cam-monitor:
     esphome run esphome-esp32cam1.yaml
 
 esphome-check:

@@ -8,7 +8,7 @@ and supports environment variable overrides.
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict  # type: ignore
@@ -81,6 +81,10 @@ class Settings(BaseSettings):  # type: ignore
         default=False,
         description="Automatically detect and configure cameras on startup",
     )
+    auto_start_esp32_cameras: bool = Field(
+        default=True,
+        description="Automatically start configured ESP32 cameras when they come online",
+    )
 
     def get_config_path(self) -> Path:
         """Get the path to the user config file."""
@@ -152,7 +156,7 @@ class CameraConfig(BaseModel):
 class UserConfig(BaseModel):
     """User configuration that persists across application restarts."""
 
-    camera_configs: Dict[str, CameraConfig] = Field(default={}, description="Camera configurations by name")
+    camera_configs: Annotated[Dict[str, CameraConfig], Field(default={}, description="Camera configurations by name")]
     network_camera_hostnames: List[str] = Field(
         default=["esp32cam1.local"],
         description="List of ESPHome camera hostnames to detect",

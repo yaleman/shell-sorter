@@ -19,10 +19,10 @@ class NoCacheMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-m
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+        response.headers["ETag"] = f'"{datetime.now(UTC).timestamp()}"'
 
         # Additional headers for static files (JS, CSS, HTML)
         if any(request.url.path.endswith(ext) for ext in [".js", ".css", ".html", ".htm"]):
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0, private"
-            response.headers["ETag"] = f'"{datetime.now(UTC).timestamp()}"'
 
         return response
