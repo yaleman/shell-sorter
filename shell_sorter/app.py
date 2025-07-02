@@ -8,7 +8,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, AsyncGenerator, Dict, Generator, List, Literal, Optional
+from typing import Any, AsyncGenerator, Dict, Generator, List, Literal, Optional, Union
 from io import BytesIO
 
 import cv2  # type: ignore[import-not-found]
@@ -72,10 +72,11 @@ def create_waiting_image() -> bytes:
     draw = ImageDraw.Draw(img)
 
     # Try to use a built-in font, fall back to default if not available
+    font: Union[ImageFont.FreeTypeFont, ImageFont.ImageFont] = ImageFont.load_default()
     try:
         font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 24)
     except (OSError, IOError):
-        font = ImageFont.load_default()
+        pass  # Use the default font already assigned
 
     # Add text
     text = "Waiting for camera..."
@@ -1035,7 +1036,7 @@ async def save_configuration(
 
                 user_config = UserConfig(**user_config_data)
             except Exception:
-                user_config = UserConfig()
+                user_config = UserConfig(camera_configs={})
 
             # Update network camera hostnames
             if "network_camera_hostnames" in config:
@@ -1837,8 +1838,7 @@ def _apply_region_processing(img: Any, region_info: Dict[str, Any]) -> Any:
         h, w = img.shape[:2]
 
         # Convert to int (we know they're not None due to the check above)
-        if None in [region_x, region_y, region_width, region_height]:
-            raise ValueError("Region information is incomplete")
+        assert region_x is not None and region_y is not None and region_width is not None and region_height is not None
         region_x_int = int(region_x)
         region_y_int = int(region_y)
         region_width_int = int(region_width)

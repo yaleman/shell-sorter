@@ -1612,7 +1612,7 @@ class CameraManager:
             # Clear user config entirely if settings available
             if self.settings:
                 try:
-                    default_config = UserConfig()
+                    default_config = UserConfig(camera_configs={})
                     self.settings.save_user_config(default_config.model_dump())
                 except Exception as e:
                     logger.warning("Failed to reset user config: %s", e)

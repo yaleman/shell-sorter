@@ -43,11 +43,16 @@ class TestCameraManager:
             patch("shell_sorter.camera_manager.cv2"),
             patch("shell_sorter.camera_manager.subprocess"),
         ):
-            manager = CameraManager(mock_settings)
+            # Mock the methods that automatically add cameras during initialization
+            with (
+                patch.object(CameraManager, "_ensure_configured_esphome_cameras"),
+                patch.object(CameraManager, "_remove_hardware_controller_cameras"),
+            ):
+                manager = CameraManager(mock_settings)
 
-            assert manager.settings == mock_settings
-            assert len(manager.cameras) == 0
-            assert not manager.auto_start_cameras
+                assert manager.settings == mock_settings
+                assert len(manager.cameras) == 0
+                assert not manager.auto_start_cameras
 
     def test_get_camera_device_name_fallback(self, mock_camera_manager: CameraManager):
         """Test camera device name fallback when system calls fail."""
@@ -107,6 +112,9 @@ class TestCameraManager:
     @patch("shell_sorter.camera_manager.cv2")
     def test_detect_cameras_no_cameras(self, mock_cv2, mock_camera_manager: CameraManager):
         """Test camera detection when no cameras are available."""
+        # Clear any cameras that were added during initialization
+        mock_camera_manager.cameras.clear()
+
         # Mock cv2.VideoCapture to return unopened captures
         mock_capture = MagicMock()
         mock_capture.isOpened.return_value = False

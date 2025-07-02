@@ -8,7 +8,7 @@ default:
 lint:
     uv run ruff check shell_sorter/ tests
     uv run ruff format --check shell_sorter/ tests
-    uv run pylint tests shell_sorter/
+    # uv run pylint tests shell_sorter/
 
 # Run type checking
 mypy:

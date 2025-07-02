@@ -140,11 +140,11 @@ switch:
     turn_on_action:
       - servo.write:
           id: case_feeder_servo
-          level: 100% # 180 degrees
+          level: 100% #  180 degrees
     turn_off_action:
       - servo.write:
           id: case_feeder_servo
-          level: 50% # 90 degrees (neutral)
+          level: 50% #  90 degrees (neutral)
 
   # Case positioning servo control
   - platform: template
