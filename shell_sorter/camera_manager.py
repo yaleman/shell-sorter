@@ -442,11 +442,11 @@ class CameraManager:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             for i, hostname in enumerate(esphome_hosts):
                 try:
-                    # Check if the device is reachable and has a camera (ESPHome camera web server)
-                    camera_url = f"http://{hostname}:8080"
+                    # Check if the device is reachable and has a camera (ESPHome camera snapshot)
+                    camera_url = f"http://{hostname}:8081"
                     async with session.get(camera_url) as response:
                         if response.status == 200 and "image" in response.headers.get("content-type", ""):
-                            # This is a valid camera stream
+                            # This is a valid camera snapshot endpoint
                             # Try to get image dimensions from the first frame
                             image_data = await response.read()
 
@@ -652,7 +652,7 @@ class CameraManager:
                     is_active=False,  # Not active until detected/started
                     is_selected=self.settings.auto_start_esp32_cameras,  # Auto-select if auto-start enabled
                     is_network_camera=True,
-                    stream_url=f"http://{hostname}:8080",
+                    stream_url=f"http://{hostname}:8081",
                     hostname=hostname,
                 )
                 
@@ -1052,11 +1052,13 @@ class CameraManager:
     ) -> None:
         """Async method to stream frames from a network camera."""
         timeout = aiohttp.ClientTimeout(total=10)
+        consecutive_failures = 0
+        max_failures = 20  # Allow up to 20 consecutive failures before longer backoff
             
         async with aiohttp.ClientSession(timeout=timeout) as session:
             while not stop_event.is_set():
                 try:
-                    # Fetch frame from ESPHome camera
+                    # Fetch snapshot from ESPHome camera
                     async with session.get(camera_info.stream_url) as response:
                         if response.status == 200:
                             frame_data = await response.read()
@@ -1064,38 +1066,89 @@ class CameraManager:
                             # Store latest frame
                             self.latest_frames[camera_index] = frame_data
                             
+                            # Reset failure counter on success
+                            consecutive_failures = 0
+                            
                             # Mark camera as active on first successful connection
                             if not camera_info.is_active:
                                 camera_info.is_active = True
                                 logger.info("ESP32 camera %d (%s) is now online", camera_index, camera_info.hostname)
                         else:
+                            consecutive_failures += 1
                             logger.warning(
-                                "Failed to fetch frame from network camera %d: HTTP %d",
+                                "Failed to fetch snapshot from network camera %d: HTTP %d (failure %d/%d)",
                                 camera_index,
                                 response.status,
+                                consecutive_failures,
+                                max_failures,
                             )
                             # Mark camera as inactive on failure
                             if camera_info.is_active:
                                 camera_info.is_active = False
                                 logger.info("ESP32 camera %d (%s) is now offline", camera_index, camera_info.hostname)
 
-                    # Delay for network cameras (slower refresh rate) with stop check
-                    await asyncio.sleep(0.2)  # ~5fps for network cameras
+                    # Adaptive delay based on failure count
+                    if consecutive_failures == 0:
+                        # Normal polling rate when successful
+                        delay = 0.5
+                    elif consecutive_failures < max_failures:
+                        # Gradual backoff for failures
+                        delay = min(2.0, 0.5 + (consecutive_failures * 0.1))
+                    else:
+                        # Longer delay after many failures
+                        delay = 10.0
+                        
+                    await asyncio.sleep(delay)
                     if stop_event.is_set():
                         break
 
                 except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                    logger.warning("Network error for camera %d: %s", camera_index, e)
-                    await asyncio.sleep(2.0)  # Wait longer on network errors
+                    consecutive_failures += 1
+                    error_msg = str(e) if str(e) else f"{type(e).__name__}: Connection failed"
+                    logger.warning(
+                        "Network error for camera %d (%s): %s (failure %d/%d)", 
+                        camera_index, 
+                        camera_info.hostname,
+                        error_msg,
+                        consecutive_failures,
+                        max_failures,
+                    )
+                    # Mark camera as inactive on network error
+                    if camera_info.is_active:
+                        camera_info.is_active = False
+                        logger.info("ESP32 camera %d (%s) is now offline due to network error", camera_index, camera_info.hostname)
+                    
+                    # Use same adaptive delay as HTTP errors
+                    if consecutive_failures < max_failures:
+                        delay = min(5.0, 2.0 + (consecutive_failures * 0.2))
+                    else:
+                        delay = 15.0
+                    await asyncio.sleep(delay)
                     if stop_event.is_set():
                         break
                 except Exception as e:
+                    consecutive_failures += 1
                     logger.error(
-                        "Error in async network camera %d streaming: %s",
+                        "Unexpected error in network camera %d (%s) streaming: %s (failure %d/%d)",
                         camera_index,
+                        camera_info.hostname,
                         e,
+                        consecutive_failures,
+                        max_failures,
                     )
-                    break
+                    # Mark camera as inactive on unexpected error
+                    if camera_info.is_active:
+                        camera_info.is_active = False
+                        logger.info("ESP32 camera %d (%s) is now offline due to unexpected error", camera_index, camera_info.hostname)
+                    
+                    # Longer delays for unexpected errors
+                    if consecutive_failures < max_failures:
+                        delay = min(10.0, 5.0 + (consecutive_failures * 0.5))
+                    else:
+                        delay = 30.0
+                    await asyncio.sleep(delay)
+                    if stop_event.is_set():
+                        break
 
     async def _capture_network_image_async(self, camera_info: CameraInfo) -> Optional[bytes]:
         """Async method to capture an image from a network camera."""
@@ -1157,9 +1210,15 @@ class CameraManager:
 
     def stop_all_cameras(self) -> None:
         """Stop all active camera streams."""
-        camera_indices = list(self.active_captures.keys())
-        for camera_index in camera_indices:
+        # Get all camera indices that are currently streaming (USB and network)
+        usb_camera_indices = list(self.active_captures.keys())
+        network_camera_indices = list(self.streaming_threads.keys())
+        all_camera_indices = set(usb_camera_indices + network_camera_indices)
+        
+        for camera_index in all_camera_indices:
             self.stop_camera_stream(camera_index)
+            
+        logger.info("Stopped all cameras: %d USB, %d network", len(usb_camera_indices), len(network_camera_indices))
 
     def capture_high_resolution_image(self, camera_index: int) -> Optional[bytes]:
         """Capture a high-resolution image from the specified camera with EXIF metadata."""

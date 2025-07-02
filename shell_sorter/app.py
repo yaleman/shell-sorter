@@ -9,10 +9,12 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, Generator, List, Literal, Optional
+from io import BytesIO
 
 import cv2  # type: ignore[import-not-found]
 import numpy as np  # type: ignore[import-not-found]
 import uvicorn
+from PIL import Image, ImageDraw, ImageFont
 from fastapi import (
     BackgroundTasks,
     Depends,
@@ -61,6 +63,55 @@ camera_manager = CameraManager(settings)
 
 # Initialize hardware controller
 hardware_controller = HardwareController()
+
+
+def create_waiting_image() -> bytes:
+    """Create a default 'waiting for camera' image."""
+    # Create a 640x480 image with dark background
+    img = Image.new('RGB', (640, 480), color=(50, 50, 50))
+    draw = ImageDraw.Draw(img)
+    
+    # Try to use a built-in font, fall back to default if not available
+    try:
+        font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 24)
+    except (OSError, IOError):
+        font = ImageFont.load_default()
+    
+    # Add text
+    text = "Waiting for camera..."
+    text_bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = text_bbox[2] - text_bbox[0]
+    text_height = text_bbox[3] - text_bbox[1]
+    
+    text_x = (640 - text_width) // 2
+    text_y = (480 - text_height) // 2
+    
+    draw.text((text_x, text_y), text, fill=(200, 200, 200), font=font)
+    
+    # Add a simple camera icon (rectangle with circle)
+    icon_size = 60
+    icon_x = (640 - icon_size) // 2
+    icon_y = text_y - 80
+    
+    # Camera body
+    draw.rectangle([icon_x, icon_y, icon_x + icon_size, icon_y + icon_size - 15], 
+                   outline=(150, 150, 150), width=2)
+    # Camera lens
+    lens_center_x = icon_x + icon_size // 2
+    lens_center_y = icon_y + (icon_size - 15) // 2
+    lens_radius = 15
+    draw.ellipse([lens_center_x - lens_radius, lens_center_y - lens_radius,
+                  lens_center_x + lens_radius, lens_center_y + lens_radius],
+                 outline=(150, 150, 150), width=2)
+    
+    # Convert to JPEG bytes
+    buffer = BytesIO()
+    img.save(buffer, format='JPEG', quality=85)
+    return buffer.getvalue()
+
+
+# Create the default waiting image once at startup
+DEFAULT_WAITING_IMAGE = create_waiting_image()
 
 # Set up WebSocket broadcasting for debug commands
 hardware_controller.set_command_broadcast_callback(debug_ws_manager.broadcast_command)
@@ -627,8 +678,8 @@ async def camera_stream(
             if frame_data:
                 yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame_data + b"\r\n"
             else:
-                # Return a placeholder if no frame available
-                yield b"--frame\r\nContent-Type: text/plain\r\n\r\nNo frame available\r\n"
+                # Return the default waiting image if no frame available
+                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + DEFAULT_WAITING_IMAGE + b"\r\n"
 
     return StreamingResponse(generate_frames(), media_type="multipart/x-mixed-replace; boundary=frame")
 
