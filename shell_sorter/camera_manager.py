@@ -69,6 +69,9 @@ class CameraManager:
         
         # Initialize configured ESP32 cameras
         self._ensure_configured_esphome_cameras()
+        
+        # Clean up any hardware controller cameras that shouldn't be there
+        self._remove_hardware_controller_cameras()
 
     def _get_camera_device_name(self, camera_index: int) -> str:
         """Get the actual device name/model for a camera."""
@@ -433,9 +436,6 @@ class CameraManager:
             # Default fallback
             esphome_hosts = ["esp32cam1.local"]
 
-        # Also check main controller in case it has camera
-        if self.settings and self.settings.esphome_hostname not in esphome_hosts:
-            esphome_hosts.append(self.settings.esphome_hostname)
 
         timeout = aiohttp.ClientTimeout(total=5)
             
@@ -635,10 +635,6 @@ class CameraManager:
             # Fall back to application settings
             configured_hostnames = self.settings.network_camera_hostnames.copy()
             
-        # Add main controller hostname if it has a camera
-        if self.settings.esphome_hostname not in configured_hostnames:
-            configured_hostnames.append(self.settings.esphome_hostname)
-            
         # Check which ESP32 cameras are already in our camera list
         existing_hostnames = set()
         for camera in self.cameras.values():
@@ -669,6 +665,24 @@ class CameraManager:
                 # Add to camera list
                 self.cameras[camera_info.index] = camera_info
                 logger.debug("Added configured ESP32 camera: %s (offline)", hostname)
+
+    def _remove_hardware_controller_cameras(self) -> None:
+        """Remove any cameras that are actually hardware controllers, not cameras."""
+        if not self.settings:
+            return
+            
+        # Remove cameras with the hardware controller hostname
+        hardware_controller_hostname = self.settings.esphome_hostname
+        cameras_to_remove = []
+        
+        for camera_index, camera in self.cameras.items():
+            if camera.is_network_camera and camera.hostname == hardware_controller_hostname:
+                cameras_to_remove.append(camera_index)
+                logger.info("Removing hardware controller %s from camera list", hardware_controller_hostname)
+                
+        # Remove the identified cameras
+        for camera_index in cameras_to_remove:
+            del self.cameras[camera_index]
 
     def get_cameras(self) -> List[CameraInfo]:
         """Get list of detected cameras, including configured ESP32 cameras."""
