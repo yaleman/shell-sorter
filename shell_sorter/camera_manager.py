@@ -1089,11 +1089,11 @@ class CameraManager:
 
                     # Adaptive delay based on failure count
                     if consecutive_failures == 0:
-                        # Normal polling rate when successful
-                        delay = 0.5
+                        # Normal polling rate when successful (10fps)
+                        delay = 0.1
                     elif consecutive_failures < max_failures:
                         # Gradual backoff for failures
-                        delay = min(2.0, 0.5 + (consecutive_failures * 0.1))
+                        delay = min(2.0, 0.1 + (consecutive_failures * 0.1))
                     else:
                         # Longer delay after many failures
                         delay = 10.0
@@ -1118,9 +1118,9 @@ class CameraManager:
                         camera_info.is_active = False
                         logger.info("ESP32 camera %d (%s) is now offline due to network error", camera_index, camera_info.hostname)
                     
-                    # Use same adaptive delay as HTTP errors
+                    # Use adaptive delay for network errors (starts shorter than HTTP errors)
                     if consecutive_failures < max_failures:
-                        delay = min(5.0, 2.0 + (consecutive_failures * 0.2))
+                        delay = min(5.0, 1.0 + (consecutive_failures * 0.2))
                     else:
                         delay = 15.0
                     await asyncio.sleep(delay)
@@ -1143,7 +1143,7 @@ class CameraManager:
                     
                     # Longer delays for unexpected errors
                     if consecutive_failures < max_failures:
-                        delay = min(10.0, 5.0 + (consecutive_failures * 0.5))
+                        delay = min(10.0, 2.0 + (consecutive_failures * 0.5))
                     else:
                         delay = 30.0
                     await asyncio.sleep(delay)
