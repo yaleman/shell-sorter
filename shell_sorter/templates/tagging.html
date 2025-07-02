@@ -27,6 +27,14 @@
                         <div class="image-preview">
                             <img src="/images/{{ image.filename }}" alt="Camera {{ image.camera_index }} capture" class="captured-image">
                             <div class="camera-label">{{ image.camera_name }}</div>
+                            <div class="view-type-selector">
+                                <label for="view_type_{{ loop.index0 }}">View Type:</label>
+                                <select id="view_type_{{ loop.index0 }}" name="view_type_{{ image.filename }}" class="tagging-view-type-select" data-filename="{{ image.filename }}">
+                                    <option value="">Select view type</option>
+                                    <option value="side">Side View</option>
+                                    <option value="tail">Tail View</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                     {% endfor %}
@@ -100,12 +108,31 @@
                     // Parse image filenames from comma-delimited string
                     const imageFilenames = imageFilenamesInput.split(',').filter(name => name.trim());
 
+                    // Collect view types for each image
+                    const viewTypes = {};
+                    const viewTypeSelects = document.querySelectorAll('.tagging-view-type-select');
+                    viewTypeSelects.forEach(select => {
+                        const filename = select.dataset.filename;
+                        const viewType = select.value;
+                        if (viewType) {
+                            viewTypes[filename] = viewType;
+                        }
+                    });
+
+                    // Validate that all images have view types selected
+                    const missingViewTypes = imageFilenames.filter(filename => !viewTypes[filename]);
+                    if (missingViewTypes.length > 0) {
+                        showToast('Please select view type for all images', 'warning');
+                        return;
+                    }
+
                     // Prepare JSON payload
                     const payload = {
                         session_id: sessionId,
                         brand: brand,
                         shell_type: shellType,
-                        image_filenames: imageFilenames
+                        image_filenames: imageFilenames,
+                        view_types: viewTypes
                     };
 
                     try {

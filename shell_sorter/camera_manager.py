@@ -66,10 +66,10 @@ class CameraManager:
         self._lock = threading.Lock()
         self.settings = settings
         self.auto_start_cameras: bool = False
-        
+
         # Initialize configured ESP32 cameras
         self._ensure_configured_esphome_cameras()
-        
+
         # Clean up any hardware controller cameras that shouldn't be there
         self._remove_hardware_controller_cameras()
 
@@ -436,9 +436,8 @@ class CameraManager:
             # Default fallback
             esphome_hosts = ["esp32cam1.local"]
 
-
         timeout = aiohttp.ClientTimeout(total=5)
-            
+
         async with aiohttp.ClientSession(timeout=timeout) as session:
             for i, hostname in enumerate(esphome_hosts):
                 try:
@@ -623,7 +622,7 @@ class CameraManager:
         """Ensure that all configured ESPHome cameras are available in the camera list."""
         if not self.settings:
             return
-            
+
         # Get configured hostnames from settings and user config
         configured_hostnames = []
         try:
@@ -634,13 +633,13 @@ class CameraManager:
         except Exception:
             # Fall back to application settings
             configured_hostnames = self.settings.network_camera_hostnames.copy()
-            
+
         # Check which ESP32 cameras are already in our camera list
         existing_hostnames = set()
         for camera in self.cameras.values():
             if camera.is_network_camera and camera.hostname:
                 existing_hostnames.add(camera.hostname)
-                
+
         # Add missing ESP32 cameras as offline/unavailable initially
         for i, hostname in enumerate(configured_hostnames):
             if hostname not in existing_hostnames:
@@ -655,13 +654,13 @@ class CameraManager:
                     stream_url=f"http://{hostname}:8081",
                     hostname=hostname,
                 )
-                
+
                 # Generate stable hardware ID for network camera
                 camera_info.hardware_id = self._generate_hardware_id(camera_info)
-                
+
                 # Load any existing configuration
                 self._load_camera_config(camera_info)
-                
+
                 # Add to camera list
                 self.cameras[camera_info.index] = camera_info
                 logger.debug("Added configured ESP32 camera: %s (offline)", hostname)
@@ -670,16 +669,16 @@ class CameraManager:
         """Remove any cameras that are actually hardware controllers, not cameras."""
         if not self.settings:
             return
-            
+
         # Remove cameras with the hardware controller hostname
         hardware_controller_hostname = self.settings.esphome_hostname
         cameras_to_remove = []
-        
+
         for camera_index, camera in self.cameras.items():
             if camera.is_network_camera and camera.hostname == hardware_controller_hostname:
                 cameras_to_remove.append(camera_index)
                 logger.info("Removing hardware controller %s from camera list", hardware_controller_hostname)
-                
+
         # Remove the identified cameras
         for camera_index in cameras_to_remove:
             del self.cameras[camera_index]
@@ -1054,7 +1053,7 @@ class CameraManager:
         timeout = aiohttp.ClientTimeout(total=10)
         consecutive_failures = 0
         max_failures = 20  # Allow up to 20 consecutive failures before longer backoff
-            
+
         async with aiohttp.ClientSession(timeout=timeout) as session:
             while not stop_event.is_set():
                 try:
@@ -1065,10 +1064,10 @@ class CameraManager:
 
                             # Store latest frame
                             self.latest_frames[camera_index] = frame_data
-                            
+
                             # Reset failure counter on success
                             consecutive_failures = 0
-                            
+
                             # Mark camera as active on first successful connection
                             if not camera_info.is_active:
                                 camera_info.is_active = True
@@ -1097,7 +1096,7 @@ class CameraManager:
                     else:
                         # Longer delay after many failures
                         delay = 10.0
-                        
+
                     await asyncio.sleep(delay)
                     if stop_event.is_set():
                         break
@@ -1106,8 +1105,8 @@ class CameraManager:
                     consecutive_failures += 1
                     error_msg = str(e) if str(e) else f"{type(e).__name__}: Connection failed"
                     logger.warning(
-                        "Network error for camera %d (%s): %s (failure %d/%d)", 
-                        camera_index, 
+                        "Network error for camera %d (%s): %s (failure %d/%d)",
+                        camera_index,
                         camera_info.hostname,
                         error_msg,
                         consecutive_failures,
@@ -1116,8 +1115,12 @@ class CameraManager:
                     # Mark camera as inactive on network error
                     if camera_info.is_active:
                         camera_info.is_active = False
-                        logger.info("ESP32 camera %d (%s) is now offline due to network error", camera_index, camera_info.hostname)
-                    
+                        logger.info(
+                            "ESP32 camera %d (%s) is now offline due to network error",
+                            camera_index,
+                            camera_info.hostname,
+                        )
+
                     # Use adaptive delay for network errors (starts shorter than HTTP errors)
                     if consecutive_failures < max_failures:
                         delay = min(5.0, 1.0 + (consecutive_failures * 0.2))
@@ -1139,8 +1142,12 @@ class CameraManager:
                     # Mark camera as inactive on unexpected error
                     if camera_info.is_active:
                         camera_info.is_active = False
-                        logger.info("ESP32 camera %d (%s) is now offline due to unexpected error", camera_index, camera_info.hostname)
-                    
+                        logger.info(
+                            "ESP32 camera %d (%s) is now offline due to unexpected error",
+                            camera_index,
+                            camera_info.hostname,
+                        )
+
                     # Longer delays for unexpected errors
                     if consecutive_failures < max_failures:
                         delay = min(10.0, 2.0 + (consecutive_failures * 0.5))
@@ -1153,7 +1160,7 @@ class CameraManager:
     async def _capture_network_image_async(self, camera_info: CameraInfo) -> Optional[bytes]:
         """Async method to capture an image from a network camera."""
         timeout = aiohttp.ClientTimeout(total=15)
-            
+
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(camera_info.stream_url) as response:
@@ -1214,10 +1221,10 @@ class CameraManager:
         usb_camera_indices = list(self.active_captures.keys())
         network_camera_indices = list(self.streaming_threads.keys())
         all_camera_indices = set(usb_camera_indices + network_camera_indices)
-        
+
         for camera_index in all_camera_indices:
             self.stop_camera_stream(camera_index)
-            
+
         logger.info("Stopped all cameras: %d USB, %d network", len(usb_camera_indices), len(network_camera_indices))
 
     def capture_high_resolution_image(self, camera_index: int) -> Optional[bytes]:

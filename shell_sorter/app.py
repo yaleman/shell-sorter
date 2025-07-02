@@ -68,45 +68,51 @@ hardware_controller = HardwareController()
 def create_waiting_image() -> bytes:
     """Create a default 'waiting for camera' image."""
     # Create a 640x480 image with dark background
-    img = Image.new('RGB', (640, 480), color=(50, 50, 50))
+    img = Image.new("RGB", (640, 480), color=(50, 50, 50))
     draw = ImageDraw.Draw(img)
-    
+
     # Try to use a built-in font, fall back to default if not available
     try:
         font = ImageFont.truetype("/System/Library/Fonts/Arial.ttf", 24)
     except (OSError, IOError):
         font = ImageFont.load_default()
-    
+
     # Add text
     text = "Waiting for camera..."
     text_bbox = draw.textbbox((0, 0), text, font=font)
     text_width = text_bbox[2] - text_bbox[0]
     text_height = text_bbox[3] - text_bbox[1]
-    
+
     text_x = (640 - text_width) // 2
     text_y = (480 - text_height) // 2
-    
+
     draw.text((text_x, text_y), text, fill=(200, 200, 200), font=font)
-    
+
     # Add a simple camera icon (rectangle with circle)
     icon_size = 60
     icon_x = (640 - icon_size) // 2
     icon_y = text_y - 80
-    
+
     # Camera body
-    draw.rectangle([icon_x, icon_y, icon_x + icon_size, icon_y + icon_size - 15], 
-                   outline=(150, 150, 150), width=2)
+    draw.rectangle([icon_x, icon_y, icon_x + icon_size, icon_y + icon_size - 15], outline=(150, 150, 150), width=2)
     # Camera lens
     lens_center_x = icon_x + icon_size // 2
     lens_center_y = icon_y + (icon_size - 15) // 2
     lens_radius = 15
-    draw.ellipse([lens_center_x - lens_radius, lens_center_y - lens_radius,
-                  lens_center_x + lens_radius, lens_center_y + lens_radius],
-                 outline=(150, 150, 150), width=2)
-    
+    draw.ellipse(
+        [
+            lens_center_x - lens_radius,
+            lens_center_y - lens_radius,
+            lens_center_x + lens_radius,
+            lens_center_y + lens_radius,
+        ],
+        outline=(150, 150, 150),
+        width=2,
+    )
+
     # Convert to JPEG bytes
     buffer = BytesIO()
-    img.save(buffer, format='JPEG', quality=85)
+    img.save(buffer, format="JPEG", quality=85)
     return buffer.getvalue()
 
 
@@ -881,6 +887,7 @@ async def save_shell_data(
         brand = body.get("brand")
         shell_type = body.get("shell_type")
         filenames_list = body.get("image_filenames")
+        view_types = body.get("view_types", {})
 
         # Validate required fields
         if not session_id:
@@ -899,9 +906,14 @@ async def save_shell_data(
             if metadata_path.exists():
                 with open(metadata_path, "r", encoding="utf-8") as f:
                     metadata = json.load(f)
-                    # Convert to CapturedImage objects
-
-                    captured_images_data = [CapturedImage(**img_data) for img_data in metadata]
+                    # Convert to CapturedImage objects and apply view types from form
+                    captured_images_data = []
+                    for img_data in metadata:
+                        # Update view type if provided in the form
+                        filename = img_data.get("filename")
+                        if filename in view_types:
+                            img_data["view_type"] = view_types[filename]
+                        captured_images_data.append(CapturedImage(**img_data))
         except Exception as e:
             logger.warning("Could not load capture metadata for session %s: %s", session_id, e)
 
