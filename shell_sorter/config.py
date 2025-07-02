@@ -8,6 +8,8 @@ and supports environment variable overrides.
 import json
 import logging
 import os
+import sys
+import tempfile
 from pathlib import Path
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
@@ -96,7 +98,14 @@ class Settings(BaseSettings):  # type: ignore
             config_path.parent.mkdir(parents=True, exist_ok=True)
             return config_path
 
-        # Default to ~/.config/shell-sorter.json
+        # Auto-detect pytest and use temporary config to prevent touching live config
+        if "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ:
+            # Use a temporary directory for pytest runs
+            temp_dir = Path(tempfile.gettempdir()) / "shell-sorter-pytest"
+            temp_dir.mkdir(exist_ok=True)
+            return temp_dir / "test-config.json"
+
+        # Default to ~/.config/shell-sorter.json for production
         config_dir = Path.home() / ".config"
         config_dir.mkdir(exist_ok=True)
         return config_dir / "shell-sorter.json"

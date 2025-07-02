@@ -125,10 +125,10 @@ class TestSettings:
         """Test user config file property."""
         settings = Settings()
 
-        # Should return the default config file path
+        # Should return the pytest auto-detected temp config file path
         config_file = settings.get_config_path()
-        assert config_file.name == "shell-sorter.json"
-        assert "/.config/" in str(config_file) or str(config_file).endswith("shell-sorter.json")
+        assert config_file.name == "test-config.json"
+        assert "shell-sorter-pytest" in str(config_file)
 
     def test_config_path_environment_override(self, temp_config_path: Path):
         """Test that config path can be overridden via environment variable."""
@@ -138,6 +138,26 @@ class TestSettings:
         config_file = settings.get_config_path()
         assert config_file == temp_config_path
         assert config_file.name == "test_shell_sorter_config.json"
+
+    def test_config_path_pytest_auto_detection(self):
+        """Test that pytest is automatically detected and uses temp config."""
+        # Clear any environment override to test auto-detection
+        old_value = os.environ.get("SHELL_SORTER_CONFIG_PATH")
+        if old_value:
+            os.environ.pop("SHELL_SORTER_CONFIG_PATH")
+
+        try:
+            settings = Settings()
+            config_file = settings.get_config_path()
+
+            # Should automatically use temp directory when running in pytest
+            assert "/tmp" in str(config_file) or "/var/folders" in str(config_file)
+            assert "shell-sorter-pytest" in str(config_file)
+            assert config_file.name == "test-config.json"
+        finally:
+            # Restore environment variable if it existed
+            if old_value:
+                os.environ["SHELL_SORTER_CONFIG_PATH"] = old_value
 
     def test_load_user_config_nonexistent(self, mock_settings: Settings):
         """Test loading user config when file doesn't exist."""
