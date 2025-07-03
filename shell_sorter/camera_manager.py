@@ -67,6 +67,9 @@ class CameraManager:
         self.settings = settings
         self.auto_start_cameras: bool = False
 
+        # Resolution caching for ESP cameras
+        self._resolution_cache: Dict[str, Tuple[int, int, float]] = {}  # hostname -> (width, height, timestamp)
+
         # Initialize configured ESP32 cameras
         self._ensure_configured_esphome_cameras()
 
@@ -416,6 +419,326 @@ class CameraManager:
             logger.warning("Failed to detect ESPHome cameras: %s", e)
             return []
 
+    async def _detect_esp_camera_resolution(
+        self, hostname: str, session: aiohttp.ClientSession, initial_image_data: bytes
+    ) -> Tuple[int, int]:
+        """
+        Detect ESP camera resolution using multiple methods with caching.
+
+        Args:
+            hostname: The ESP camera hostname
+            session: The aiohttp session for making requests
+            initial_image_data: Initial image data from camera detection
+
+        Returns:
+            Tuple of (width, height) for the camera resolution
+        """
+        # Check cache first (valid for 1 hour)
+        cached_resolution = self._get_cached_resolution(hostname)
+        if cached_resolution:
+            width, height = cached_resolution
+            logger.debug("Using cached resolution %dx%d for ESP camera %s", width, height, hostname)
+            return width, height
+
+        # Common ESP32 camera resolutions (in order of likelihood)
+        common_resolutions = [
+            (1920, 1080),  # Full HD
+            (1600, 1200),  # UXGA
+            (1280, 1024),  # SXGA
+            (1024, 768),  # XGA
+            (800, 600),  # SVGA
+            (640, 480),  # VGA
+            (320, 240),  # QVGA
+        ]
+
+        # Method 1: Parse the initial image data
+        detected_resolution = self._parse_image_resolution(initial_image_data)
+        if detected_resolution:
+            width, height = detected_resolution
+            self._cache_resolution(hostname, width, height)
+            logger.info("Detected ESP camera resolution from initial image: %dx%d for %s", width, height, hostname)
+            return width, height
+
+        # Method 2: Try multiple snapshots to get consistent resolution
+        for attempt in range(3):
+            try:
+                camera_url = f"http://{hostname}:8081"
+                async with session.get(camera_url) as response:
+                    if response.status == 200:
+                        image_data = await response.read()
+                        detected_resolution = self._parse_image_resolution(image_data)
+                        if detected_resolution:
+                            width, height = detected_resolution
+                            self._cache_resolution(hostname, width, height)
+                            logger.info(
+                                "Detected ESP camera resolution (attempt %d): %dx%d for %s",
+                                attempt + 1,
+                                width,
+                                height,
+                                hostname,
+                            )
+                            return width, height
+
+            except Exception as e:
+                logger.debug("Resolution detection attempt %d failed for %s: %s", attempt + 1, hostname, e)
+                await asyncio.sleep(0.5)  # Brief delay between attempts
+
+        # Method 3: Check if resolution matches common ESP32 camera formats
+        # by looking for likely patterns in image headers/metadata
+        if initial_image_data:
+            likely_resolution = self._estimate_resolution_from_data_size(initial_image_data, common_resolutions)
+            if likely_resolution:
+                width, height = likely_resolution
+                self._cache_resolution(hostname, width, height)
+                logger.info("Estimated ESP camera resolution from data size: %dx%d for %s", width, height, hostname)
+                return width, height
+
+        # Fallback: Use default resolution optimized for ESP32 cameras
+        default_width, default_height = 800, 600
+        logger.warning(
+            "Could not detect resolution for ESP camera %s, using default %dx%d",
+            hostname,
+            default_width,
+            default_height,
+        )
+        return default_width, default_height
+
+    def _parse_image_resolution(self, image_data: bytes) -> Optional[Tuple[int, int]]:
+        """Parse image data to extract resolution."""
+        try:
+            img = Image.open(BytesIO(image_data))
+            width, height = img.size
+
+            # Validate that we got reasonable dimensions
+            if width > 0 and height > 0 and width <= 4096 and height <= 3072:
+                return width, height
+
+        except Exception as e:
+            logger.debug("Failed to parse image resolution: %s", e)
+
+        return None
+
+    def _estimate_resolution_from_data_size(
+        self, image_data: bytes, common_resolutions: List[Tuple[int, int]]
+    ) -> Optional[Tuple[int, int]]:
+        """
+        Estimate resolution based on JPEG data size and common ESP32 resolutions.
+
+        This is a heuristic approach based on typical JPEG compression ratios.
+        """
+        data_size = len(image_data)
+
+        # Typical JPEG compression ratios for different quality settings
+        # ESP32 cameras typically use quality 10-20 (lower = higher compression)
+        compression_estimates = [
+            (0.02, "quality ~10"),  # Very high compression
+            (0.05, "quality ~15"),  # High compression
+            (0.10, "quality ~20"),  # Medium compression
+            (0.15, "quality ~25"),  # Lower compression
+        ]
+
+        for width, height in common_resolutions:
+            pixel_count = width * height * 3  # RGB bytes
+
+            for compression_ratio, quality_desc in compression_estimates:
+                estimated_size = pixel_count * compression_ratio
+
+                # Allow 30% variance for JPEG compression variability
+                if 0.7 * estimated_size <= data_size <= 1.3 * estimated_size:
+                    logger.debug(
+                        "Resolution %dx%d matches data size %d bytes (estimated %d bytes, %s)",
+                        width,
+                        height,
+                        data_size,
+                        int(estimated_size),
+                        quality_desc,
+                    )
+                    return width, height
+
+        return None
+
+    def _get_cached_resolution(self, hostname: str) -> Optional[Tuple[int, int]]:
+        """Get cached resolution for ESP camera hostname if still valid."""
+        if hostname in self._resolution_cache:
+            width, height, timestamp = self._resolution_cache[hostname]
+            # Cache is valid for 1 hour (3600 seconds)
+            if time.time() - timestamp < 3600:
+                return width, height
+            else:
+                # Remove expired cache entry
+                del self._resolution_cache[hostname]
+        return None
+
+    def _cache_resolution(self, hostname: str, width: int, height: int) -> None:
+        """Cache resolution for ESP camera hostname and persist to user config."""
+        # Validate resolution before caching
+        if self._validate_resolution(width, height):
+            # Update in-memory cache
+            self._resolution_cache[hostname] = (width, height, time.time())
+            logger.debug("Cached resolution %dx%d for ESP camera %s", width, height, hostname)
+
+            # Persist to user configuration
+            self._save_detected_resolution_to_config(hostname, width, height)
+        else:
+            logger.warning("Invalid resolution %dx%d not cached for ESP camera %s", width, height, hostname)
+
+    def _validate_resolution(self, width: int, height: int) -> bool:
+        """Validate that resolution values are reasonable for ESP32 cameras."""
+        # Check basic validity
+        if width <= 0 or height <= 0:
+            return False
+
+        # Check maximum reasonable resolution for ESP32 cameras
+        if width > 4096 or height > 3072:
+            return False
+
+        # Check minimum reasonable resolution
+        if width < 160 or height < 120:
+            return False
+
+        # Check aspect ratio reasonableness (between 4:3 and 16:9)
+        aspect_ratio = width / height
+        if aspect_ratio < 1.0 or aspect_ratio > 2.0:
+            return False
+
+        return True
+
+    def clear_resolution_cache(self) -> None:
+        """Clear all cached resolutions."""
+        self._resolution_cache.clear()
+        logger.info("Cleared ESP camera resolution cache")
+
+    def get_cached_resolutions(self) -> Dict[str, Tuple[int, int]]:
+        """Get all currently cached resolutions."""
+        current_time = time.time()
+        valid_cache = {}
+
+        for hostname, (width, height, timestamp) in self._resolution_cache.items():
+            if current_time - timestamp < 3600:  # 1 hour validity
+                valid_cache[hostname] = (width, height)
+
+        return valid_cache
+
+    def _save_detected_resolution_to_config(self, hostname: str, width: int, height: int) -> None:
+        """Save detected resolution to user configuration."""
+        if not self.settings:
+            return
+
+        try:
+            # Find the camera by hostname to get its hardware ID
+            camera_hardware_id = None
+            for camera_info in self.cameras.values():
+                if camera_info.is_network_camera and camera_info.hostname == hostname:
+                    camera_hardware_id = camera_info.hardware_id
+                    break
+
+            if not camera_hardware_id:
+                logger.debug("Could not find camera hardware ID for hostname %s, cannot save resolution", hostname)
+                return
+
+            # Load current user config
+            user_config_data = self.settings.load_user_config()
+            user_config = UserConfig(**user_config_data)
+
+            # Get or create camera config
+            camera_config = user_config.get_camera_config(camera_hardware_id)
+
+            # Update resolution fields
+            camera_config.detected_resolution_width = width
+            camera_config.detected_resolution_height = height
+            camera_config.resolution_detection_timestamp = time.time()
+
+            # Save updated config
+            user_config.set_camera_config(camera_hardware_id, camera_config)
+            self.settings.save_user_config(user_config.model_dump())
+
+            logger.debug(
+                "Saved detected resolution %dx%d to config for ESP camera %s (ID: %s)",
+                width,
+                height,
+                hostname,
+                camera_hardware_id,
+            )
+
+        except Exception as e:
+            logger.warning("Failed to save detected resolution to config for %s: %s", hostname, e)
+
+    def set_manual_resolution(self, camera_index: int, width: int, height: int) -> bool:
+        """Set manual resolution override for a camera."""
+        if camera_index not in self.cameras:
+            logger.warning("Camera %d not found", camera_index)
+            return False
+
+        camera_info = self.cameras[camera_index]
+        if not camera_info.is_network_camera or not camera_info.hostname:
+            logger.warning("Manual resolution setting only supported for ESP cameras")
+            return False
+
+        if not self._validate_resolution(width, height):
+            logger.warning("Invalid resolution %dx%d for camera %d", width, height, camera_index)
+            return False
+
+        if not self.settings or not camera_info.hardware_id:
+            logger.warning("Cannot save manual resolution without settings or hardware ID")
+            return False
+
+        try:
+            # Update camera info
+            camera_info.resolution = (width, height)
+
+            # Save to user config
+            user_config_data = self.settings.load_user_config()
+            user_config = UserConfig(**user_config_data)
+
+            camera_config = user_config.get_camera_config(camera_info.hardware_id)
+            camera_config.manual_resolution_width = width
+            camera_config.manual_resolution_height = height
+
+            user_config.set_camera_config(camera_info.hardware_id, camera_config)
+            self.settings.save_user_config(user_config.model_dump())
+
+            logger.info("Set manual resolution %dx%d for ESP camera %s", width, height, camera_info.hostname)
+            return True
+
+        except Exception as e:
+            logger.error("Failed to set manual resolution for camera %d: %s", camera_index, e)
+            return False
+
+    def clear_manual_resolution(self, camera_index: int) -> bool:
+        """Clear manual resolution override for a camera."""
+        if camera_index not in self.cameras:
+            logger.warning("Camera %d not found", camera_index)
+            return False
+
+        camera_info = self.cameras[camera_index]
+        if not camera_info.is_network_camera or not self.settings or not camera_info.hardware_id:
+            return False
+
+        try:
+            user_config_data = self.settings.load_user_config()
+            user_config = UserConfig(**user_config_data)
+
+            camera_config = user_config.get_camera_config(camera_info.hardware_id)
+            camera_config.manual_resolution_width = None
+            camera_config.manual_resolution_height = None
+
+            user_config.set_camera_config(camera_info.hardware_id, camera_config)
+            self.settings.save_user_config(user_config.model_dump())
+
+            # Reset to detected resolution if available
+            if camera_config.detected_resolution_width and camera_config.detected_resolution_height:
+                camera_info.resolution = (
+                    camera_config.detected_resolution_width,
+                    camera_config.detected_resolution_height,
+                )
+
+            logger.info("Cleared manual resolution for ESP camera %s", camera_info.hostname)
+            return True
+
+        except Exception as e:
+            logger.error("Failed to clear manual resolution for camera %d: %s", camera_index, e)
+            return False
+
     async def _detect_esphome_cameras_async(self) -> List[CameraInfo]:
         """Async method to detect ESPHome cameras on the network."""
         esphome_cameras = []
@@ -449,16 +772,8 @@ class CameraManager:
                             # Try to get image dimensions from the first frame
                             image_data = await response.read()
 
-                            # Default resolution for ESPHome cameras
-                            width, height = 800, 600
-
-                            # Try to parse image headers to get actual dimensions
-                            try:
-                                img = Image.open(BytesIO(image_data))
-                                width, height = img.size
-                            except Exception:
-                                # Keep default resolution
-                                pass
+                            # Detect actual resolution with enhanced method
+                            width, height = await self._detect_esp_camera_resolution(hostname, session, image_data)
 
                             camera_info = CameraInfo(
                                 index=1000 + i,  # Use high indices to avoid conflicts with USB cameras
@@ -1455,6 +1770,42 @@ class CameraManager:
             camera_info.region_y = camera_config.region_y
             camera_info.region_width = camera_config.region_width
             camera_info.region_height = camera_config.region_height
+
+            # Load resolution configuration for ESP cameras
+            if camera_info.is_network_camera and camera_info.hostname:
+                # Check if we have a manual resolution override
+                if camera_config.manual_resolution_width and camera_config.manual_resolution_height:
+                    camera_info.resolution = (
+                        camera_config.manual_resolution_width,
+                        camera_config.manual_resolution_height,
+                    )
+                    logger.info(
+                        "Using manual resolution %dx%d for ESP camera %s",
+                        camera_config.manual_resolution_width,
+                        camera_config.manual_resolution_height,
+                        camera_info.hostname,
+                    )
+                # Otherwise, use detected resolution if available and recent
+                elif camera_config.detected_resolution_width and camera_config.detected_resolution_height:
+                    if camera_config.resolution_detection_timestamp:
+                        # Check if detection is still recent (within 24 hours)
+                        if time.time() - camera_config.resolution_detection_timestamp < 86400:
+                            camera_info.resolution = (
+                                camera_config.detected_resolution_width,
+                                camera_config.detected_resolution_height,
+                            )
+                            # Also update in-memory cache
+                            self._cache_resolution(
+                                camera_info.hostname,
+                                camera_config.detected_resolution_width,
+                                camera_config.detected_resolution_height,
+                            )
+                            logger.info(
+                                "Using saved detected resolution %dx%d for ESP camera %s",
+                                camera_config.detected_resolution_width,
+                                camera_config.detected_resolution_height,
+                                camera_info.hostname,
+                            )
 
             if camera_config.view_type:
                 logger.info(

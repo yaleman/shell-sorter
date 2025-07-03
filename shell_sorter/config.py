@@ -169,6 +169,12 @@ class CameraConfig(BaseModel):
     region_y: Optional[int] = None
     region_width: Optional[int] = None
     region_height: Optional[int] = None
+    # Resolution configuration for ESP cameras
+    detected_resolution_width: Optional[int] = None
+    detected_resolution_height: Optional[int] = None
+    manual_resolution_width: Optional[int] = None
+    manual_resolution_height: Optional[int] = None
+    resolution_detection_timestamp: Optional[float] = None
 
 
 class UserConfig(BaseModel):
