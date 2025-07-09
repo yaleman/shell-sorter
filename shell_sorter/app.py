@@ -673,6 +673,86 @@ async def get_esphome_status(
     return monitor.get_status()
 
 
+@app.post("/api/machine/flash/on")
+async def turn_on_camera_flash(brightness: int = 100) -> Dict[str, Any]:
+    """Turn on camera flash LED for better lighting."""
+    try:
+        # Validate brightness range
+        brightness = max(0, min(100, brightness))
+
+        success = await hardware_controller.turn_on_camera_flash(brightness)
+
+        if success:
+            return {
+                "status": "success",
+                "message": f"Camera flash turned on at {brightness}% brightness",
+                "brightness": brightness,
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to turn on camera flash")
+
+    except Exception as e:
+        logger.error("Error in flash on endpoint: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/machine/flash/off")
+async def turn_off_camera_flash() -> Dict[str, str]:
+    """Turn off camera flash LED."""
+    try:
+        success = await hardware_controller.turn_off_camera_flash()
+
+        if success:
+            return {"status": "success", "message": "Camera flash turned off"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to turn off camera flash")
+
+    except Exception as e:
+        logger.error("Error in flash off endpoint: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/machine/flash/capture")
+async def flash_for_capture(duration_ms: int = 200, brightness: int = 100) -> Dict[str, Any]:
+    """Trigger flash for photo capture with automatic turn-off."""
+    try:
+        # Validate parameters
+        duration_ms = max(50, min(2000, duration_ms))  # 50ms to 2s
+        brightness = max(0, min(100, brightness))
+
+        success = await hardware_controller.flash_for_capture(duration_ms, brightness)
+
+        if success:
+            return {
+                "status": "success",
+                "message": f"Flash capture completed ({duration_ms}ms at {brightness}%)",
+                "duration_ms": duration_ms,
+                "brightness": brightness,
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Flash capture sequence failed")
+
+    except Exception as e:
+        logger.error("Error in flash capture endpoint: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/machine/photo-with-flash")
+async def trigger_photo_with_flash() -> Dict[str, str]:
+    """Trigger ESP camera's built-in photo with flash button."""
+    try:
+        success = await hardware_controller.trigger_photo_with_flash()
+
+        if success:
+            return {"status": "success", "message": "Photo with flash triggered successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to trigger photo with flash")
+
+    except Exception as e:
+        logger.error("Error in photo with flash endpoint: %s", e)
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @app.get("/api/cameras/{camera_index}/stream")
 async def camera_stream(
     camera_index: int,

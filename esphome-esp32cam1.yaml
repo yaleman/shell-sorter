@@ -66,14 +66,17 @@ esp32_camera:
   horizontal_mirror: true
   max_framerate: 10fps
   idle_framerate: 0.1fps
-  brightness: 2
+  # Image quality settings - optimized for brighter images
+  brightness: 2        # Maximum brightness (range: -2 to +2)
+  contrast: 1          # Increased contrast for better visibility (range: -2 to +2)
+  saturation: 0        # Normal color saturation (range: -2 to +2)
 
-# Optional: Flash LED for better lighting
-# output:
-#   - platform: ledc
-#     id: camera_flash
-#     pin: GPIO47
-#     frequency: 1000Hz
+# Flash LED for better lighting
+output:
+  - platform: ledc
+    id: camera_flash
+    pin: GPIO47
+    frequency: 1000Hz
 
 # Status LED and Flash LED
 light:
@@ -81,23 +84,23 @@ light:
     name: "Status LED"
     pin: GPIO48
 
-  # - platform: monochromatic
-  #   output: camera_flash
-  #   name: "Camera Flash"
-  #   id: flash_light
-# Button for manual testing (optional)
-# button:
-#   - platform: template
-#     name: "Take Photo"
-#     icon: mdi:camera
-#     on_press:
-#       then:
-#         - logger.log: "Taking photo"
-#         - light.turn_on:
-#             id: flash_light
-#             brightness: 100%
-#         - delay: 100ms
-#         - light.turn_off: flash_light
+  - platform: monochromatic
+    output: camera_flash
+    name: "Camera Flash"
+    id: flash_light
+# Button for manual testing with flash
+button:
+  - platform: template
+    name: "Take Photo with Flash"
+    icon: mdi:camera-enhance
+    on_press:
+      then:
+        - logger.log: "Taking photo with flash"
+        - light.turn_on:
+            id: flash_light
+            brightness: 100%
+        - delay: 200ms  # Slightly longer flash duration
+        - light.turn_off: flash_light
 
 # Sensors for monitoring
 # sensor:

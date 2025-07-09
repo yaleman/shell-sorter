@@ -308,3 +308,90 @@ class HardwareController:
         except Exception as e:
             logger.error("Error getting device info: %s", e)
             return None
+
+    async def turn_on_camera_flash(self, brightness: int = 100) -> bool:
+        """
+        Turn on camera flash LED for better lighting.
+
+        Args:
+            brightness: Flash brightness percentage (0-100)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Validate brightness range
+            brightness = max(0, min(100, brightness))
+
+            data = {"brightness": brightness}
+            result = await self._make_request("/light/flash_light/turn_on", method="POST", data=data)
+
+            if result:
+                logger.info("Camera flash turned on at %d%% brightness", brightness)
+                return True
+            else:
+                logger.error("Failed to turn on camera flash")
+                return False
+
+        except Exception as e:
+            logger.error("Error turning on camera flash: %s", e)
+            return False
+
+    async def turn_off_camera_flash(self) -> bool:
+        """Turn off camera flash LED."""
+        try:
+            result = await self._make_request("/light/flash_light/turn_off", method="POST")
+
+            if result:
+                logger.info("Camera flash turned off")
+                return True
+            else:
+                logger.error("Failed to turn off camera flash")
+                return False
+
+        except Exception as e:
+            logger.error("Error turning off camera flash: %s", e)
+            return False
+
+    async def flash_for_capture(self, duration_ms: int = 200, brightness: int = 100) -> bool:
+        """
+        Trigger flash for photo capture with automatic turn-off.
+
+        Args:
+            duration_ms: Flash duration in milliseconds
+            brightness: Flash brightness percentage (0-100)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Turn on flash
+            if not await self.turn_on_camera_flash(brightness):
+                return False
+
+            # Wait for specified duration
+            await asyncio.sleep(duration_ms / 1000.0)
+
+            # Turn off flash
+            return await self.turn_off_camera_flash()
+
+        except Exception as e:
+            logger.error("Error during flash capture sequence: %s", e)
+            await self.turn_off_camera_flash()  # Ensure flash is off
+            return False
+
+    async def trigger_photo_with_flash(self) -> bool:
+        """Trigger the ESP camera's built-in 'Take Photo with Flash' button."""
+        try:
+            result = await self._make_request("/button/take_photo_with_flash/press", method="POST")
+
+            if result:
+                logger.info("Photo with flash triggered successfully")
+                return True
+            else:
+                logger.error("Failed to trigger photo with flash")
+                return False
+
+        except Exception as e:
+            logger.error("Error triggering photo with flash: %s", e)
+            return False
