@@ -63,14 +63,15 @@ esp32_camera:
   resolution: 1920x1080
   jpeg_quality: 20
   vertical_flip: true
-  horizontal_mirror: true
+  horizontal_mirror: false # defaults to true
   max_framerate: 10fps
   idle_framerate: 0.1fps
   # Image quality settings - optimized for brighter images
-  brightness: 2        # Maximum brightness (range: -2 to +2)
-  contrast: 1          # Increased contrast for better visibility (range: -2 to +2)
-  saturation: 0        # Normal color saturation (range: -2 to +2)
-
+  brightness: 2 # Maximum brightness (range: -2 to +2)
+  contrast: 2 # Increased contrast for better visibility (range: -2 to +2)
+  saturation: 0 # Normal color saturation (range: -2 to +2)
+  ae_level: 1
+  aec2: true # Enable advanced exposure control
 # Flash LED for better lighting
 output:
   - platform: ledc
@@ -99,7 +100,7 @@ button:
         - light.turn_on:
             id: flash_light
             brightness: 100%
-        - delay: 200ms  # Slightly longer flash duration
+        - delay: 200ms # Slightly longer flash duration
         - light.turn_off: flash_light
 
 # Sensors for monitoring
