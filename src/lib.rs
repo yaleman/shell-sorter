@@ -1,4 +1,5 @@
 pub mod config;
+pub mod controller_monitor;
 pub mod error;
 pub mod server;
 

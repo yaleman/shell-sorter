@@ -15,6 +15,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 
 use crate::config::Settings;
+use crate::controller_monitor::{ControllerHandle, ControllerCommand, ControllerResponse};
 use crate::{OurError, OurResult};
 use tracing::{error, info};
 
@@ -22,6 +23,7 @@ use tracing::{error, info};
 #[derive(Clone)]
 pub struct AppState {
     pub settings: Settings,
+    pub controller: ControllerHandle,
 }
 
 /// Dashboard template
@@ -42,21 +44,6 @@ struct DashboardTemplate {
 #[template(path = "config.html")]
 struct ConfigTemplate {}
 
-/// Machine status response
-#[derive(Serialize)]
-struct MachineStatus {
-    status: String,
-    ready: bool,
-    active_jobs: u32,
-}
-
-/// Sensor readings response
-#[derive(Serialize)]
-struct SensorReadings {
-    case_ready: bool,
-    case_in_view: bool,
-    timestamp: u64,
-}
 
 /// Camera info response
 #[derive(Serialize)]
@@ -103,8 +90,8 @@ impl<T> ApiResponse<T> {
 }
 
 /// Start the web server
-pub async fn start_server(host: String, port: u16, settings: Settings) -> OurResult<()> {
-    let state = Arc::new(AppState { settings });
+pub async fn start_server(host: String, port: u16, settings: Settings, controller: ControllerHandle) -> OurResult<()> {
+    let state = Arc::new(AppState { settings, controller });
 
     let app = Router::new()
         // Static files and main dashboard
@@ -200,44 +187,92 @@ async fn config_page(
     })
 }
 
-async fn trigger_next_case(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
-    // TODO: Implement machine control
-    Json(ApiResponse::success(()))
+async fn trigger_next_case(State(state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
+    match state.controller.send_command(ControllerCommand::NextCase).await {
+        Ok(_) => Json(ApiResponse::success(())),
+        Err(e) => {
+            error!("Failed to trigger next case: {}", e);
+            Json(ApiResponse::<()>::error(format!("Failed to trigger next case: {}", e)))
+        }
+    }
 }
 
-async fn machine_status(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<MachineStatus>> {
-    let status = MachineStatus {
-        status: "Ready".to_string(),
-        ready: true,
-        active_jobs: 0,
-    };
-    Json(ApiResponse::success(status))
+async fn machine_status(State(state): State<Arc<AppState>>) -> Json<ApiResponse<crate::controller_monitor::MachineStatus>> {
+    match state.controller.send_command(ControllerCommand::GetStatus).await {
+        Ok(ControllerResponse::StatusData(status)) => Json(ApiResponse::success(status)),
+        Ok(_) => {
+            error!("Unexpected response type for machine status");
+            let fallback_status = crate::controller_monitor::MachineStatus {
+                status: "Error".to_string(),
+                ready: false,
+                active_jobs: 0,
+                last_update: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            };
+            Json(ApiResponse::success(fallback_status))
+        }
+        Err(e) => {
+            error!("Failed to get machine status: {}", e);
+            let fallback_status = crate::controller_monitor::MachineStatus {
+                status: "Offline".to_string(),
+                ready: false,
+                active_jobs: 0,
+                last_update: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            };
+            Json(ApiResponse::success(fallback_status))
+        }
+    }
 }
 
-async fn sensor_readings(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<SensorReadings>> {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0); // Fallback to 0 if system time is before epoch
-
-    let readings = SensorReadings {
-        case_ready: false,
-        case_in_view: false,
-        timestamp,
-    };
-    Json(ApiResponse::success(readings))
+async fn sensor_readings(State(state): State<Arc<AppState>>) -> Json<ApiResponse<crate::controller_monitor::SensorReadings>> {
+    match state.controller.send_command(ControllerCommand::GetSensors).await {
+        Ok(ControllerResponse::SensorData(readings)) => Json(ApiResponse::success(readings)),
+        Ok(_) => {
+            error!("Unexpected response type for sensor readings");
+            let fallback_readings = crate::controller_monitor::SensorReadings {
+                case_ready: false,
+                case_in_view: false,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+            };
+            Json(ApiResponse::success(fallback_readings))
+        }
+        Err(e) => {
+            error!("Failed to get sensor readings: {}", e);
+            let fallback_readings = crate::controller_monitor::SensorReadings {
+                case_ready: false,
+                case_in_view: false,
+                timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+            };
+            Json(ApiResponse::success(fallback_readings))
+        }
+    }
 }
 
 async fn hardware_status(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
 ) -> Json<ApiResponse<HashMap<String, String>>> {
-    let mut status = HashMap::new();
-    status.insert("controller".to_string(), "Connected".to_string());
-    status.insert(
-        "esphome_hostname".to_string(),
-        "shell-sorter-controller.local".to_string(),
-    );
-    Json(ApiResponse::success(status))
+    match state.controller.send_command(ControllerCommand::GetHardwareStatus).await {
+        Ok(ControllerResponse::HardwareData(status)) => Json(ApiResponse::success(status)),
+        Ok(_) => {
+            error!("Unexpected response type for hardware status");
+            let mut fallback_status = HashMap::new();
+            fallback_status.insert("controller".to_string(), "Error".to_string());
+            fallback_status.insert("esphome_hostname".to_string(), state.settings.esphome_hostname.clone());
+            Json(ApiResponse::success(fallback_status))
+        }
+        Err(e) => {
+            error!("Failed to get hardware status: {}", e);
+            let mut fallback_status = HashMap::new();
+            fallback_status.insert("controller".to_string(), "Disconnected".to_string());
+            fallback_status.insert("esphome_hostname".to_string(), state.settings.esphome_hostname.clone());
+            Json(ApiResponse::success(fallback_status))
+        }
+    }
 }
 
 async fn list_cameras(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<CameraInfo>>> {
