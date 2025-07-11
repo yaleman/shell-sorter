@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ title }}</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 40px; 
+            background-color: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #007cba, #005a85);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .section { 
+            margin: 20px 0; 
+            padding: 20px; 
+            background: white;
+            border: 1px solid #ddd; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007cba;
+            padding-bottom: 8px;
+        }
+        button { 
+            padding: 12px 24px; 
+            margin: 8px; 
+            background: #007cba; 
+            color: white; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        button:hover { 
+            background: #005a85; 
+        }
+        button:active {
+            background: #004a70;
+        }
+        .status-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .status-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #007cba;
+        }
+        .status-card h4 {
+            margin: 0 0 8px 0;
+            color: #333;
+        }
+        .status-card p {
+            margin: 0;
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #007cba;
+        }
+        #output {
+            margin-top: 20px; 
+            padding: 20px; 
+            background: #2d3748;
+            color: #e2e8f0;
+            border-radius: 6px; 
+            min-height: 150px; 
+            white-space: pre-wrap;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.4;
+            overflow-x: auto;
+        }
+        .output-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .clear-btn {
+            background: #e53e3e;
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        .clear-btn:hover {
+            background: #c53030;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{{ title }}</h1>
+        <p>{{ subtitle }}</p>
+    </div>
+    
+    <div class="status-info">
+        <div class="status-card">
+            <h4>Machine</h4>
+            <p>{{ machine_name }}</p>
+        </div>
+        <div class="status-card">
+            <h4>Server</h4>
+            <p>{{ host }}:{{ port }}</p>
+        </div>
+        <div class="status-card">
+            <h4>ML Status</h4>
+            <p>{% if ml_enabled %}Enabled{% else %}Disabled{% endif %}</p>
+        </div>
+        <div class="status-card">
+            <h4>Camera Count</h4>
+            <p>{{ camera_count }}</p>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Machine Control</h2>
+        <button onclick="triggerNextCase()">Next Case</button>
+        <button onclick="getMachineStatus()">Machine Status</button>
+        <button onclick="getSensorReadings()">Sensor Readings</button>
+        <button onclick="getHardwareStatus()">Hardware Status</button>
+    </div>
+    
+    <div class="section">
+        <h2>Camera Operations</h2>
+        <button onclick="detectCameras()">Detect Cameras</button>
+        <button onclick="listCameras()">List Cameras</button>
+        <button onclick="captureImages()">Capture Images</button>
+        <button onclick="startCameras()">Start Cameras</button>
+        <button onclick="stopCameras()">Stop All Cameras</button>
+    </div>
+    
+    <div class="section">
+        <h2>Machine Learning</h2>
+        <button onclick="listCaseTypes()">List Case Types</button>
+        <button onclick="generateComposites()">Generate Composites</button>
+        <button onclick="trainModel()">Train Model</button>
+        <button onclick="listShells()">List Training Shells</button>
+    </div>
+
+    <div class="section">
+        <h2>Configuration</h2>
+        <button onclick="getConfig()">Show Configuration</button>
+        <button onclick="resetConfig()">Reset Configuration</button>
+    </div>
+    
+    <div class="section">
+        <div class="output-header">
+            <h2>API Response</h2>
+            <button class="clear-btn" onclick="clearOutput()">Clear</button>
+        </div>
+        <div id="output">Ready - Click any button above to interact with the shell sorter...</div>
+    </div>
+    
+    <script>
+        async function apiCall(method, url, body = null) {
+            try {
+                document.getElementById('output').textContent = `${method} ${url}\nLoading...`;
+                
+                const response = await fetch(url, {
+                    method,
+                    headers: body ? {'Content-Type': 'application/json'} : {},
+                    body: body ? JSON.stringify(body) : null
+                });
+                
+                const data = await response.json();
+                const timestamp = new Date().toLocaleTimeString();
+                const output = `[${timestamp}] ${method} ${url}\nStatus: ${response.status}\n\n${JSON.stringify(data, null, 2)}`;
+                document.getElementById('output').textContent = output;
+            } catch (error) {
+                const timestamp = new Date().toLocaleTimeString();
+                const output = `[${timestamp}] ${method} ${url}\nError: ${error.message}`;
+                document.getElementById('output').textContent = output;
+            }
+        }
+        
+        function clearOutput() {
+            document.getElementById('output').textContent = 'Ready - Click any button above to interact with the shell sorter...';
+        }
+        
+        // Machine Control
+        function triggerNextCase() { apiCall('POST', '/api/machine/next-case'); }
+        function getMachineStatus() { apiCall('GET', '/api/machine/status'); }
+        function getSensorReadings() { apiCall('GET', '/api/machine/sensors'); }
+        function getHardwareStatus() { apiCall('GET', '/api/machine/hardware-status'); }
+        
+        // Camera Operations
+        function detectCameras() { apiCall('GET', '/api/cameras/detect'); }
+        function listCameras() { apiCall('GET', '/api/cameras'); }
+        function captureImages() { apiCall('POST', '/api/cameras/capture'); }
+        function startCameras() { apiCall('POST', '/api/cameras/start-selected'); }
+        function stopCameras() { apiCall('POST', '/api/cameras/stop-all'); }
+        
+        // Machine Learning
+        function listCaseTypes() { apiCall('GET', '/api/case-types'); }
+        function generateComposites() { apiCall('POST', '/api/ml/generate-composites'); }
+        function trainModel() { apiCall('POST', '/api/train-model'); }
+        function listShells() { apiCall('GET', '/api/ml/shells'); }
+
+        // Configuration
+        function getConfig() { apiCall('GET', '/api/config'); }
+        function resetConfig() { apiCall('POST', '/api/config/reset'); }
+    </script>
+</body>
+</html>

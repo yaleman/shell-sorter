@@ -1,5 +1,6 @@
 //! Web server implementation using Axum.
 
+use askama::Template;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -20,6 +21,19 @@ use tracing::info;
 #[derive(Clone)]
 pub struct AppState {
     pub settings: Settings,
+}
+
+/// Dashboard template
+#[derive(Template)]
+#[template(path = "dashboard.html")]
+struct DashboardTemplate {
+    title: String,
+    subtitle: String,
+    machine_name: String,
+    host: String,
+    port: u16,
+    ml_enabled: bool,
+    camera_count: u32,
 }
 
 /// Machine status response
@@ -134,73 +148,17 @@ pub async fn start_server(host: String, port: u16, settings: Settings) -> Result
 
 // Handler implementations
 
-async fn dashboard() -> Html<&'static str> {
-    Html(
-    r#"<!DOCTYPE html>
-<html>
-<head>
-    <title>Shell Sorter Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        .section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-        button { padding: 10px 20px; margin: 5px; background: #007cba; color: white; border: none; border-radius: 3px; cursor: pointer; }
-        button:hover { background: #005a85; }
-    </style>
-</head>
-<body>
-    <h1>Shell Sorter Control Dashboard</h1>
-    
-    <div class="section">
-        <h2>Machine Control</h2>
-        <button onclick="triggerNextCase()">Next Case</button>
-        <button onclick="getMachineStatus()">Machine Status</button>
-        <button onclick="getSensorReadings()">Sensor Readings</button>
-    </div>
-    
-    <div class="section">
-        <h2>Camera Operations</h2>
-        <button onclick="detectCameras()">Detect Cameras</button>
-        <button onclick="listCameras()">List Cameras</button>
-        <button onclick="captureImages()">Capture Images</button>
-    </div>
-    
-    <div class="section">
-        <h2>Machine Learning</h2>
-        <button onclick="listCaseTypes()">List Case Types</button>
-        <button onclick="generateComposites()">Generate Composites</button>
-        <button onclick="trainModel()">Train Model</button>
-    </div>
-    
-    <div id="output" style="margin-top: 20px; padding: 10px; background: #f5f5f5; border-radius: 3px; min-height: 100px; white-space: pre-wrap;"></div>
-    
-    <script>
-        async function apiCall(method, url, body = null) {
-            try {
-                const response = await fetch(url, {
-                    method,
-                    headers: body ? {'Content-Type': 'application/json'} : {},
-                    body: body ? JSON.stringify(body) : null
-                });
-                const data = await response.json();
-                document.getElementById('output').textContent = JSON.stringify(data, null, 2);
-            } catch (error) {
-                document.getElementById('output').textContent = 'Error: ' + error.message;
-            }
-        }
-        
-        function triggerNextCase() { apiCall('POST', '/api/machine/next-case'); }
-        function getMachineStatus() { apiCall('GET', '/api/machine/status'); }
-        function getSensorReadings() { apiCall('GET', '/api/machine/sensors'); }
-        function detectCameras() { apiCall('GET', '/api/cameras/detect'); }
-        function listCameras() { apiCall('GET', '/api/cameras'); }
-        function captureImages() { apiCall('POST', '/api/cameras/capture'); }
-        function listCaseTypes() { apiCall('GET', '/api/case-types'); }
-        function generateComposites() { apiCall('POST', '/api/ml/generate-composites'); }
-        function trainModel() { apiCall('POST', '/api/train-model'); }
-    </script>
-</body>
-</html>"#
-    )
+async fn dashboard(State(state): State<Arc<AppState>>) -> Html<String> {
+    let template = DashboardTemplate {
+        title: "Shell Sorter Control Dashboard".to_string(),
+        subtitle: "Ammunition shell case sorting machine controller".to_string(),
+        machine_name: state.settings.machine_name.clone(),
+        host: state.settings.host.clone(),
+        port: state.settings.port,
+        ml_enabled: state.settings.ml_enabled,
+        camera_count: state.settings.camera_count,
+    };
+    Html(template.render().unwrap())
 }
 
 async fn trigger_next_case(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
