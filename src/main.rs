@@ -1,12 +1,12 @@
 use std::num::NonZeroU16;
 
 use clap::{Parser, Subcommand};
-use shell_sorter::OurResult;
 use shell_sorter::config::Settings;
 use shell_sorter::controller_monitor::ControllerMonitor;
 use shell_sorter::server;
+use shell_sorter::{OurError, OurResult};
 use tracing::{debug, info};
-use tracing_subscriber::FmtSubscriber;
+use tracing_subscriber::{filter::EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser)]
 #[command(name = "shell-sorter")]
@@ -173,15 +173,25 @@ async fn main() -> OurResult<()> {
     };
 
     // Initialize tracing
-    let log_level = if cli.debug {
-        tracing::Level::DEBUG
-    } else {
-        tracing::Level::INFO
-    };
+    let base_level = if cli.debug { "debug" } else { "info" };
 
-    let subscriber = FmtSubscriber::builder().with_max_level(log_level).finish();
+    let filter = EnvFilter::builder()
+        .with_default_directive(
+            format!("shell_sorter={base_level}")
+                .parse()
+                .expect("Valid log directive"),
+        )
+        .from_env_lossy()
+        .add_directive(
+            "hyper_util::client=warn"
+                .parse()
+                .expect("Valid log directive"),
+        );
 
-    tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer())
+        .init();
 
     if cli.debug {
         debug!("Debug mode enabled");
@@ -337,7 +347,8 @@ async fn handle_config_command(action: ConfigAction, settings: &Settings) -> Our
 
 async fn start_web_server(host: String, port: NonZeroU16, settings: Settings) -> OurResult<()> {
     // Create the controller monitor and get a handle for communication
-    let (controller_monitor, controller_handle) = ControllerMonitor::new(settings.clone());
+    let (controller_monitor, controller_handle) = ControllerMonitor::new(settings.clone())
+        .map_err(|e| OurError::App(format!("Failed to create controller monitor: {e}")))?;
 
     // Spawn the controller monitor in a separate task
     tokio::spawn(async move {

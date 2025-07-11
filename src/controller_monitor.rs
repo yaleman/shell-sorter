@@ -87,7 +87,7 @@ pub struct ControllerHandle {
 
 impl ControllerMonitor {
     /// Create a new controller monitor and return a handle for communication
-    pub fn new(settings: Settings) -> (Self, ControllerHandle) {
+    pub fn new(settings: Settings) -> Result<(Self, ControllerHandle), Box<dyn std::error::Error>> {
         let (request_sender, request_receiver) = mpsc::unbounded_channel();
 
         let status = Arc::new(Mutex::new(ControllerStatus {
@@ -100,9 +100,8 @@ impl ControllerMonitor {
         }));
 
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(5))
-            .build()
-            .expect("Failed to create HTTP client");
+            .timeout(Duration::from_secs(15))
+            .build()?;
 
         let monitor = Self {
             settings,
@@ -116,7 +115,7 @@ impl ControllerMonitor {
             status,
         };
 
-        (monitor, handle)
+        Ok((monitor, handle))
     }
 
     /// Start the controller monitoring loop
@@ -353,8 +352,20 @@ impl ControllerMonitor {
         let start_time = Instant::now();
 
         let response = match method {
-            "GET" => self.client.get(url).send().await?,
-            "POST" => self.client.post(url).send().await?,
+            "GET" => {
+                self.client
+                    .get(url)
+                    .basic_auth("admin", Some("shellsorter"))
+                    .send()
+                    .await?
+            }
+            "POST" => {
+                self.client
+                    .post(url)
+                    .basic_auth("admin", Some("shellsorter"))
+                    .send()
+                    .await?
+            }
             _ => return Err("Unsupported HTTP method".into()),
         };
 
@@ -387,7 +398,12 @@ impl ControllerMonitor {
 
         debug!("Performing health check for {hostname}");
 
-        let is_online = match client.get(&url).send().await {
+        let is_online = match client
+            .get(&url)
+            .basic_auth("admin", Some("shellsorter"))
+            .send()
+            .await
+        {
             Ok(response) => {
                 let elapsed = start_time.elapsed();
                 let success = response.status().is_success();

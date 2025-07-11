@@ -367,8 +367,8 @@ mod tests {
     #[test]
     fn test_serialization() {
         let settings = Settings::default();
-        let json = serde_json::to_string(&settings).unwrap();
-        let deserialized: Settings = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&settings).expect("Settings should serialize");
+        let deserialized: Settings = serde_json::from_str(&json).expect("JSON should deserialize");
         assert_eq!(settings.host, deserialized.host);
         assert_eq!(settings.port, deserialized.port);
     }
