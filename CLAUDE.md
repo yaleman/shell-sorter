@@ -110,6 +110,28 @@ tests/               # Comprehensive test suite
 esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
 ```
 
+## Rust Implementation
+
+### ESPHome Camera Manager (`src/camera_manager.rs`)
+- **Thread-based Architecture**: Runs in separate thread with async task communication
+- **ESPHome Integration**: Probes ESPHome devices at configured hostnames to detect cameras
+- **Camera Operations**:
+  - Detection and listing of available ESPHome cameras
+  - Camera selection for operations
+  - Start/stop streaming control
+  - Image capture via HTTP snapshot endpoints
+- **Communication**: Uses mpsc channels with oneshot response channels for web server communication
+- **Error Handling**: Proper error propagation without panics, mutex lock poisoning protection
+- **API Endpoints**: Integrated with Axum web server for REST API access
+
+### Hardware Controller Monitor (`src/controller_monitor.rs`)
+- **ESPHome Integration**: Communicates with ESPHome hardware controller via HTTP API
+- **Health Monitoring**: Continuous status monitoring with automatic retry logic
+- **Command Interface**: Handles machine control commands (next case, sensor readings, etc.)
+- **Thread Safety**: Separate thread with proper error handling and status reporting
+
 ## Project Migration Notes
 
 - Python code is legacy and being replaced with Rust
+- Core camera management now implemented in Rust with ESPHome support
+- Hardware controller monitoring implemented in Rust

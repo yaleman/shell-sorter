@@ -1,6 +1,7 @@
 use std::num::NonZeroU16;
 
 use clap::{Parser, Subcommand};
+use shell_sorter::camera_manager::CameraManager;
 use shell_sorter::config::Settings;
 use shell_sorter::controller_monitor::ControllerMonitor;
 use shell_sorter::server;
@@ -350,6 +351,11 @@ async fn start_web_server(host: String, port: NonZeroU16, settings: Settings) ->
     let (controller_monitor, controller_handle) = ControllerMonitor::new(settings.clone())
         .map_err(|e| OurError::App(format!("Failed to create controller monitor: {e}")))?;
 
+    // Create the camera manager and get a handle for communication
+    let (camera_manager, camera_handle) =
+        CameraManager::new(settings.network_camera_hostnames.clone())
+            .map_err(|e| OurError::App(format!("Failed to create camera manager: {e}")))?;
+
     // Spawn the controller monitor in a separate task
     tokio::spawn(async move {
         if let Err(e) = controller_monitor.run().await {
@@ -357,6 +363,13 @@ async fn start_web_server(host: String, port: NonZeroU16, settings: Settings) ->
         }
     });
 
-    // Start the web server with the controller handle
-    server::start_server(host, port, settings, controller_handle).await
+    // Spawn the camera manager in a separate task
+    tokio::spawn(async move {
+        if let Err(e) = camera_manager.run().await {
+            tracing::error!("Camera manager error: {}", e);
+        }
+    });
+
+    // Start the web server with the controller and camera handles
+    server::start_server(host, port, settings, controller_handle, camera_handle).await
 }

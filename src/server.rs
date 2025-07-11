@@ -4,7 +4,7 @@ use askama::Template;
 use askama_web::WebTemplate;
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::{Json as ExtractJson, Path, State},
     http::StatusCode,
     response::{Html, Json},
     routing::{delete, get, post},
@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::{collections::HashMap, num::NonZeroU16};
 use tokio::net::TcpListener;
 
+use crate::camera_manager::CameraHandle;
 use crate::config::Settings;
 use crate::controller_monitor::{ControllerCommand, ControllerHandle, ControllerResponse};
 use crate::{OurError, OurResult};
@@ -24,6 +25,7 @@ use tracing::{error, info};
 pub struct AppState {
     pub settings: Settings,
     pub controller: ControllerHandle,
+    pub camera_manager: CameraHandle,
 }
 
 /// Dashboard template
@@ -43,9 +45,10 @@ struct ConfigTemplate {}
 /// Camera info response
 #[derive(Serialize)]
 struct CameraInfo {
-    index: usize,
+    id: String,
     name: String,
-    active: bool,
+    hostname: String,
+    online: bool,
     view_type: Option<String>,
 }
 
@@ -75,8 +78,8 @@ impl<T> ApiResponse<T> {
         }
     }
     #[allow(dead_code)]
-    fn error(message: String) -> ApiResponse<()> {
-        ApiResponse {
+    fn error(message: String) -> Self {
+        Self {
             success: false,
             data: None,
             message,
@@ -90,10 +93,12 @@ pub async fn start_server(
     port: NonZeroU16,
     settings: Settings,
     controller: ControllerHandle,
+    camera_manager: CameraHandle,
 ) -> OurResult<()> {
     let state = Arc::new(AppState {
         settings,
         controller,
+        camera_manager,
     });
 
     let app = Router::new()
@@ -302,41 +307,124 @@ async fn hardware_status(
     }
 }
 
-async fn list_cameras(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<CameraInfo>>> {
-    // TODO: Implement camera detection
-    let cameras = vec![CameraInfo {
-        index: 0,
-        name: "USB Camera 0".to_string(),
-        active: false,
-        view_type: None,
-    }];
-    Json(ApiResponse::success(cameras))
+async fn list_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<CameraInfo>>> {
+    match state.camera_manager.list_cameras().await {
+        Ok(cameras) => {
+            let camera_infos: Vec<CameraInfo> = cameras
+                .into_iter()
+                .map(|cam| CameraInfo {
+                    id: cam.id,
+                    name: cam.name,
+                    hostname: cam.hostname,
+                    online: cam.online,
+                    view_type: None,
+                })
+                .collect();
+            Json(ApiResponse::success(camera_infos))
+        }
+        Err(e) => {
+            error!("Failed to list cameras: {}", e);
+            Json(ApiResponse::<Vec<CameraInfo>>::error(format!(
+                "Failed to list cameras: {}",
+                e
+            )))
+        }
+    }
 }
 
-async fn detect_cameras(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<CameraInfo>>> {
-    // TODO: Implement camera detection
-    let cameras = vec![];
-    Json(ApiResponse::success(cameras))
+async fn detect_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<CameraInfo>>> {
+    match state.camera_manager.detect_cameras().await {
+        Ok(cameras) => {
+            let camera_infos: Vec<CameraInfo> = cameras
+                .into_iter()
+                .map(|cam| CameraInfo {
+                    id: cam.id,
+                    name: cam.name,
+                    hostname: cam.hostname,
+                    online: cam.online,
+                    view_type: None,
+                })
+                .collect();
+            Json(ApiResponse::success(camera_infos))
+        }
+        Err(e) => {
+            error!("Failed to detect cameras: {}", e);
+            Json(ApiResponse::<Vec<CameraInfo>>::error(format!(
+                "Failed to detect cameras: {}",
+                e
+            )))
+        }
+    }
 }
 
-async fn select_cameras(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
-    // TODO: Implement camera selection
-    Json(ApiResponse::success(()))
+async fn select_cameras(
+    State(state): State<Arc<AppState>>,
+    ExtractJson(payload): ExtractJson<SelectCamerasRequest>,
+) -> Json<ApiResponse<()>> {
+    match state
+        .camera_manager
+        .select_cameras(payload.camera_ids)
+        .await
+    {
+        Ok(()) => Json(ApiResponse::success(())),
+        Err(e) => {
+            error!("Failed to select cameras: {}", e);
+            Json(ApiResponse::<()>::error(format!(
+                "Failed to select cameras: {}",
+                e
+            )))
+        }
+    }
 }
 
-async fn start_cameras(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
-    // TODO: Implement camera startup
-    Json(ApiResponse::success(()))
+async fn start_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
+    match state.camera_manager.start_streaming().await {
+        Ok(()) => Json(ApiResponse::success(())),
+        Err(e) => {
+            error!("Failed to start cameras: {}", e);
+            Json(ApiResponse::<()>::error(format!(
+                "Failed to start cameras: {}",
+                e
+            )))
+        }
+    }
 }
 
-async fn stop_cameras(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
-    // TODO: Implement camera shutdown
-    Json(ApiResponse::success(()))
+async fn stop_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
+    match state.camera_manager.stop_streaming().await {
+        Ok(()) => Json(ApiResponse::success(())),
+        Err(e) => {
+            error!("Failed to stop cameras: {}", e);
+            Json(ApiResponse::<()>::error(format!(
+                "Failed to stop cameras: {}",
+                e
+            )))
+        }
+    }
 }
 
-async fn capture_images(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
-    // TODO: Implement image capture
-    Json(ApiResponse::success(()))
+async fn capture_images(
+    State(state): State<Arc<AppState>>,
+) -> Json<ApiResponse<HashMap<String, String>>> {
+    let status = state.camera_manager.get_status();
+    let mut results = HashMap::new();
+
+    for camera_id in &status.selected_cameras {
+        match state.camera_manager.capture_image(camera_id.clone()).await {
+            Ok(image_data) => {
+                results.insert(
+                    camera_id.clone(),
+                    format!("Captured {} bytes", image_data.len()),
+                );
+            }
+            Err(e) => {
+                error!("Failed to capture from camera {}: {}", camera_id, e);
+                results.insert(camera_id.clone(), format!("Error: {}", e));
+            }
+        }
+    }
+
+    Json(ApiResponse::success(results))
 }
 
 async fn camera_stream(
@@ -348,6 +436,7 @@ async fn camera_stream(
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ViewTypeRequest {
     view_type: String,
 }
@@ -362,6 +451,7 @@ async fn set_camera_view_type(
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct RegionRequest {
     x: i32,
     y: i32,
@@ -438,6 +528,11 @@ async fn list_case_types(State(_state): State<Arc<AppState>>) -> Json<ApiRespons
 struct CreateCaseTypeRequest {
     name: String,
     designation: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SelectCamerasRequest {
+    camera_ids: Vec<String>,
 }
 
 async fn create_case_type(
