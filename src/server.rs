@@ -37,6 +37,11 @@ struct DashboardTemplate {
     camera_count: u32,
 }
 
+/// Config template
+#[derive(Template, WebTemplate)]
+#[template(path = "config.html")]
+struct ConfigTemplate {}
+
 /// Machine status response
 #[derive(Serialize)]
 struct MachineStatus {
@@ -70,6 +75,15 @@ struct ApiResponse<T> {
     message: String,
 }
 
+/// Configuration data for API responses
+#[derive(Serialize, Deserialize)]
+struct ConfigData {
+    auto_start_cameras: bool,
+    auto_detect_cameras: bool,
+    esphome_hostname: String,
+    network_camera_hostnames: Vec<String>,
+}
+
 impl<T> ApiResponse<T> {
     fn success(data: T) -> Self {
         Self {
@@ -95,6 +109,7 @@ pub async fn start_server(host: String, port: u16, settings: Settings) -> OurRes
     let app = Router::new()
         // Static files and main dashboard
         .route("/", get(dashboard))
+        .route("/config", get(config_page))
         // Machine control API
         .route("/api/machine/next-case", post(trigger_next_case))
         .route("/api/machine/status", get(machine_status))
@@ -163,6 +178,21 @@ async fn dashboard(
 
     template.render().map(|res| Html::from(res)).map_err(|e| {
         error!("Failed to render dashboard template: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Template rendering failed",
+        )
+    })
+}
+
+#[axum::debug_handler]
+async fn config_page(
+    State(_state): State<Arc<AppState>>,
+) -> Result<Html<String>, (StatusCode, &'static str)> {
+    let template = ConfigTemplate {};
+
+    template.render().map(|res| Html::from(res)).map_err(|e| {
+        error!("Failed to render config template: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Template rendering failed",
@@ -361,29 +391,52 @@ async fn train_model(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()
     Json(ApiResponse::success(()))
 }
 
-async fn get_config(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Settings>> {
-    Json(ApiResponse::success(state.settings.clone()))
+async fn get_config(State(state): State<Arc<AppState>>) -> Json<ApiResponse<ConfigData>> {
+    let config_data = ConfigData {
+        auto_start_cameras: state.settings.auto_start_esp32_cameras,
+        auto_detect_cameras: state.settings.auto_detect_cameras,
+        esphome_hostname: state.settings.esphome_hostname.clone(),
+        network_camera_hostnames: state.settings.network_camera_hostnames.clone(),
+    };
+    Json(ApiResponse::success(config_data))
 }
 
-async fn save_config(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
-    // TODO: Implement config saving
+async fn save_config(
+    State(_state): State<Arc<AppState>>,
+    Json(config): Json<ConfigData>,
+) -> Json<ApiResponse<()>> {
+    // For now, just acknowledge the save request
+    // In a full implementation, this would save to the configuration file
+    info!(
+        "Config save requested: auto_start={}, auto_detect={}, esphome={}, cameras={:?}",
+        config.auto_start_cameras,
+        config.auto_detect_cameras,
+        config.esphome_hostname,
+        config.network_camera_hostnames
+    );
     Json(ApiResponse::success(()))
 }
 
 async fn delete_camera_config(
-    Path(_index): Path<usize>,
+    Path(index): Path<usize>,
     State(_state): State<Arc<AppState>>,
 ) -> Json<ApiResponse<()>> {
-    // TODO: Implement camera config deletion
+    // For now, just acknowledge the delete request
+    // In a full implementation, this would remove the camera from the configuration
+    info!("Camera {} delete requested", index);
     Json(ApiResponse::success(()))
 }
 
 async fn clear_camera_configs(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
-    // TODO: Implement camera config clearing
+    // For now, just acknowledge the clear request
+    // In a full implementation, this would remove all cameras from configuration
+    info!("Clear all cameras requested");
     Json(ApiResponse::success(()))
 }
 
 async fn reset_config(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
-    // TODO: Implement config reset
+    // For now, just acknowledge the reset request
+    // In a full implementation, this would reset configuration to defaults
+    info!("Config reset to defaults requested");
     Json(ApiResponse::success(()))
 }
