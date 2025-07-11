@@ -1,224 +1,747 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>{{ title }}</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shell Sorter Control Panel</title>
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            margin: 40px; 
-            background-color: #f5f5f5;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        .header {
-            background: linear-gradient(135deg, #007cba, #005a85);
-            color: white;
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: #f8fafc;
+            color: #334155;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
             padding: 20px;
-            border-radius: 8px;
+        }
+
+        header {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 12px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 2.5em;
-        }
-        .header p {
-            margin: 10px 0 0 0;
-            opacity: 0.9;
-            font-size: 1.1em;
-        }
-        .section { 
-            margin: 20px 0; 
-            padding: 20px; 
-            background: white;
-            border: 1px solid #ddd; 
-            border-radius: 8px; 
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-        .section h2 {
-            margin-top: 0;
-            color: #333;
-            border-bottom: 2px solid #007cba;
-            padding-bottom: 8px;
-        }
-        button { 
-            padding: 12px 24px; 
-            margin: 8px; 
-            background: #007cba; 
-            color: white; 
-            border: none; 
-            border-radius: 4px; 
-            cursor: pointer;
-            font-size: 14px;
-            transition: background-color 0.2s;
-        }
-        button:hover { 
-            background: #005a85; 
-        }
-        button:active {
-            background: #004a70;
-        }
-        .status-info {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin: 15px 0;
-        }
-        .status-card {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 6px;
-            border-left: 4px solid #007cba;
-        }
-        .status-card h4 {
-            margin: 0 0 8px 0;
-            color: #333;
-        }
-        .status-card p {
-            margin: 0;
-            font-size: 1.1em;
-            font-weight: bold;
-            color: #007cba;
-        }
-        #output {
-            margin-top: 20px; 
-            padding: 20px; 
-            background: #2d3748;
-            color: #e2e8f0;
-            border-radius: 6px; 
-            min-height: 150px; 
-            white-space: pre-wrap;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 14px;
-            line-height: 1.4;
-            overflow-x: auto;
-        }
-        .output-header {
+            box-shadow: 0 10px 25px rgba(99, 102, 241, 0.3);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 15px;
         }
-        .clear-btn {
-            background: #e53e3e;
+
+        header h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+
+        .btn-info {
+            background: #06b6d4;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background: #0891b2;
+        }
+
+        .status-indicator {
             padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .esphome-status-online {
+            background: rgba(16, 185, 129, 0.2);
+            color: #059669;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .esphome-status-offline {
+            background: rgba(239, 68, 68, 0.2);
+            color: #dc2626;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .status-idle {
+            background: rgba(99, 102, 241, 0.2);
+            color: #6366f1;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .status-running {
+            background: rgba(16, 185, 129, 0.2);
+            color: #059669;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .control-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .last-updated {
+            font-size: 14px;
+        }
+
+        .last-updated .label {
+            color: #64748b;
+            margin-right: 8px;
+        }
+
+        .last-updated .value {
+            font-weight: 600;
+            color: #334155;
+        }
+
+        .camera-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .camera-panel h2 {
+            margin-bottom: 20px;
+            color: #1e293b;
+            font-size: 1.25rem;
+        }
+
+        .camera-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .camera-list {
+            display: grid;
+            gap: 20px;
+        }
+
+        .camera-item {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            background: #f8fafc;
+        }
+
+        .camera-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .camera-checkbox {
+            width: 18px;
+            height: 18px;
+        }
+
+        .camera-info label {
+            font-weight: 600;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .camera-resolution {
+            font-size: 12px;
+            color: #64748b;
+            font-weight: normal;
+        }
+
+        .camera-status {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-active {
+            background: rgba(16, 185, 129, 0.2);
+            color: #059669;
+        }
+
+        .status-inactive {
+            background: rgba(156, 163, 175, 0.2);
+            color: #6b7280;
+        }
+
+        .camera-controls-inline {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .view-type-control {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .view-type-select {
+            padding: 4px 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
             font-size: 12px;
         }
-        .clear-btn:hover {
-            background: #c53030;
+
+        .region-control {
+            display: flex;
+            gap: 5px;
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .camera-feed {
+            position: relative;
+            margin-top: 15px;
+        }
+
+        .camera-stream {
+            max-width: 100%;
+            height: auto;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .camera-region-overlay {
+            position: absolute;
+            border: 2px solid #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+            pointer-events: none;
+        }
+
+        .no-cameras {
+            text-align: center;
+            color: #64748b;
+            font-style: italic;
+            padding: 40px 20px;
+        }
+
+        .debug-console {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+        }
+
+        .debug-header {
+            background: #374151;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .debug-header h3 {
+            margin: 0;
+            font-size: 1rem;
+        }
+
+        .debug-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .debug-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .debug-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #6b7280;
+        }
+
+        .debug-indicator.connected {
+            background: #10b981;
+        }
+
+        .debug-content {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .debug-log {
+            padding: 20px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .debug-entry {
+            margin-bottom: 8px;
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .debug-timestamp {
+            color: #6b7280;
+            white-space: nowrap;
+            font-size: 11px;
+        }
+
+        .debug-type {
+            font-weight: 600;
+            min-width: 40px;
+            text-transform: uppercase;
+            font-size: 11px;
+        }
+
+        .debug-info .debug-type {
+            color: #06b6d4;
+        }
+
+        .debug-success .debug-type {
+            color: #10b981;
+        }
+
+        .debug-error .debug-type {
+            color: #ef4444;
+        }
+
+        .debug-message {
+            flex: 1;
+            word-break: break-word;
+        }
+
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .toast {
+            background: white;
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border-left: 4px solid;
+            min-width: 300px;
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast.success {
+            border-left-color: #10b981;
+        }
+
+        .toast.error {
+            border-left-color: #ef4444;
+        }
+
+        .toast.info {
+            border-left-color: #06b6d4;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            header {
+                padding: 15px 20px;
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .header-right {
+                width: 100%;
+                justify-content: flex-start;
+            }
+            
+            .camera-info {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .camera-controls-inline {
+                width: 100%;
+                justify-content: flex-start;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>{{ title }}</h1>
-        <p>{{ subtitle }}</p>
-    </div>
-    
-    <div class="status-info">
-        <div class="status-card">
-            <h4>Machine</h4>
-            <p>{{ machine_name }}</p>
-        </div>
-        <div class="status-card">
-            <h4>Server</h4>
-            <p>{{ host }}:{{ port }}</p>
-        </div>
-        <div class="status-card">
-            <h4>ML Status</h4>
-            <p>{% if ml_enabled %}Enabled{% else %}Disabled{% endif %}</p>
-        </div>
-        <div class="status-card">
-            <h4>Camera Count</h4>
-            <p>{{ camera_count }}</p>
-        </div>
-    </div>
-    
-    <div class="section">
-        <h2>Machine Control</h2>
-        <button onclick="triggerNextCase()">Next Case</button>
-        <button onclick="getMachineStatus()">Machine Status</button>
-        <button onclick="getSensorReadings()">Sensor Readings</button>
-        <button onclick="getHardwareStatus()">Hardware Status</button>
-    </div>
-    
-    <div class="section">
-        <h2>Camera Operations</h2>
-        <button onclick="detectCameras()">Detect Cameras</button>
-        <button onclick="listCameras()">List Cameras</button>
-        <button onclick="captureImages()">Capture Images</button>
-        <button onclick="startCameras()">Start Cameras</button>
-        <button onclick="stopCameras()">Stop All Cameras</button>
-    </div>
-    
-    <div class="section">
-        <h2>Machine Learning</h2>
-        <button onclick="listCaseTypes()">List Case Types</button>
-        <button onclick="generateComposites()">Generate Composites</button>
-        <button onclick="trainModel()">Train Model</button>
-        <button onclick="listShells()">List Training Shells</button>
+    <div class="container">
+        <header>
+            <h1>🔫 Shell Sorter Control Panel</h1>
+            <div class="header-right">
+                <button id="config-btn" class="btn btn-secondary">Configuration</button>
+                <button id="ml-training-btn" class="btn btn-info">ML Training</button>
+                <button id="show-debug-btn" class="btn btn-secondary">🔧 Debug Console</button>
+                <div id="esphome-status" class="status-indicator esphome-status-offline">
+                    Controller: <span id="esphome-status-text">Checking...</span>
+                </div>
+                <div class="status-indicator status-idle">
+                    Status: Idle
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <section class="control-panel">
+                <div class="control-row">
+                    <div class="last-updated">
+                        <span class="label">Last Updated:</span>
+                        <span class="value" id="last-updated">{{ machine_name }}</span>
+                    </div>
+                    <button id="next-case-btn" class="btn btn-secondary">Next Case</button>
+                </div>
+            </section>
+
+            <section class="camera-panel">
+                <h2>Camera Management</h2>
+                <div class="camera-controls">
+                    <button id="detect-cameras-btn" class="btn btn-secondary">Detect Cameras</button>
+                    <button id="start-selected-btn" class="btn btn-primary">Start Selected</button>
+                    <button id="stop-all-btn" class="btn btn-danger">Stop All</button>
+                    <button id="capture-images-btn" class="btn btn-success">Capture & Tag Images</button>
+                </div>
+                
+                <div class="camera-list" id="camera-list">
+                    <p class="no-cameras">No cameras detected. Click "Detect Cameras" to search for available cameras.</p>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Debug Console -->
+        <section class="debug-console" id="debug-console" style="display: none;">
+            <div class="debug-header">
+                <h3>🔧 ESP Controller Debug Console</h3>
+                <div class="debug-controls">
+                    <button id="debug-close-btn" class="btn btn-sm btn-danger">Close & Disconnect</button>
+                    <button id="debug-clear-btn" class="btn btn-sm btn-secondary">Clear</button>
+                    <span class="debug-status">
+                        <span class="debug-indicator" id="debug-indicator"></span>
+                        <span id="debug-status-text">Idle</span>
+                    </span>
+                </div>
+            </div>
+            <div class="debug-content" id="debug-content">
+                <div class="debug-log" id="debug-log">
+                    <div class="debug-entry debug-info">
+                        <span class="debug-timestamp">{{ host }}:{{ port }}</span>
+                        <span class="debug-type">INFO</span>
+                        <span class="debug-message">Debug console initialized</span>
+                    </div>
+                </div>
+            </div>
+        </section>
     </div>
 
-    <div class="section">
-        <h2>Configuration</h2>
-        <button onclick="getConfig()">Show Configuration</button>
-        <button onclick="resetConfig()">Reset Configuration</button>
-    </div>
-    
-    <div class="section">
-        <div class="output-header">
-            <h2>API Response</h2>
-            <button class="clear-btn" onclick="clearOutput()">Clear</button>
-        </div>
-        <div id="output">Ready - Click any button above to interact with the shell sorter...</div>
-    </div>
-    
+    <!-- Toast notification container -->
+    <div id="toast-container" class="toast-container"></div>
+
     <script>
-        async function apiCall(method, url, body = null) {
+        // Basic JavaScript functionality for the dashboard
+        let debugConsoleVisible = false;
+        let debugSocket = null;
+
+        // Initialize the dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            checkESPHomeStatus();
+            setupEventListeners();
+            
+            // Update timestamp
+            const now = new Date();
+            document.getElementById('last-updated').textContent = now.toLocaleString();
+        });
+
+        function setupEventListeners() {
+            // Debug console toggle
+            document.getElementById('show-debug-btn').addEventListener('click', toggleDebugConsole);
+            document.getElementById('debug-close-btn').addEventListener('click', closeDebugConsole);
+            document.getElementById('debug-clear-btn').addEventListener('click', clearDebugLog);
+            
+            // Camera controls
+            document.getElementById('detect-cameras-btn').addEventListener('click', detectCameras);
+            document.getElementById('start-selected-btn').addEventListener('click', startSelectedCameras);
+            document.getElementById('stop-all-btn').addEventListener('click', stopAllCameras);
+            document.getElementById('capture-images-btn').addEventListener('click', captureImages);
+            
+            // Machine control
+            document.getElementById('next-case-btn').addEventListener('click', triggerNextCase);
+            
+            // Navigation buttons
+            document.getElementById('config-btn').addEventListener('click', () => {
+                window.location.href = '/config';
+            });
+            document.getElementById('ml-training-btn').addEventListener('click', () => {
+                window.location.href = '/ml-training';
+            });
+        }
+
+        async function checkESPHomeStatus() {
             try {
-                document.getElementById('output').textContent = `${method} ${url}\nLoading...`;
-                
-                const response = await fetch(url, {
-                    method,
-                    headers: body ? {'Content-Type': 'application/json'} : {},
-                    body: body ? JSON.stringify(body) : null
-                });
-                
+                const response = await fetch('/api/machine/hardware-status');
                 const data = await response.json();
-                const timestamp = new Date().toLocaleTimeString();
-                const output = `[${timestamp}] ${method} ${url}\nStatus: ${response.status}\n\n${JSON.stringify(data, null, 2)}`;
-                document.getElementById('output').textContent = output;
+                
+                const statusElement = document.getElementById('esphome-status');
+                const statusText = document.getElementById('esphome-status-text');
+                
+                if (data.success && data.data.controller === 'Connected') {
+                    statusElement.className = 'status-indicator esphome-status-online';
+                    statusText.textContent = 'Online';
+                } else {
+                    statusElement.className = 'status-indicator esphome-status-offline';
+                    statusText.textContent = 'Offline';
+                }
             } catch (error) {
-                const timestamp = new Date().toLocaleTimeString();
-                const output = `[${timestamp}] ${method} ${url}\nError: ${error.message}`;
-                document.getElementById('output').textContent = output;
+                console.error('Failed to check ESPHome status:', error);
+                const statusElement = document.getElementById('esphome-status');
+                const statusText = document.getElementById('esphome-status-text');
+                statusElement.className = 'status-indicator esphome-status-offline';
+                statusText.textContent = 'Error';
             }
         }
-        
-        function clearOutput() {
-            document.getElementById('output').textContent = 'Ready - Click any button above to interact with the shell sorter...';
-        }
-        
-        // Machine Control
-        function triggerNextCase() { apiCall('POST', '/api/machine/next-case'); }
-        function getMachineStatus() { apiCall('GET', '/api/machine/status'); }
-        function getSensorReadings() { apiCall('GET', '/api/machine/sensors'); }
-        function getHardwareStatus() { apiCall('GET', '/api/machine/hardware-status'); }
-        
-        // Camera Operations
-        function detectCameras() { apiCall('GET', '/api/cameras/detect'); }
-        function listCameras() { apiCall('GET', '/api/cameras'); }
-        function captureImages() { apiCall('POST', '/api/cameras/capture'); }
-        function startCameras() { apiCall('POST', '/api/cameras/start-selected'); }
-        function stopCameras() { apiCall('POST', '/api/cameras/stop-all'); }
-        
-        // Machine Learning
-        function listCaseTypes() { apiCall('GET', '/api/case-types'); }
-        function generateComposites() { apiCall('POST', '/api/ml/generate-composites'); }
-        function trainModel() { apiCall('POST', '/api/train-model'); }
-        function listShells() { apiCall('GET', '/api/ml/shells'); }
 
-        // Configuration
-        function getConfig() { apiCall('GET', '/api/config'); }
-        function resetConfig() { apiCall('POST', '/api/config/reset'); }
+        function toggleDebugConsole() {
+            const console = document.getElementById('debug-console');
+            debugConsoleVisible = !debugConsoleVisible;
+            
+            if (debugConsoleVisible) {
+                console.style.display = 'block';
+                connectDebugWebSocket();
+            } else {
+                console.style.display = 'none';
+                disconnectDebugWebSocket();
+            }
+        }
+
+        function closeDebugConsole() {
+            debugConsoleVisible = false;
+            document.getElementById('debug-console').style.display = 'none';
+            disconnectDebugWebSocket();
+        }
+
+        function clearDebugLog() {
+            document.getElementById('debug-log').innerHTML = '';
+        }
+
+        function connectDebugWebSocket() {
+            // This would connect to a WebSocket for real-time debug info
+            // For now, just show connected status
+            const indicator = document.getElementById('debug-indicator');
+            const statusText = document.getElementById('debug-status-text');
+            indicator.className = 'debug-indicator connected';
+            statusText.textContent = 'Connected';
+        }
+
+        function disconnectDebugWebSocket() {
+            if (debugSocket) {
+                debugSocket.close();
+                debugSocket = null;
+            }
+            const indicator = document.getElementById('debug-indicator');
+            const statusText = document.getElementById('debug-status-text');
+            indicator.className = 'debug-indicator';
+            statusText.textContent = 'Disconnected';
+        }
+
+        async function apiCall(method, url, data = null) {
+            try {
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                };
+                
+                if (data) {
+                    options.body = JSON.stringify(data);
+                }
+                
+                const response = await fetch(url, options);
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(result.message || 'Operation completed successfully', 'success');
+                } else {
+                    showToast(result.message || 'Operation failed', 'error');
+                }
+                
+                return result;
+            } catch (error) {
+                console.error('API call failed:', error);
+                showToast('Network error: ' + error.message, 'error');
+                return { success: false, message: error.message };
+            }
+        }
+
+        async function detectCameras() {
+            const result = await apiCall('GET', '/api/cameras/detect');
+            if (result.success) {
+                // Refresh camera list
+                await loadCameraList();
+            }
+        }
+
+        async function startSelectedCameras() {
+            await apiCall('POST', '/api/cameras/start-selected');
+        }
+
+        async function stopAllCameras() {
+            await apiCall('POST', '/api/cameras/stop-all');
+        }
+
+        async function captureImages() {
+            await apiCall('POST', '/api/cameras/capture');
+        }
+
+        async function triggerNextCase() {
+            await apiCall('POST', '/api/machine/next-case');
+        }
+
+        async function loadCameraList() {
+            try {
+                const response = await fetch('/api/cameras');
+                const data = await response.json();
+                
+                const cameraList = document.getElementById('camera-list');
+                
+                if (data.success && data.data && data.data.length > 0) {
+                    // Render camera list (simplified for now)
+                    cameraList.innerHTML = '<p>Cameras detected: ' + data.data.length + '</p>';
+                } else {
+                    cameraList.innerHTML = '<p class="no-cameras">No cameras detected. Click "Detect Cameras" to search for available cameras.</p>';
+                }
+            } catch (error) {
+                console.error('Failed to load cameras:', error);
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            
+            container.appendChild(toast);
+            
+            // Auto-remove after 3 seconds
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 3000);
+        }
+
+        // Periodically update status
+        setInterval(checkESPHomeStatus, 30000); // Check every 30 seconds
     </script>
 </body>
 </html>

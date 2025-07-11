@@ -26,8 +26,13 @@ fmt:
     uv run ruff format --check shell_sorter/ tests
     cargo fmt
 
-# Run the application
+# Run the Rust application
 run:
+    killall shell-sorter || true
+    cargo run -- serve
+
+# Run the Python application (legacy)
+python:
     killall shell-sorter || true
     uv run shell-sorter
 
