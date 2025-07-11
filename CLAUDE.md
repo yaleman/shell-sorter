@@ -93,3 +93,7 @@ tests/               # Comprehensive test suite
 ~/.config/shell-sorter.json  # Camera configuration persistence
 esphome-shell-sorter.yaml   # ESPHome hardware controller configuration
 ```
+
+## Project Migration Notes
+
+- Python code is legacy and being replaced with Rust

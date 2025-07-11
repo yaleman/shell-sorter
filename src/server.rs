@@ -3,7 +3,7 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::Json,
+    response::{Html, Json},
     routing::{get, post, delete},
     Router,
 };
@@ -134,7 +134,8 @@ pub async fn start_server(host: String, port: u16, settings: Settings) -> Result
 
 // Handler implementations
 
-async fn dashboard() -> &'static str {
+async fn dashboard() -> Html<&'static str> {
+    Html(
     r#"<!DOCTYPE html>
 <html>
 <head>
@@ -199,6 +200,7 @@ async fn dashboard() -> &'static str {
     </script>
 </body>
 </html>"#
+    )
 }
 
 async fn trigger_next_case(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
