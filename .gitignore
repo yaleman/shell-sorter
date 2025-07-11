@@ -8,3 +8,10 @@ data/*
 # esphome things
 .esphome/
 secrets.yaml
+
+
+# Added by cargo
+#
+# already existing elements were commented out
+
+#/target

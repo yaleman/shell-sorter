@@ -6,9 +6,8 @@ default:
 
 # Run linting checks
 lint:
+    cargo clippy --all-targets
     uv run ruff check shell_sorter/ tests
-    uv run ruff format --check shell_sorter/ tests
-    # uv run pylint tests shell_sorter/
 
 # Run type checking
 mypy:
@@ -17,18 +16,23 @@ mypy:
 # Run tests
 test:
     uv run pytest -s -v
+    cargo test
 
 # Run all checks
-check: lint mypy test esphome-check
+check: fmt lint mypy test esphome-check
 
 # Format code
 fmt:
-    uv run ruff fmt shell_sorter/
+    uv run ruff format --check shell_sorter/ tests
+    cargo fmt
 
 # Run the application
 run:
     killall shell-sorter || true
     uv run shell-sorter
+
+rust:
+    cargo run
 
 # Flash ESPHome configuration to device
 esphome-flash:

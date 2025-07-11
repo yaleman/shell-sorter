@@ -957,7 +957,7 @@ async def tagging_page(
 @app.post("/api/shells/save")
 async def save_shell_data(
     request: Request,
-    shell_data: Shell,
+    # shell_data: Shell,
     app_settings: Settings = Depends(get_settings),
 ) -> Dict[str, Any]:
     """Save tagged shell data to JSON file."""

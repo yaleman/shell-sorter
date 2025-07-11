@@ -36,7 +36,6 @@ class Settings(BaseSettings):  # type: ignore
 
     # Machine configuration
     machine_name: str = Field(default="Shell Sorter v1.0", description="Machine identifier")
-    max_sorting_jobs: int = Field(default=10, description="Maximum concurrent sorting jobs")
 
     # Camera configuration
     cameras: list[str] = Field(default_factory=list, description="Camera device paths")
