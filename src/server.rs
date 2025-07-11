@@ -147,7 +147,7 @@ pub async fn start_server(
         .await
         .map_err(|e| OurError::App(format!("Failed to bind to {addr}: {e}")))?;
 
-    info!("Web server listening on http://{}", addr);
+    info!("Web server listening on http://{addr}");
 
     axum::serve(listener, app)
         .await
@@ -168,7 +168,7 @@ async fn dashboard(
     };
 
     template.render().map(Html::from).map_err(|e| {
-        error!("Failed to render dashboard template: {}", e);
+        error!("Failed to render dashboard template: {e}");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Template rendering failed",
@@ -183,7 +183,7 @@ async fn config_page(
     let template = ConfigTemplate {};
 
     template.render().map(Html::from).map_err(|e| {
-        error!("Failed to render config template: {}", e);
+        error!("Failed to render config template: {e}");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Template rendering failed",
@@ -227,7 +227,7 @@ async fn machine_status(
             Json(ApiResponse::success(fallback_status))
         }
         Err(e) => {
-            error!("Failed to get machine status: {}", e);
+            error!("Failed to get machine status: {e}");
             let fallback_status = crate::controller_monitor::MachineStatus {
                 status: "Offline".to_string(),
                 ready: false,
@@ -261,7 +261,7 @@ async fn sensor_readings(
             Json(ApiResponse::success(fallback_readings))
         }
         Err(e) => {
-            error!("Failed to get sensor readings: {}", e);
+            error!("Failed to get sensor readings: {e}");
             let fallback_readings = crate::controller_monitor::SensorReadings {
                 case_ready: false,
                 case_in_view: false,
@@ -295,7 +295,7 @@ async fn hardware_status(
             Json(ApiResponse::success(fallback_status))
         }
         Err(e) => {
-            error!("Failed to get hardware status: {}", e);
+            error!("Failed to get hardware status: {e}");
             let mut fallback_status = HashMap::new();
             fallback_status.insert("controller".to_string(), "Disconnected".to_string());
             fallback_status.insert(
@@ -323,10 +323,9 @@ async fn list_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Ve
             Json(ApiResponse::success(camera_infos))
         }
         Err(e) => {
-            error!("Failed to list cameras: {}", e);
+            error!("Failed to list cameras: {e}");
             Json(ApiResponse::<Vec<CameraInfo>>::error(format!(
-                "Failed to list cameras: {}",
-                e
+                "Failed to list cameras: {e}"
             )))
         }
     }
@@ -348,10 +347,9 @@ async fn detect_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<
             Json(ApiResponse::success(camera_infos))
         }
         Err(e) => {
-            error!("Failed to detect cameras: {}", e);
+            error!("Failed to detect cameras: {e}");
             Json(ApiResponse::<Vec<CameraInfo>>::error(format!(
-                "Failed to detect cameras: {}",
-                e
+                "Failed to detect cameras: {e}"
             )))
         }
     }
@@ -368,10 +366,9 @@ async fn select_cameras(
     {
         Ok(()) => Json(ApiResponse::success(())),
         Err(e) => {
-            error!("Failed to select cameras: {}", e);
+            error!("Failed to select cameras: {e}");
             Json(ApiResponse::<()>::error(format!(
-                "Failed to select cameras: {}",
-                e
+                "Failed to select cameras: {e}"
             )))
         }
     }
@@ -381,10 +378,9 @@ async fn start_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<(
     match state.camera_manager.start_streaming().await {
         Ok(()) => Json(ApiResponse::success(())),
         Err(e) => {
-            error!("Failed to start cameras: {}", e);
+            error!("Failed to start cameras: {e}");
             Json(ApiResponse::<()>::error(format!(
-                "Failed to start cameras: {}",
-                e
+                "Failed to start cameras: {e}"
             )))
         }
     }
@@ -394,10 +390,9 @@ async fn stop_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<()
     match state.camera_manager.stop_streaming().await {
         Ok(()) => Json(ApiResponse::success(())),
         Err(e) => {
-            error!("Failed to stop cameras: {}", e);
+            error!("Failed to stop cameras: {e}");
             Json(ApiResponse::<()>::error(format!(
-                "Failed to stop cameras: {}",
-                e
+                "Failed to stop cameras: {e}"
             )))
         }
     }
@@ -418,8 +413,8 @@ async fn capture_images(
                 );
             }
             Err(e) => {
-                error!("Failed to capture from camera {}: {}", camera_id, e);
-                results.insert(camera_id.clone(), format!("Error: {}", e));
+                error!("Failed to capture from camera {camera_id}: {e}");
+                results.insert(camera_id.clone(), format!("Error: {e}"));
             }
         }
     }
@@ -525,6 +520,7 @@ async fn list_case_types(State(_state): State<Arc<AppState>>) -> Json<ApiRespons
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct CreateCaseTypeRequest {
     name: String,
     designation: Option<String>,

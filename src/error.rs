@@ -40,6 +40,18 @@ pub enum OurError {
     /// Generic application errors
     #[error("Application error: {0}")]
     App(String),
+
+    /// Parsing error
+    #[error("Parsing error: {0}")]
+    Parse(#[from] std::num::ParseIntError),
+
+    /// URL parsing error
+    #[error("URL parsing error: {0}")]
+    UrlParse(#[from] url::ParseError),
+
+    /// Other errors
+    #[error("An unexpected error occurred: {0}")]
+    Other(String),
 }
 
 /// Application result type

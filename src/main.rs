@@ -359,14 +359,14 @@ async fn start_web_server(host: String, port: NonZeroU16, settings: Settings) ->
     // Spawn the controller monitor in a separate task
     tokio::spawn(async move {
         if let Err(e) = controller_monitor.run().await {
-            tracing::error!("Controller monitor error: {}", e);
+            tracing::error!("Controller monitor error: {e}");
         }
     });
 
     // Spawn the camera manager in a separate task
     tokio::spawn(async move {
         if let Err(e) = camera_manager.run().await {
-            tracing::error!("Camera manager error: {}", e);
+            tracing::error!("Camera manager error: {e}");
         }
     });
 

@@ -434,7 +434,7 @@ impl ControllerMonitor {
                 success
             }
             Err(e) => {
-                warn!("Health check failed: {}", e);
+                warn!("Health check failed: {e}");
 
                 // Update status
                 {

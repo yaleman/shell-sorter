@@ -1,20 +1,26 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
+
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 
 use crate::{OurError, OurResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde_with::serde_as]
 pub struct CameraInfo {
     pub id: String,
     pub name: String,
     pub hostname: String,
-    pub stream_url: String,
-    pub snapshot_url: String,
+    #[serde_as(as = "DisplayFromStr")]
+    pub stream_url: Url,
+    #[serde_as(as = "DisplayFromStr")]
+    pub snapshot_url: Url,
     pub online: bool,
 }
 
@@ -244,10 +250,10 @@ impl CameraManager {
             match self.probe_esphome_camera(hostname).await {
                 Ok(camera_info) => {
                     cameras.push(camera_info);
-                    info!("Detected camera at {}", hostname);
+                    info!("Detected camera at {hostname}");
                 }
                 Err(e) => {
-                    warn!("Failed to detect camera at {}: {}", hostname, e);
+                    warn!("Failed to detect camera at {hostname}: {e}");
                 }
             }
         }
@@ -349,17 +355,17 @@ impl CameraManager {
     }
 
     async fn probe_esphome_camera(&self, hostname: &str) -> OurResult<CameraInfo> {
-        let base_url = if hostname.starts_with("http") {
-            hostname.to_string()
+        let base_url = if hostname.starts_with("http://") {
+            Url::from_str(hostname)?
         } else {
-            format!("http://{hostname}")
+            Url::from_str(&format!("http://{hostname}"))?
         };
 
         // Try to get device info to verify it's an ESPHome device
-        let info_url = format!("{base_url}/text_sensor/device_info");
+        let info_url = base_url.join("/text_sensor/device_info")?;
         let response = self
             .client
-            .get(&info_url)
+            .get(info_url)
             .timeout(Duration::from_secs(5))
             .send()
             .await
@@ -387,8 +393,8 @@ impl CameraManager {
             id: camera_id,
             name: camera_name.clone(),
             hostname: hostname.to_string(),
-            stream_url: format!("{base_url}/camera/stream"),
-            snapshot_url: format!("{base_url}/camera/snapshot"),
+            stream_url: base_url.join("/camera/stream")?,
+            snapshot_url: base_url.join("/camera/snapshot")?,
             online: true,
         })
     }
