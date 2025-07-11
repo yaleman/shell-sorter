@@ -1,3 +1,5 @@
+use std::num::NonZeroU16;
+
 use clap::{Parser, Subcommand};
 use shell_sorter::OurResult;
 use shell_sorter::config::Settings;
@@ -53,7 +55,7 @@ enum Commands {
         host: String,
         /// Port to bind to
         #[arg(long, default_value = "8000")]
-        port: u16,
+        port: NonZeroU16,
     },
 }
 
@@ -165,7 +167,7 @@ async fn main() -> OurResult<()> {
     let settings = match Settings::new() {
         Ok(settings) => settings,
         Err(e) => {
-            eprintln!("Failed to load configuration: {}", e);
+            eprintln!("Failed to load configuration: {e}");
             std::process::exit(1);
         }
     };
@@ -333,17 +335,17 @@ async fn handle_config_command(action: ConfigAction, settings: &Settings) -> Our
     }
 }
 
-async fn start_web_server(host: String, port: u16, settings: Settings) -> OurResult<()> {
+async fn start_web_server(host: String, port: NonZeroU16, settings: Settings) -> OurResult<()> {
     // Create the controller monitor and get a handle for communication
     let (controller_monitor, controller_handle) = ControllerMonitor::new(settings.clone());
-    
+
     // Spawn the controller monitor in a separate task
     tokio::spawn(async move {
         if let Err(e) = controller_monitor.run().await {
             tracing::error!("Controller monitor error: {}", e);
         }
     });
-    
+
     // Start the web server with the controller handle
     server::start_server(host, port, settings, controller_handle).await
 }

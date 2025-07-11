@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::time::{interval, sleep};
 use tracing::{debug, error, info, warn};
 
-use crate::config::Settings;
 use crate::OurResult;
+use crate::config::Settings;
 
 /// Controller status information
 #[derive(Debug, Clone)]
@@ -39,7 +39,7 @@ pub struct MachineStatus {
     pub status: String,
     pub ready: bool,
     pub active_jobs: u32,
-    pub last_update: String,
+    pub last_update: chrono::DateTime<chrono::Utc>,
 }
 
 /// Commands that can be sent to the controller
@@ -89,7 +89,7 @@ impl ControllerMonitor {
     /// Create a new controller monitor and return a handle for communication
     pub fn new(settings: Settings) -> (Self, ControllerHandle) {
         let (request_sender, request_receiver) = mpsc::unbounded_channel();
-        
+
         let status = Arc::new(Mutex::new(ControllerStatus {
             online: false,
             hostname: settings.esphome_hostname.clone(),
@@ -121,13 +121,16 @@ impl ControllerMonitor {
 
     /// Start the controller monitoring loop
     pub async fn run(mut self) -> OurResult<()> {
-        info!("Starting ESPHome controller monitor for {}", self.settings.esphome_hostname);
-        
+        info!(
+            "Starting ESPHome controller monitor for {}",
+            self.settings.esphome_hostname
+        );
+
         // Start periodic health check
         let health_check_status = self.status.clone();
         let health_check_client = self.client.clone();
         let health_check_hostname = self.settings.esphome_hostname.clone();
-        
+
         tokio::spawn(async move {
             let mut interval = interval(Duration::from_secs(30));
             loop {
@@ -136,7 +139,8 @@ impl ControllerMonitor {
                     &health_check_client,
                     &health_check_hostname,
                     &health_check_status,
-                ).await;
+                )
+                .await;
             }
         });
 
@@ -169,23 +173,26 @@ impl ControllerMonitor {
             }
         };
 
-        if let Err(_) = request.response_sender.send(response) {
+        if request.response_sender.send(response).is_err() {
             warn!("Failed to send response back to web server (receiver dropped)");
         }
     }
 
     /// Trigger the next case sequence on the controller
     async fn trigger_next_case(&self) -> ControllerResponse {
-        let url = format!("http://{}/button/trigger_next_case/press", self.settings.esphome_hostname);
-        
+        let url = format!(
+            "http://{}/button/trigger_next_case/press",
+            self.settings.esphome_hostname
+        );
+
         match self.make_request(&url, "POST").await {
             Ok(_) => {
                 info!("Successfully triggered next case sequence");
                 ControllerResponse::Success("Next case sequence triggered".to_string())
             }
             Err(e) => {
-                error!("Failed to trigger next case: {}", e);
-                ControllerResponse::Error(format!("Failed to trigger next case: {}", e))
+                error!("Failed to trigger next case: {e}");
+                ControllerResponse::Error(format!("Failed to trigger next case: {e}"))
             }
         }
     }
@@ -193,21 +200,31 @@ impl ControllerMonitor {
     /// Get machine status from the controller
     async fn get_machine_status(&self) -> ControllerResponse {
         let status = MachineStatus {
-            status: if self.is_online().await { "Ready".to_string() } else { "Offline".to_string() },
+            status: if self.is_online().await {
+                "Ready".to_string()
+            } else {
+                "Offline".to_string()
+            },
             ready: self.is_online().await,
             active_jobs: 0,
-            last_update: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            last_update: chrono::Utc::now(),
         };
-        
+
         ControllerResponse::StatusData(status)
     }
 
     /// Get sensor readings from the controller
     async fn get_sensor_readings(&self) -> ControllerResponse {
         // Try to get sensor data from ESPHome API
-        let case_ready = self.get_binary_sensor("case_ready_to_feed").await.unwrap_or(false);
-        let case_in_view = self.get_binary_sensor("case_in_camera_view").await.unwrap_or(false);
-        
+        let case_ready = self
+            .get_binary_sensor("case_ready_to_feed")
+            .await
+            .unwrap_or(false);
+        let case_in_view = self
+            .get_binary_sensor("case_in_camera_view")
+            .await
+            .unwrap_or(false);
+
         let readings = SensorReadings {
             case_ready,
             case_in_view,
@@ -216,34 +233,43 @@ impl ControllerMonitor {
                 .map(|d| d.as_secs())
                 .unwrap_or(0),
         };
-        
+
         ControllerResponse::SensorData(readings)
     }
 
     /// Get hardware status from the controller
     async fn get_hardware_status(&self) -> ControllerResponse {
         let mut status = HashMap::new();
-        
+
         if self.is_online().await {
             status.insert("controller".to_string(), "Connected".to_string());
-            status.insert("esphome_hostname".to_string(), self.settings.esphome_hostname.clone());
-            
+            status.insert(
+                "esphome_hostname".to_string(),
+                self.settings.esphome_hostname.clone(),
+            );
+
             // Try to get additional status info
             if let Ok(info) = self.get_device_info().await {
                 status.extend(info);
             }
         } else {
             status.insert("controller".to_string(), "Disconnected".to_string());
-            status.insert("esphome_hostname".to_string(), self.settings.esphome_hostname.clone());
+            status.insert(
+                "esphome_hostname".to_string(),
+                self.settings.esphome_hostname.clone(),
+            );
         }
-        
+
         ControllerResponse::HardwareData(status)
     }
 
     /// Trigger vibration motor
     async fn trigger_vibration(&self) -> ControllerResponse {
-        let url = format!("http://{}/switch/vibration_motor/turn_on", self.settings.esphome_hostname);
-        
+        let url = format!(
+            "http://{}/switch/vibration_motor/turn_on",
+            self.settings.esphome_hostname
+        );
+
         match self.make_request(&url, "POST").await {
             Ok(_) => {
                 // ESPHome will automatically turn off after configured time
@@ -251,24 +277,27 @@ impl ControllerMonitor {
                 ControllerResponse::Success("Vibration motor triggered".to_string())
             }
             Err(e) => {
-                error!("Failed to trigger vibration: {}", e);
-                ControllerResponse::Error(format!("Failed to trigger vibration: {}", e))
+                error!("Failed to trigger vibration: {e}");
+                ControllerResponse::Error(format!("Failed to trigger vibration: {e}"))
             }
         }
     }
 
     /// Set servo position
     async fn set_servo_position(&self, servo: &str, position: u8) -> ControllerResponse {
-        let url = format!("http://{}/number/{}/set?value={}", self.settings.esphome_hostname, servo, position);
-        
+        let url = format!(
+            "http://{}/number/{servo}/set?value={position}",
+            self.settings.esphome_hostname
+        );
+
         match self.make_request(&url, "POST").await {
             Ok(_) => {
-                info!("Successfully set {} servo to position {}", servo, position);
-                ControllerResponse::Success(format!("Servo {} set to position {}", servo, position))
+                info!("Successfully set {servo} servo to position {position}");
+                ControllerResponse::Success(format!("Servo {servo} set to position {position}"))
             }
             Err(e) => {
-                error!("Failed to set servo position: {}", e);
-                ControllerResponse::Error(format!("Failed to set servo position: {}", e))
+                error!("Failed to set servo position: {e}");
+                ControllerResponse::Error(format!("Failed to set servo position: {e}"))
             }
         }
     }
@@ -280,18 +309,27 @@ impl ControllerMonitor {
     }
 
     /// Get binary sensor state from ESPHome
-    async fn get_binary_sensor(&self, sensor_name: &str) -> Result<bool, Box<dyn std::error::Error>> {
-        let url = format!("http://{}/binary_sensor/{}/state", self.settings.esphome_hostname, sensor_name);
+    async fn get_binary_sensor(
+        &self,
+        sensor_name: &str,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        let url = format!(
+            "http://{}/binary_sensor/{}/state",
+            self.settings.esphome_hostname, sensor_name
+        );
         let response = self.make_request(&url, "GET").await?;
-        
+
         // ESPHome returns "ON" or "OFF" for binary sensors
         Ok(response.trim().to_uppercase() == "ON")
     }
 
     /// Get device information from ESPHome
     async fn get_device_info(&self) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
-        let url = format!("http://{}/text_sensor/device_info/state", self.settings.esphome_hostname);
-        
+        let url = format!(
+            "http://{}/text_sensor/device_info/state",
+            self.settings.esphome_hostname
+        );
+
         let mut info = HashMap::new();
         match self.make_request(&url, "GET").await {
             Ok(response) => {
@@ -302,14 +340,18 @@ impl ControllerMonitor {
                 info.insert("status".to_string(), "online".to_string());
             }
         }
-        
+
         Ok(info)
     }
 
     /// Make HTTP request to the controller
-    async fn make_request(&self, url: &str, method: &str) -> Result<String, Box<dyn std::error::Error>> {
+    async fn make_request(
+        &self,
+        url: &str,
+        method: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         let start_time = Instant::now();
-        
+
         let response = match method {
             "GET" => self.client.get(url).send().await?,
             "POST" => self.client.post(url).send().await?,
@@ -317,17 +359,17 @@ impl ControllerMonitor {
         };
 
         let elapsed = start_time.elapsed();
-        
+
         if response.status().is_success() {
             let text = response.text().await?;
-            
+
             // Update response time in status
             {
                 let mut status = self.status.lock().await;
                 status.response_time_ms = Some(elapsed.as_millis() as u64);
                 status.last_seen = Some(Instant::now());
             }
-            
+
             Ok(text)
         } else {
             Err(format!("HTTP error: {}", response.status()).into())
@@ -340,41 +382,44 @@ impl ControllerMonitor {
         hostname: &str,
         status: &Arc<Mutex<ControllerStatus>>,
     ) {
-        let url = format!("http://{}/", hostname);
+        let url = format!("http://{hostname}/");
         let start_time = Instant::now();
-        
-        debug!("Performing health check for {}", hostname);
-        
+
+        debug!("Performing health check for {hostname}");
+
         let is_online = match client.get(&url).send().await {
             Ok(response) => {
                 let elapsed = start_time.elapsed();
                 let success = response.status().is_success();
-                
+
                 if success {
-                    debug!("Health check successful, response time: {}ms", elapsed.as_millis());
+                    debug!(
+                        "Health check successful, response time: {}ms",
+                        elapsed.as_millis()
+                    );
                 } else {
                     warn!("Health check failed with status: {}", response.status());
                 }
-                
+
                 // Update status
                 {
                     let mut status_lock = status.lock().await;
                     status_lock.online = success;
                     status_lock.last_seen = Some(Instant::now());
                     status_lock.response_time_ms = Some(elapsed.as_millis() as u64);
-                    
+
                     if success {
                         status_lock.error_count = 0;
                     } else {
                         status_lock.error_count += 1;
                     }
                 }
-                
+
                 success
             }
             Err(e) => {
                 warn!("Health check failed: {}", e);
-                
+
                 // Update status
                 {
                     let mut status_lock = status.lock().await;
@@ -382,11 +427,11 @@ impl ControllerMonitor {
                     status_lock.error_count += 1;
                     status_lock.response_time_ms = None;
                 }
-                
+
                 false
             }
         };
-        
+
         if !is_online {
             // Wait a bit before next attempt to avoid spam
             sleep(Duration::from_secs(5)).await;
@@ -396,16 +441,19 @@ impl ControllerMonitor {
 
 impl ControllerHandle {
     /// Send a command to the controller and wait for response
-    pub async fn send_command(&self, command: ControllerCommand) -> Result<ControllerResponse, Box<dyn std::error::Error>> {
+    pub async fn send_command(
+        &self,
+        command: ControllerCommand,
+    ) -> Result<ControllerResponse, Box<dyn std::error::Error>> {
         let (response_sender, response_receiver) = oneshot::channel();
-        
+
         let request = ControllerRequest {
             command,
             response_sender,
         };
-        
+
         self.request_sender.send(request)?;
-        
+
         match response_receiver.await {
             Ok(response) => Ok(response),
             Err(_) => Err("Controller monitor did not respond".into()),

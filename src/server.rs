@@ -10,12 +10,12 @@ use axum::{
     routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
+use std::{collections::HashMap, num::NonZeroU16};
 use tokio::net::TcpListener;
 
 use crate::config::Settings;
-use crate::controller_monitor::{ControllerHandle, ControllerCommand, ControllerResponse};
+use crate::controller_monitor::{ControllerCommand, ControllerHandle, ControllerResponse};
 use crate::{OurError, OurResult};
 use tracing::{error, info};
 
@@ -30,20 +30,15 @@ pub struct AppState {
 #[derive(Template, WebTemplate)]
 #[template(path = "dashboard.html")]
 struct DashboardTemplate {
-    title: String,
-    subtitle: String,
     machine_name: String,
     host: String,
     port: u16,
-    ml_enabled: bool,
-    camera_count: u32,
 }
 
 /// Config template
 #[derive(Template, WebTemplate)]
 #[template(path = "config.html")]
 struct ConfigTemplate {}
-
 
 /// Camera info response
 #[derive(Serialize)]
@@ -90,8 +85,16 @@ impl<T> ApiResponse<T> {
 }
 
 /// Start the web server
-pub async fn start_server(host: String, port: u16, settings: Settings, controller: ControllerHandle) -> OurResult<()> {
-    let state = Arc::new(AppState { settings, controller });
+pub async fn start_server(
+    host: String,
+    port: NonZeroU16,
+    settings: Settings,
+    controller: ControllerHandle,
+) -> OurResult<()> {
+    let state = Arc::new(AppState {
+        settings,
+        controller,
+    });
 
     let app = Router::new()
         // Static files and main dashboard
@@ -134,16 +137,16 @@ pub async fn start_server(host: String, port: u16, settings: Settings, controlle
         .route("/api/config/reset", post(reset_config))
         .with_state(state);
 
-    let addr = format!("{}:{}", host, port);
+    let addr = format!("{host}:{port}");
     let listener = TcpListener::bind(&addr)
         .await
-        .map_err(|e| OurError::App(format!("Failed to bind to {}: {}", addr, e)))?;
+        .map_err(|e| OurError::App(format!("Failed to bind to {addr}: {e}")))?;
 
     info!("Web server listening on http://{}", addr);
 
     axum::serve(listener, app)
         .await
-        .map_err(|e| OurError::App(format!("Server error: {}", e)))?;
+        .map_err(|e| OurError::App(format!("Server error: {e}")))?;
 
     Ok(())
 }
@@ -154,16 +157,12 @@ async fn dashboard(
     State(state): State<Arc<AppState>>,
 ) -> Result<Html<String>, (StatusCode, &'static str)> {
     let template = DashboardTemplate {
-        title: "Shell Sorter Control Dashboard".to_string(),
-        subtitle: "Ammunition shell case sorting machine controller".to_string(),
         machine_name: state.settings.machine_name.clone(),
         host: state.settings.host.clone(),
         port: state.settings.port,
-        ml_enabled: state.settings.ml_enabled,
-        camera_count: state.settings.camera_count,
     };
 
-    template.render().map(|res| Html::from(res)).map_err(|e| {
+    template.render().map(Html::from).map_err(|e| {
         error!("Failed to render dashboard template: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -178,7 +177,7 @@ async fn config_page(
 ) -> Result<Html<String>, (StatusCode, &'static str)> {
     let template = ConfigTemplate {};
 
-    template.render().map(|res| Html::from(res)).map_err(|e| {
+    template.render().map(Html::from).map_err(|e| {
         error!("Failed to render config template: {}", e);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -188,17 +187,29 @@ async fn config_page(
 }
 
 async fn trigger_next_case(State(state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
-    match state.controller.send_command(ControllerCommand::NextCase).await {
+    match state
+        .controller
+        .send_command(ControllerCommand::NextCase)
+        .await
+    {
         Ok(_) => Json(ApiResponse::success(())),
         Err(e) => {
-            error!("Failed to trigger next case: {}", e);
-            Json(ApiResponse::<()>::error(format!("Failed to trigger next case: {}", e)))
+            error!("Failed to trigger next case: {e}");
+            Json(ApiResponse::<()>::error(format!(
+                "Failed to trigger next case: {e}",
+            )))
         }
     }
 }
 
-async fn machine_status(State(state): State<Arc<AppState>>) -> Json<ApiResponse<crate::controller_monitor::MachineStatus>> {
-    match state.controller.send_command(ControllerCommand::GetStatus).await {
+async fn machine_status(
+    State(state): State<Arc<AppState>>,
+) -> Json<ApiResponse<crate::controller_monitor::MachineStatus>> {
+    match state
+        .controller
+        .send_command(ControllerCommand::GetStatus)
+        .await
+    {
         Ok(ControllerResponse::StatusData(status)) => Json(ApiResponse::success(status)),
         Ok(_) => {
             error!("Unexpected response type for machine status");
@@ -206,7 +217,7 @@ async fn machine_status(State(state): State<Arc<AppState>>) -> Json<ApiResponse<
                 status: "Error".to_string(),
                 ready: false,
                 active_jobs: 0,
-                last_update: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                last_update: chrono::Utc::now(),
             };
             Json(ApiResponse::success(fallback_status))
         }
@@ -216,15 +227,21 @@ async fn machine_status(State(state): State<Arc<AppState>>) -> Json<ApiResponse<
                 status: "Offline".to_string(),
                 ready: false,
                 active_jobs: 0,
-                last_update: chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                last_update: chrono::Utc::now(),
             };
             Json(ApiResponse::success(fallback_status))
         }
     }
 }
 
-async fn sensor_readings(State(state): State<Arc<AppState>>) -> Json<ApiResponse<crate::controller_monitor::SensorReadings>> {
-    match state.controller.send_command(ControllerCommand::GetSensors).await {
+async fn sensor_readings(
+    State(state): State<Arc<AppState>>,
+) -> Json<ApiResponse<crate::controller_monitor::SensorReadings>> {
+    match state
+        .controller
+        .send_command(ControllerCommand::GetSensors)
+        .await
+    {
         Ok(ControllerResponse::SensorData(readings)) => Json(ApiResponse::success(readings)),
         Ok(_) => {
             error!("Unexpected response type for sensor readings");
@@ -256,20 +273,30 @@ async fn sensor_readings(State(state): State<Arc<AppState>>) -> Json<ApiResponse
 async fn hardware_status(
     State(state): State<Arc<AppState>>,
 ) -> Json<ApiResponse<HashMap<String, String>>> {
-    match state.controller.send_command(ControllerCommand::GetHardwareStatus).await {
+    match state
+        .controller
+        .send_command(ControllerCommand::GetHardwareStatus)
+        .await
+    {
         Ok(ControllerResponse::HardwareData(status)) => Json(ApiResponse::success(status)),
         Ok(_) => {
             error!("Unexpected response type for hardware status");
             let mut fallback_status = HashMap::new();
             fallback_status.insert("controller".to_string(), "Error".to_string());
-            fallback_status.insert("esphome_hostname".to_string(), state.settings.esphome_hostname.clone());
+            fallback_status.insert(
+                "esphome_hostname".to_string(),
+                state.settings.esphome_hostname.clone(),
+            );
             Json(ApiResponse::success(fallback_status))
         }
         Err(e) => {
             error!("Failed to get hardware status: {}", e);
             let mut fallback_status = HashMap::new();
             fallback_status.insert("controller".to_string(), "Disconnected".to_string());
-            fallback_status.insert("esphome_hostname".to_string(), state.settings.esphome_hostname.clone());
+            fallback_status.insert(
+                "esphome_hostname".to_string(),
+                state.settings.esphome_hostname.clone(),
+            );
             Json(ApiResponse::success(fallback_status))
         }
     }

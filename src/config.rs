@@ -97,7 +97,7 @@ pub enum ViewType {
 }
 
 /// Configuration for a specific camera
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct CameraConfig {
     /// Camera view type
     pub view_type: Option<ViewType>,
@@ -106,7 +106,7 @@ pub struct CameraConfig {
     /// Region y coordinate
     pub region_y: Option<i32>,
     /// Region width
-    pub region_width: Option<i32>,
+    pub region_width: Option<u32>,
     /// Region height
     pub region_height: Option<i32>,
     /// Detected resolution width for ESP cameras
@@ -119,23 +119,6 @@ pub struct CameraConfig {
     pub manual_resolution_height: Option<i32>,
     /// Resolution detection timestamp
     pub resolution_detection_timestamp: Option<f64>,
-}
-
-impl Default for CameraConfig {
-    fn default() -> Self {
-        Self {
-            view_type: None,
-            region_x: None,
-            region_y: None,
-            region_width: None,
-            region_height: None,
-            detected_resolution_width: None,
-            detected_resolution_height: None,
-            manual_resolution_width: None,
-            manual_resolution_height: None,
-            resolution_detection_timestamp: None,
-        }
-    }
 }
 
 /// User configuration that persists across application restarts
@@ -288,12 +271,12 @@ impl Settings {
             Ok(contents) => match serde_json::from_str::<UserConfig>(&contents) {
                 Ok(config) => config,
                 Err(e) => {
-                    eprintln!("Failed to parse user config from {:?}: {}", config_path, e);
+                    eprintln!("Failed to parse user config from {config_path:?}: {e}");
                     UserConfig::default()
                 }
             },
             Err(e) => {
-                eprintln!("Failed to read user config from {:?}: {}", config_path, e);
+                eprintln!("Failed to read user config from {config_path:?}: {e}");
                 UserConfig::default()
             }
         }
@@ -311,7 +294,7 @@ impl Settings {
         let contents = serde_json::to_string_pretty(config)?;
         fs::write(&config_path, contents)?;
 
-        println!("Saved user config to {:?}", config_path);
+        println!("Saved user config to {config_path:?}");
         Ok(())
     }
 }
