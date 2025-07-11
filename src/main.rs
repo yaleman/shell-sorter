@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
+use shell_sorter::OurResult;
 use shell_sorter::config::Settings;
 use shell_sorter::server;
-use shell_sorter::Result;
-use tracing::{info, debug};
+use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
 #[derive(Parser)]
@@ -12,7 +12,7 @@ use tracing_subscriber::FmtSubscriber;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-    
+
     /// Enable debug output
     #[arg(short, long, global = true)]
     debug: bool,
@@ -157,7 +157,7 @@ enum ConfigAction {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> OurResult<()> {
     let cli = Cli::parse();
 
     // Initialize configuration
@@ -176,12 +176,9 @@ async fn main() -> Result<()> {
         tracing::Level::INFO
     };
 
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(log_level)
-        .finish();
+    let subscriber = FmtSubscriber::builder().with_max_level(log_level).finish();
 
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Failed to set tracing subscriber");
+    tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
 
     if cli.debug {
         debug!("Debug mode enabled");
@@ -198,7 +195,7 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn handle_machine_command(action: MachineAction, _settings: &Settings) -> Result<()> {
+async fn handle_machine_command(action: MachineAction, _settings: &Settings) -> OurResult<()> {
     match action {
         MachineAction::NextCase => {
             info!("Triggering next case sequence...");
@@ -225,7 +222,7 @@ async fn handle_machine_command(action: MachineAction, _settings: &Settings) -> 
     }
 }
 
-async fn handle_camera_command(action: CameraAction, _settings: &Settings) -> Result<()> {
+async fn handle_camera_command(action: CameraAction, _settings: &Settings) -> OurResult<()> {
     match action {
         CameraAction::Detect => {
             info!("Detecting cameras...");
@@ -253,7 +250,7 @@ async fn handle_camera_command(action: CameraAction, _settings: &Settings) -> Re
     }
 }
 
-async fn handle_data_command(action: DataAction, _settings: &Settings) -> Result<()> {
+async fn handle_data_command(action: DataAction, _settings: &Settings) -> OurResult<()> {
     match action {
         DataAction::ListShells => {
             info!("Shell case data:");
@@ -279,7 +276,7 @@ async fn handle_data_command(action: DataAction, _settings: &Settings) -> Result
     }
 }
 
-async fn handle_ml_command(action: MlAction, _settings: &Settings) -> Result<()> {
+async fn handle_ml_command(action: MlAction, _settings: &Settings) -> OurResult<()> {
     match action {
         MlAction::ListTypes => {
             info!("Case types:");
@@ -287,7 +284,10 @@ async fn handle_ml_command(action: MlAction, _settings: &Settings) -> Result<()>
             Ok(())
         }
         MlAction::AddType { name, designation } => {
-            info!("Adding case type: {} (designation: {:?})", name, designation);
+            info!(
+                "Adding case type: {} (designation: {:?})",
+                name, designation
+            );
             // TODO: Implement case type addition
             Ok(())
         }
@@ -306,7 +306,7 @@ async fn handle_ml_command(action: MlAction, _settings: &Settings) -> Result<()>
     }
 }
 
-async fn handle_config_command(action: ConfigAction, settings: &Settings) -> Result<()> {
+async fn handle_config_command(action: ConfigAction, settings: &Settings) -> OurResult<()> {
     match action {
         ConfigAction::Show => {
             println!("Configuration:");
@@ -332,6 +332,6 @@ async fn handle_config_command(action: ConfigAction, settings: &Settings) -> Res
     }
 }
 
-async fn start_web_server(host: String, port: u16, settings: Settings) -> Result<()> {
+async fn start_web_server(host: String, port: u16, settings: Settings) -> OurResult<()> {
     server::start_server(host, port, settings).await
 }

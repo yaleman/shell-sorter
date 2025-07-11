@@ -4,7 +4,7 @@ use thiserror::Error;
 
 /// Application error types
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum OurError {
     /// IO errors
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -43,4 +43,4 @@ pub enum Error {
 }
 
 /// Application result type
-pub type Result<T> = std::result::Result<T, Error>;
+pub type OurResult<T> = std::result::Result<T, OurError>;

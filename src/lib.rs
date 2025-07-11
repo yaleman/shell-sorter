@@ -2,4 +2,4 @@ pub mod config;
 pub mod error;
 pub mod server;
 
-pub use error::{Error, Result};
+pub use error::{OurError, OurResult};

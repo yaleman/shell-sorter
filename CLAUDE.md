@@ -15,6 +15,7 @@ This application controls an ammunition shell case sorting machine that uses com
 - Never use `std::env::set_var`
 - Unsafe code is a last resort, ask the user before continuing if that's the solution
 - Use the tracing crate for logging in Rust, with the debug CLI flag enabling debug logging, and the default logging level set to "info"
+- Never use unwrap or expect in production code, always use proper error handling
 
 ## Architecture
 
