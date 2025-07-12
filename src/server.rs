@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::{collections::HashMap, num::NonZeroU16};
 use tokio::net::TcpListener;
+use tower_http::services::ServeDir;
 
 use crate::camera_manager::CameraHandle;
 use crate::config::Settings;
@@ -102,7 +103,9 @@ pub async fn start_server(
     });
 
     let app = Router::new()
-        // Static files and main dashboard
+        // Static files
+        .nest_service("/static", ServeDir::new("shell_sorter/static"))
+        // Main dashboard and pages
         .route("/", get(dashboard))
         .route("/config", get(config_page))
         // Machine control API

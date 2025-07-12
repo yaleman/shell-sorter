@@ -230,7 +230,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // ESPHome status monitoring
     async function updateESPHomeStatus() {
         try {
-            const response = await fetch('/api/machine/esphome-status');
+            const response = await fetch('/api/machine/hardware-status');
             if (response.ok) {
                 const status = await response.json();
                 const statusElement = document.getElementById('esphome-status');
@@ -240,7 +240,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Remove all status classes
                     statusElement.className = 'status-indicator';
                     
-                    if (status.online) {
+                    if (status.data && status.data.controller === 'Connected') {
                         statusElement.classList.add('esphome-status-online');
                         statusText.textContent = 'Online';
                     } else {
@@ -282,7 +282,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const originalUpdateESPHomeStatus = updateESPHomeStatus;
     updateESPHomeStatus = async function() {
         try {
-            const response = await fetch('/api/machine/esphome-status');
+            const response = await fetch('/api/machine/hardware-status');
             if (response.ok) {
                 const status = await response.json();
                 const statusElement = document.getElementById('esphome-status');
@@ -293,9 +293,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     statusElement.className = 'status-indicator';
                     
                     const wasOnline = isControllerOnline;
-                    isControllerOnline = status.online;
+                    isControllerOnline = status.data && status.data.controller === 'Connected';
                     
-                    if (status.online) {
+                    if (isControllerOnline) {
                         statusElement.classList.add('esphome-status-online');
                         statusText.textContent = 'Online';
                     } else {
