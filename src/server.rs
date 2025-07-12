@@ -130,6 +130,13 @@ struct ConfigData {
     network_camera_hostnames: Vec<String>,
 }
 
+/// Status data for frontend status updates
+#[derive(Serialize)]
+struct StatusData {
+    status: String,
+    total_sorted: u32,
+}
+
 impl<T> ApiResponse<T> {
     fn success(data: T) -> Self {
         Self {
@@ -151,6 +158,7 @@ impl<T> ApiResponse<T> {
 /// Create a test router for integration testing
 pub fn create_test_router(state: Arc<AppState>) -> Router {
     Router::new()
+        .route("/api/status", get(status))
         .route("/api/cameras", get(list_cameras))
         .route("/api/cameras/detect", get(detect_cameras))
         .route("/api/machine/hardware-status", get(hardware_status))
@@ -182,6 +190,7 @@ pub async fn start_server(
         .route("/", get(dashboard))
         .route("/config", get(config_page))
         // Machine control API
+        .route("/api/status", get(status))
         .route("/api/machine/next-case", post(trigger_next_case))
         .route("/api/machine/status", get(machine_status))
         .route("/api/machine/sensors", get(sensor_readings))
@@ -265,6 +274,34 @@ async fn config_page(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Template rendering failed",
         )
+    })
+}
+
+async fn status(State(state): State<Arc<AppState>>) -> Json<StatusData> {
+    // Get machine status for the overall system status
+    let machine_status = match state
+        .controller
+        .send_command(ControllerCommand::GetStatus)
+        .await
+    {
+        Ok(ControllerResponse::StatusData(status)) => status.status,
+        Ok(_) => {
+            error!("Unexpected response type for machine status");
+            "Error".to_string()
+        }
+        Err(e) => {
+            error!("Failed to get machine status: {e}");
+            "Offline".to_string()
+        }
+    };
+
+    // TODO: Implement actual sorted count tracking
+    // For now, return a placeholder value
+    let total_sorted = 0;
+
+    Json(StatusData {
+        status: machine_status,
+        total_sorted,
     })
 }
 

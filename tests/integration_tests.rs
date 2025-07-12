@@ -444,3 +444,51 @@ async fn test_dashboard_page() {
         "Dashboard missing camera list element"
     );
 }
+
+#[tokio::test]
+async fn test_status_endpoint() {
+    let (base_url, _server_handle) = start_test_server()
+        .await
+        .expect("Failed to start test server");
+
+    let client = reqwest::Client::new();
+
+    let response = timeout(
+        Duration::from_secs(10),
+        client.get(format!("{base_url}/api/status")).send(),
+    )
+    .await
+    .expect("Status request timed out")
+    .expect("Failed to send status request");
+
+    assert!(
+        response.status().is_success(),
+        "Status endpoint failed: {}",
+        response.status()
+    );
+
+    let status: serde_json::Value = response
+        .json()
+        .await
+        .expect("Failed to parse status response");
+
+    // Check that status has the expected fields
+    assert!(
+        status.get("status").is_some(),
+        "Status response missing 'status' field"
+    );
+    assert!(
+        status.get("total_sorted").is_some(),
+        "Status response missing 'total_sorted' field"
+    );
+
+    // Verify field types
+    assert!(
+        status["status"].is_string(),
+        "Status 'status' field should be a string"
+    );
+    assert!(
+        status["total_sorted"].is_number(),
+        "Status 'total_sorted' field should be a number"
+    );
+}
