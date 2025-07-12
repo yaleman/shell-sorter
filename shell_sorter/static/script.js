@@ -124,6 +124,88 @@ const RegionStorage = {
     }
 };
 
+// Function to load and display cameras in the camera list
+async function loadCameras() {
+    try {
+        const response = await fetch('/api/cameras');
+        if (response.ok) {
+            const apiResponse = await response.json();
+            if (apiResponse.success && apiResponse.data) {
+                const cameras = apiResponse.data;
+                displayCameras(cameras);
+            } else {
+                console.warn('Failed to load cameras:', apiResponse.message);
+                displayNoCameras();
+            }
+        } else {
+            console.warn('Failed to fetch cameras');
+            displayNoCameras();
+        }
+    } catch (error) {
+        console.error('Error loading cameras:', error);
+        displayNoCameras();
+    }
+}
+
+// Function to display cameras in the camera list
+function displayCameras(cameras) {
+    const cameraList = document.getElementById('camera-list');
+    if (!cameraList) return;
+
+    if (cameras.length === 0) {
+        displayNoCameras();
+        return;
+    }
+
+    // Clear existing content
+    cameraList.innerHTML = '';
+
+    cameras.forEach(camera => {
+        const cameraItem = document.createElement('div');
+        cameraItem.className = 'camera-item';
+        cameraItem.dataset.cameraIndex = camera.index || camera.id;
+        
+        cameraItem.innerHTML = `
+            <div class="camera-header">
+                <label class="camera-checkbox-label">
+                    <input type="checkbox" class="camera-checkbox" data-camera-id="${camera.id}">
+                    <span class="camera-name">${camera.name}</span>
+                    <span class="camera-type">(${camera.camera_type})</span>
+                </label>
+                <span class="camera-status status-inactive">Inactive</span>
+            </div>
+            <div class="camera-controls">
+                <button class="btn btn-sm btn-secondary camera-view-type-btn" data-camera-index="${camera.index || camera.id}">
+                    Set View Type
+                </button>
+                <button class="btn btn-sm btn-secondary camera-region-btn" data-camera-index="${camera.index || camera.id}">
+                    Set Region
+                </button>
+                <button class="btn btn-sm btn-secondary camera-autofocus-btn" data-camera-index="${camera.index || camera.id}">
+                    Autofocus
+                </button>
+            </div>
+            <div class="camera-details">
+                <small>ID: ${camera.id}</small>
+                ${camera.hostname ? `<small>Host: ${camera.hostname}</small>` : ''}
+                ${camera.index !== undefined ? `<small>Index: ${camera.index}</small>` : ''}
+            </div>
+        `;
+
+        cameraList.appendChild(cameraItem);
+    });
+
+    console.log(`Displayed ${cameras.length} cameras`);
+}
+
+// Function to display "no cameras" message
+function displayNoCameras() {
+    const cameraList = document.getElementById('camera-list');
+    if (!cameraList) return;
+
+    cameraList.innerHTML = '<p class="no-cameras">No cameras detected. Click "Detect Cameras" to search for available cameras.</p>';
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Camera management elements
     const detectCamerasBtn = document.getElementById('detect-cameras-btn');
@@ -378,7 +460,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (apiResponse.success && apiResponse.data) {
                         const cameras = apiResponse.data;
                         showToast(`Detected ${cameras.length} cameras`, 'success');
-                        location.reload();
+                        displayCameras(cameras);
+                        updateCameraSelection();
                     } else {
                         showToast(`Error detecting cameras: ${apiResponse.message || 'Unknown error'}`, 'error');
                     }
@@ -824,6 +907,9 @@ document.addEventListener('DOMContentLoaded', function() {
         overlay.style.height = overlayHeight + 'px';
     }
 
+    // Load and display cameras on page load
+    loadCameras();
+    
     // Initialize camera selection display
     updateCameraSelection();
     
@@ -898,15 +984,17 @@ document.addEventListener('DOMContentLoaded', function() {
                             
                             if (detectedCameras.length > 0) {
                                 showToast(`Auto-detected ${detectedCameras.length} cameras`, 'success');
-                                // Reload to show the detected cameras
-                                setTimeout(() => location.reload(), 1000);
+                                displayCameras(detectedCameras);
+                                updateCameraSelection();
                             } else {
                                 console.log('No cameras found during auto-detection');
                                 showToast('No cameras found on this system', 'warning');
+                                displayNoCameras();
                             }
                         } else {
                             console.log('Auto-detection failed:', detectApiResponse.message || 'Unknown error');
                             showToast(`Auto-detection failed: ${detectApiResponse.message || 'Unknown error'}`, 'error');
+                            displayNoCameras();
                         }
                     } else {
                         console.log('Auto-detection failed');
