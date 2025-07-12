@@ -575,7 +575,7 @@ document.addEventListener('DOMContentLoaded', function() {
         else if (e.target.classList.contains('camera-checkbox')) {
             const checkbox = e.target;
             const selectedCameras = Array.from(document.querySelectorAll('.camera-checkbox:checked'))
-                .map(cb => parseInt(cb.dataset.cameraIndex));
+                .map(cb => cb.dataset.cameraId);
 
             console.log('Selected cameras:', selectedCameras); // Debug log
 
@@ -588,7 +588,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(selectedCameras),
+                    body: JSON.stringify({ camera_ids: selectedCameras }),
                     signal: controller.signal
                 });
 
