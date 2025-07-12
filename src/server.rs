@@ -555,11 +555,9 @@ async fn get_config(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Conf
 }
 
 async fn save_config(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     Json(config): Json<ConfigData>,
 ) -> Json<ApiResponse<()>> {
-    // For now, just acknowledge the save request
-    // In a full implementation, this would save to the configuration file
     info!(
         "Config save requested: auto_start={}, auto_detect={}, esphome={}, cameras={:?}",
         config.auto_start_cameras,
@@ -567,6 +565,41 @@ async fn save_config(
         config.esphome_hostname,
         config.network_camera_hostnames
     );
+
+    // Check if ESPHome hostname has changed
+    let hostname_changed = state.settings.esphome_hostname != config.esphome_hostname;
+    let camera_hostnames_changed =
+        state.settings.network_camera_hostnames != config.network_camera_hostnames;
+
+    if hostname_changed || camera_hostnames_changed {
+        // Create updated settings
+        let mut new_settings = state.settings.clone();
+        new_settings.esphome_hostname = config.esphome_hostname.clone();
+        new_settings.network_camera_hostnames = config.network_camera_hostnames.clone();
+
+        // Update controller monitor configuration
+        if hostname_changed {
+            match state.controller.update_config(new_settings.clone()).await {
+                Ok(()) => {
+                    info!("Controller monitor configuration updated successfully");
+                }
+                Err(e) => {
+                    error!("Failed to update controller monitor configuration: {}", e);
+                    return Json(ApiResponse::<()>::error(format!(
+                        "Failed to update controller configuration: {e}"
+                    )));
+                }
+            }
+        }
+
+        // TODO: Also update camera manager configuration if camera hostnames changed
+        if camera_hostnames_changed {
+            info!("Camera hostname configuration changed - camera manager restart needed");
+        }
+
+        info!("Configuration updated successfully");
+    }
+
     Json(ApiResponse::success(()))
 }
 

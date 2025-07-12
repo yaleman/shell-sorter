@@ -6,8 +6,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::{Mutex, RwLock};
 use std::time::{Duration, Instant};
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::{interval, sleep};
 use tracing::{debug, error, info, warn};
 
@@ -51,6 +52,7 @@ pub enum ControllerCommand {
     GetHardwareStatus,
     TriggerVibration,
     SetServoPosition { servo: String, position: u8 },
+    UpdateConfig { new_settings: Settings },
 }
 
 /// Responses from controller operations
@@ -61,6 +63,7 @@ pub enum ControllerResponse {
     StatusData(MachineStatus),
     HardwareData(HashMap<String, String>),
     Error(String),
+    ConfigUpdated,
 }
 
 /// Request structure for communication with the controller monitor
@@ -72,7 +75,7 @@ pub struct ControllerRequest {
 
 /// Controller monitor that runs in a separate thread
 pub struct ControllerMonitor {
-    settings: Settings,
+    settings: Arc<RwLock<Settings>>,
     status: Arc<Mutex<ControllerStatus>>,
     request_receiver: mpsc::UnboundedReceiver<ControllerRequest>,
     client: reqwest::Client,
@@ -85,14 +88,47 @@ pub struct ControllerHandle {
     status: Arc<Mutex<ControllerStatus>>,
 }
 
+impl ControllerHandle {
+    /// Update the controller configuration
+    pub async fn update_config(&self, new_settings: Settings) -> Result<(), String> {
+        let (response_sender, response_receiver) = oneshot::channel();
+
+        let request = ControllerRequest {
+            command: ControllerCommand::UpdateConfig { new_settings },
+            response_sender,
+        };
+
+        if self.request_sender.send(request).is_err() {
+            return Err("Controller monitor is not running".to_string());
+        }
+
+        match response_receiver.await {
+            Ok(ControllerResponse::ConfigUpdated) => Ok(()),
+            Ok(ControllerResponse::Error(e)) => Err(e),
+            Ok(_) => Err("Unexpected response from controller monitor".to_string()),
+            Err(_) => Err("Failed to receive response from controller monitor".to_string()),
+        }
+    }
+
+    /// Get current controller status
+    pub fn get_status(&self) -> ControllerStatus {
+        self.status.lock().expect("Status lock poisoned").clone()
+    }
+}
+
 impl ControllerMonitor {
     /// Create a new controller monitor and return a handle for communication
     pub fn new(settings: Settings) -> Result<(Self, ControllerHandle), Box<dyn std::error::Error>> {
         let (request_sender, request_receiver) = mpsc::unbounded_channel();
 
+        let settings = Arc::new(RwLock::new(settings.clone()));
         let status = Arc::new(Mutex::new(ControllerStatus {
             online: false,
-            hostname: settings.esphome_hostname.clone(),
+            hostname: settings
+                .read()
+                .expect("Settings lock poisoned")
+                .esphome_hostname
+                .clone(),
             last_seen: None,
             response_time_ms: None,
             error_count: 0,
@@ -120,26 +156,30 @@ impl ControllerMonitor {
 
     /// Start the controller monitoring loop
     pub async fn run(mut self) -> OurResult<()> {
-        info!(
-            "Starting ESPHome controller monitor for {}",
-            self.settings.esphome_hostname
-        );
+        let hostname = {
+            let settings = self.settings.read().expect("Settings lock poisoned");
+            settings.esphome_hostname.clone()
+        };
+
+        info!("Starting ESPHome controller monitor for {}", hostname);
 
         // Start periodic health check
         let health_check_status = self.status.clone();
         let health_check_client = self.client.clone();
-        let health_check_hostname = self.settings.esphome_hostname.clone();
+        let health_check_settings = self.settings.clone();
 
         tokio::spawn(async move {
             let mut interval = interval(Duration::from_secs(30));
             loop {
                 interval.tick().await;
-                Self::perform_health_check(
-                    &health_check_client,
-                    &health_check_hostname,
-                    &health_check_status,
-                )
-                .await;
+                let hostname = {
+                    let settings = health_check_settings
+                        .read()
+                        .expect("Settings lock poisoned");
+                    settings.esphome_hostname.clone()
+                };
+                Self::perform_health_check(&health_check_client, &hostname, &health_check_status)
+                    .await;
             }
         });
 
@@ -170,6 +210,9 @@ impl ControllerMonitor {
             ControllerCommand::SetServoPosition { servo, position } => {
                 self.set_servo_position(&servo, position).await
             }
+            ControllerCommand::UpdateConfig { new_settings } => {
+                self.update_config(new_settings).await
+            }
         };
 
         if request.response_sender.send(response).is_err() {
@@ -177,12 +220,50 @@ impl ControllerMonitor {
         }
     }
 
+    /// Update controller configuration
+    async fn update_config(&self, new_settings: Settings) -> ControllerResponse {
+        let old_hostname = {
+            let settings = self.settings.read().expect("Settings lock poisoned");
+            settings.esphome_hostname.clone()
+        };
+
+        // Update settings
+        {
+            let mut settings = self.settings.write().expect("Settings lock poisoned");
+            *settings = new_settings;
+        }
+
+        let new_hostname = {
+            let settings = self.settings.read().expect("Settings lock poisoned");
+            settings.esphome_hostname.clone()
+        };
+
+        // Update status with new hostname if it changed
+        if old_hostname != new_hostname {
+            let mut status = self.status.lock().expect("Status lock poisoned");
+            status.hostname = new_hostname.clone();
+            status.online = false; // Reset online status until next health check
+            status.last_seen = None;
+            status.response_time_ms = None;
+            status.error_count = 0;
+
+            info!(
+                "Controller hostname updated from '{}' to '{}'",
+                old_hostname, new_hostname
+            );
+        }
+
+        ControllerResponse::ConfigUpdated
+    }
+
     /// Trigger the next case sequence on the controller
     async fn trigger_next_case(&self) -> ControllerResponse {
-        let url = format!(
-            "http://{}/button/trigger_next_case/press",
-            self.settings.esphome_hostname
-        );
+        let hostname = {
+            let settings = self.settings.read().expect("Settings lock poisoned");
+            settings.esphome_hostname.clone()
+        };
+
+        let url = format!("http://{}/button/trigger_next_case/press", hostname);
 
         match self.make_request(&url, "POST").await {
             Ok(_) => {
@@ -242,10 +323,10 @@ impl ControllerMonitor {
 
         if self.is_online().await {
             status.insert("controller".to_string(), "Connected".to_string());
-            status.insert(
-                "esphome_hostname".to_string(),
-                self.settings.esphome_hostname.clone(),
-            );
+            status.insert("esphome_hostname".to_string(), {
+                let settings = self.settings.read().expect("Settings lock poisoned");
+                settings.esphome_hostname.clone()
+            });
 
             // Try to get additional status info
             if let Ok(info) = self.get_device_info().await {
@@ -253,10 +334,10 @@ impl ControllerMonitor {
             }
         } else {
             status.insert("controller".to_string(), "Disconnected".to_string());
-            status.insert(
-                "esphome_hostname".to_string(),
-                self.settings.esphome_hostname.clone(),
-            );
+            status.insert("esphome_hostname".to_string(), {
+                let settings = self.settings.read().expect("Settings lock poisoned");
+                settings.esphome_hostname.clone()
+            });
         }
 
         ControllerResponse::HardwareData(status)
@@ -264,10 +345,10 @@ impl ControllerMonitor {
 
     /// Trigger vibration motor
     async fn trigger_vibration(&self) -> ControllerResponse {
-        let url = format!(
-            "http://{}/switch/vibration_motor/turn_on",
-            self.settings.esphome_hostname
-        );
+        let url = format!("http://{}/switch/vibration_motor/turn_on", {
+            let settings = self.settings.read().expect("Settings lock poisoned");
+            settings.esphome_hostname.clone()
+        });
 
         match self.make_request(&url, "POST").await {
             Ok(_) => {
@@ -284,10 +365,10 @@ impl ControllerMonitor {
 
     /// Set servo position
     async fn set_servo_position(&self, servo: &str, position: u8) -> ControllerResponse {
-        let url = format!(
-            "http://{}/number/{servo}/set?value={position}",
-            self.settings.esphome_hostname
-        );
+        let url = format!("http://{}/number/{servo}/set?value={position}", {
+            let settings = self.settings.read().expect("Settings lock poisoned");
+            settings.esphome_hostname.clone()
+        });
 
         match self.make_request(&url, "POST").await {
             Ok(_) => {
@@ -303,7 +384,7 @@ impl ControllerMonitor {
 
     /// Check if the controller is online
     async fn is_online(&self) -> bool {
-        let status = self.status.lock().await;
+        let status = self.status.lock().expect("Status lock poisoned");
         status.online
     }
 
@@ -314,7 +395,11 @@ impl ControllerMonitor {
     ) -> Result<bool, Box<dyn std::error::Error>> {
         let url = format!(
             "http://{}/binary_sensor/{}/state",
-            self.settings.esphome_hostname, sensor_name
+            {
+                let settings = self.settings.read().expect("Settings lock poisoned");
+                settings.esphome_hostname.clone()
+            },
+            sensor_name
         );
         let response = self.make_request(&url, "GET").await?;
 
@@ -324,10 +409,10 @@ impl ControllerMonitor {
 
     /// Get device information from ESPHome
     async fn get_device_info(&self) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
-        let url = format!(
-            "http://{}/text_sensor/device_info/state",
-            self.settings.esphome_hostname
-        );
+        let url = format!("http://{}/text_sensor/device_info/state", {
+            let settings = self.settings.read().expect("Settings lock poisoned");
+            settings.esphome_hostname.clone()
+        });
 
         let mut info = HashMap::new();
         match self.make_request(&url, "GET").await {
@@ -376,7 +461,7 @@ impl ControllerMonitor {
 
             // Update response time in status
             {
-                let mut status = self.status.lock().await;
+                let mut status = self.status.lock().expect("Status lock poisoned");
                 status.response_time_ms = Some(elapsed.as_millis() as u64);
                 status.last_seen = Some(Instant::now());
             }
@@ -419,7 +504,7 @@ impl ControllerMonitor {
 
                 // Update status
                 {
-                    let mut status_lock = status.lock().await;
+                    let mut status_lock = status.lock().expect("Status lock poisoned");
                     status_lock.online = success;
                     status_lock.last_seen = Some(Instant::now());
                     status_lock.response_time_ms = Some(elapsed.as_millis() as u64);
@@ -438,7 +523,7 @@ impl ControllerMonitor {
 
                 // Update status
                 {
-                    let mut status_lock = status.lock().await;
+                    let mut status_lock = status.lock().expect("Status lock poisoned");
                     status_lock.online = false;
                     status_lock.error_count += 1;
                     status_lock.response_time_ms = None;
@@ -474,17 +559,5 @@ impl ControllerHandle {
             Ok(response) => Ok(response),
             Err(_) => Err("Controller monitor did not respond".into()),
         }
-    }
-
-    /// Get current controller status
-    pub async fn get_status(&self) -> ControllerStatus {
-        let status = self.status.lock().await;
-        status.clone()
-    }
-
-    /// Check if controller is online
-    pub async fn is_online(&self) -> bool {
-        let status = self.status.lock().await;
-        status.online
     }
 }
