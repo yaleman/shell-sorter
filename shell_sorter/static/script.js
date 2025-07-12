@@ -190,9 +190,15 @@ function displayCameras(cameras) {
                 </button>
             </div>
             <div class="camera-details">
-                <small>ID: ${camera.id}</small>
-                ${camera.hostname ? `<small>Host: ${camera.hostname}</small>` : ''}
-                ${camera.index !== undefined ? `<small>Index: ${camera.index}</small>` : ''}
+                <span class="camera-info-icon" title="Camera Details">ℹ️</span>
+                <div class="camera-info-tooltip">
+                    <div><strong>ID:</strong> ${camera.id}</div>
+                    ${camera.hostname ? `<div><strong>Host:</strong> ${camera.hostname}</div>` : ''}
+                    ${camera.index !== undefined ? `<div><strong>Index:</strong> ${camera.index}</div>` : ''}
+                    ${camera.vendor_id ? `<div><strong>Vendor:</strong> ${camera.vendor_id}</div>` : ''}
+                    ${camera.product_id ? `<div><strong>Product:</strong> ${camera.product_id}</div>` : ''}
+                    ${camera.serial_number ? `<div><strong>Serial:</strong> ${camera.serial_number}</div>` : ''}
+                </div>
             </div>
         `;
 

@@ -1783,6 +1783,70 @@ select:focus, input:focus {
     align-self: flex-start;
 }
 
+/* Camera Info Tooltip Styles */
+.camera-details {
+    position: relative;
+    display: inline-block;
+}
+
+.camera-info-icon {
+    cursor: pointer;
+    font-size: 1.1em;
+    margin-left: 5px;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+}
+
+.camera-info-icon:hover {
+    opacity: 1;
+}
+
+.camera-info-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #333;
+    color: white;
+    text-align: left;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.85em;
+    white-space: nowrap;
+    z-index: 1000;
+    margin-bottom: 5px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.camera-info-tooltip::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+}
+
+.camera-info-tooltip div {
+    margin: 2px 0;
+    line-height: 1.4;
+}
+
+.camera-info-tooltip strong {
+    color: #ccc;
+    margin-right: 5px;
+}
+
+.camera-details:hover .camera-info-tooltip {
+    visibility: visible;
+    opacity: 1;
+}
+
 /* Debug Console Styles */
 .debug-console {
     background: white;
