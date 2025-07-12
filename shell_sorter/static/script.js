@@ -94,6 +94,12 @@ const RegionStorage = {
         const regions = this.load();
         let updated = false;
         
+        // Ensure cameraData is an array
+        if (!Array.isArray(cameraData)) {
+            console.warn('syncWithServer: cameraData is not an array:', cameraData);
+            return;
+        }
+        
         cameraData.forEach(camera => {
             if (camera.region_x !== null && camera.region_x !== undefined) {
                 const serverRegion = {
@@ -565,7 +571,8 @@ document.addEventListener('DOMContentLoaded', function() {
             clearTimeout(timeoutId);
 
             if (response.ok) {
-                const cameras = await response.json();
+                const result = await response.json();
+                const cameras = result.success ? result.data || [] : [];
                 console.debug('Updating camera feeds:', cameras); // Debug log
                 cameras.forEach(camera => {
                     const cameraItem = document.querySelector(`[data-camera-index="${camera.index}"]`);
@@ -829,7 +836,8 @@ document.addEventListener('DOMContentLoaded', function() {
             // Fetch current camera data from server
             const response = await fetch('/api/cameras');
             if (response.ok) {
-                const cameras = await response.json();
+                const result = await response.json();
+                const cameras = result.success ? result.data || [] : [];
                 
                 // Sync localStorage with server data
                 RegionStorage.syncWithServer(cameras);
@@ -865,7 +873,8 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             if (response.ok) {
-                const cameras = await response.json();
+                const result = await response.json();
+                const cameras = result.success ? result.data || [] : [];
                 
                 // If no cameras are detected, automatically trigger detection
                 if (cameras.length === 0) {
