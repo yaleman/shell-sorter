@@ -104,6 +104,11 @@ pub enum UsbCameraRequest {
         format: CameraFormatInfo,
         respond_to: oneshot::Sender<OurResult<()>>,
     },
+    /// Capture streaming frame from specific camera
+    CaptureStreamingFrame {
+        hardware_id: String,
+        response_sender: oneshot::Sender<OurResult<Vec<u8>>>,
+    },
 }
 
 /// USB Camera Manager implementation
@@ -167,6 +172,23 @@ impl UsbCameraHandle {
             .send(UsbCameraRequest::StartStreaming { respond_to: sender })
             .map_err(|_| OurError::App("USB camera manager channel closed".to_string()))?;
         receiver
+            .await
+            .map_err(|_| OurError::App("USB camera manager response failed".to_string()))?
+    }
+
+    /// Capture a single frame from a specific camera for streaming
+    pub async fn capture_streaming_frame(&self, hardware_id: &str) -> OurResult<Vec<u8>> {
+        let (request_sender, response_receiver) = oneshot::channel();
+
+        let request = UsbCameraRequest::CaptureStreamingFrame {
+            hardware_id: hardware_id.to_string(),
+            response_sender: request_sender,
+        };
+
+        self.request_sender
+            .send(request)
+            .map_err(|_| OurError::App("USB camera manager channel closed".to_string()))?;
+        response_receiver
             .await
             .map_err(|_| OurError::App("USB camera manager response failed".to_string()))?
     }
@@ -337,6 +359,15 @@ impl UsbCameraManager {
                     let result = self.set_camera_format_internal(&hardware_id, format).await;
                     if respond_to.send(result).is_err() {
                         debug!("Failed to send camera format response");
+                    }
+                }
+                UsbCameraRequest::CaptureStreamingFrame {
+                    hardware_id,
+                    response_sender,
+                } => {
+                    let result = self.capture_streaming_frame_internal(&hardware_id).await;
+                    if response_sender.send(result).is_err() {
+                        debug!("Failed to send streaming frame response");
                     }
                 }
             }
@@ -610,7 +641,70 @@ impl UsbCameraManager {
         Ok(())
     }
 
-    /// Capture image from specific camera
+    /// Capture streaming frame from specific camera (optimized for streaming)
+    async fn capture_streaming_frame_internal(&mut self, hardware_id: &str) -> OurResult<Vec<u8>> {
+        // Find camera by hardware ID
+        let camera_info = {
+            let status = self.status.lock().unwrap_or_else(|e| {
+                error!("USB camera status mutex poisoned: {e}");
+                e.into_inner()
+            });
+
+            status
+                .cameras
+                .values()
+                .find(|camera| camera.hardware_id == hardware_id)
+                .cloned()
+                .ok_or_else(|| OurError::App(format!("Camera with ID '{hardware_id}' not found")))?
+        };
+
+        let camera_index = CameraIndex::Index(camera_info.index);
+
+        // Use lower resolution for streaming to improve performance
+        let resolution = Resolution::new(640, 480);
+        let camera_format = CameraFormat::new(resolution, FrameFormat::MJPEG, 30);
+        let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Exact(camera_format));
+
+        let mut camera = Camera::new(camera_index, format)
+            .map_err(|e| OurError::App(format!("Failed to create streaming camera: {e}")))?;
+
+        camera
+            .open_stream()
+            .map_err(|e| OurError::App(format!("Failed to open camera stream: {e}")))?;
+
+        match camera.frame() {
+            Ok(frame) => {
+                // Convert frame to JPEG bytes
+                let image = frame
+                    .decode_image::<RgbFormat>()
+                    .map_err(|e| OurError::App(format!("Failed to decode frame: {e}")))?;
+
+                // Convert to JPEG with lower quality for streaming
+                let mut jpeg_data = Vec::new();
+                let mut cursor = std::io::Cursor::new(&mut jpeg_data);
+
+                DynamicImage::ImageRgb8(image)
+                    .write_to(&mut cursor, image::ImageFormat::Jpeg)
+                    .map_err(|e| OurError::App(format!("Failed to encode JPEG: {e}")))?;
+
+                // Clean up camera
+                if let Err(e) = camera.stop_stream() {
+                    warn!("Failed to stop camera stream: {e}");
+                }
+
+                debug!(
+                    "Captured streaming frame from camera {} ({} bytes)",
+                    hardware_id,
+                    jpeg_data.len()
+                );
+                Ok(jpeg_data)
+            }
+            Err(e) => Err(OurError::App(format!(
+                "Failed to capture streaming frame: {e}"
+            ))),
+        }
+    }
+
     async fn capture_image_internal(&mut self, hardware_id: &str) -> OurResult<Vec<u8>> {
         let camera_info = {
             let status = self.status.lock().unwrap_or_else(|e| {

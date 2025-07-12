@@ -690,8 +690,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                 });
                             }
                             
-                            feedDiv.innerHTML = `<img src="/api/cameras/${camera.index}/stream" 
-                                                     alt="Camera ${camera.index} feed"
+                            feedDiv.innerHTML = `<img src="/api/cameras/${camera.id}/stream" 
+                                                     alt="Camera ${camera.name} feed"
                                                      class="camera-stream">`;
                             cameraItem.appendChild(feedDiv);
                         } else if (!camera.is_active && existingFeed) {

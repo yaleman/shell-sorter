@@ -4,9 +4,10 @@ use askama::Template;
 use askama_web::WebTemplate;
 use axum::{
     Router,
+    body::Body,
     extract::{Json as ExtractJson, Path, State},
     http::StatusCode,
-    response::{Html, Json},
+    response::{Html, Json, Response},
     routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
@@ -148,7 +149,7 @@ pub async fn start_server(
         .route("/api/cameras/start-selected", post(start_cameras))
         .route("/api/cameras/stop-all", post(stop_cameras))
         .route("/api/cameras/capture", post(capture_images))
-        .route("/api/cameras/{index}/stream", get(camera_stream))
+        .route("/api/cameras/{camera_id}/stream", get(camera_stream))
         .route("/api/cameras/{index}/view-type", post(set_camera_view_type))
         .route("/api/cameras/{index}/region", post(set_camera_region))
         .route("/api/cameras/{index}/region", delete(clear_camera_region))
@@ -602,11 +603,87 @@ async fn capture_images(
 }
 
 async fn camera_stream(
-    Path(_index): Path<usize>,
-    State(_state): State<Arc<AppState>>,
-) -> StatusCode {
-    // TODO: Implement camera streaming
-    StatusCode::NOT_IMPLEMENTED
+    Path(camera_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Response<Body>, StatusCode> {
+    // Determine camera type and route to appropriate manager
+    if camera_id.starts_with("usb:") {
+        stream_usb_camera(&state, &camera_id).await
+    } else {
+        stream_esphome_camera(&state, &camera_id).await
+    }
+}
+
+async fn stream_usb_camera(
+    state: &Arc<AppState>,
+    camera_id: &str,
+) -> Result<Response<Body>, StatusCode> {
+    // For now, just return a single frame as JPEG
+    // TODO: Implement proper MJPEG streaming
+    match state
+        .usb_camera_manager
+        .capture_streaming_frame(camera_id)
+        .await
+    {
+        Ok(frame_data) => Response::builder()
+            .header("Content-Type", "image/jpeg")
+            .header("Cache-Control", "no-cache")
+            .body(Body::from(frame_data))
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR),
+        Err(e) => {
+            error!("Failed to capture frame from USB camera {}: {e}", camera_id);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn stream_esphome_camera(
+    state: &Arc<AppState>,
+    camera_id: &str,
+) -> Result<Response<Body>, StatusCode> {
+    // Get camera info to find the stream URL
+    match state.camera_manager.list_cameras().await {
+        Ok(cameras) => {
+            let camera = cameras
+                .iter()
+                .find(|c| c.id == camera_id)
+                .ok_or(StatusCode::NOT_FOUND)?;
+
+            // Proxy the request to the ESPHome camera's stream URL
+            match reqwest::get(camera.stream_url.clone()).await {
+                Ok(response) => {
+                    let status = response.status();
+                    let headers = response.headers().clone();
+                    let body = response
+                        .bytes()
+                        .await
+                        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+
+                    let mut builder = Response::builder().status(status);
+
+                    // Copy relevant headers
+                    for (name, value) in headers.iter() {
+                        if name == "content-type" || name == "cache-control" || name == "connection"
+                        {
+                            builder = builder.header(name, value);
+                        }
+                    }
+
+                    builder
+                        .body(Body::from(body))
+                        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+                }
+                Err(e) => {
+                    error!("Failed to proxy ESPHome camera stream {}: {e}", camera_id);
+                    Err(StatusCode::BAD_GATEWAY)
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to get camera list for streaming: {e}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 #[derive(Deserialize)]

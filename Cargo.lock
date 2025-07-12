@@ -2810,6 +2810,7 @@ version = "0.1.0"
 dependencies = [
  "askama",
  "askama_web",
+ "async-stream",
  "axum",
  "chrono",
  "clap",
