@@ -739,6 +739,20 @@ async fn stream_usb_camera(
         );
 
         loop {
+            // Check if streaming should continue
+            match state_clone.usb_camera_manager.get_status().await {
+                Ok(status) => {
+                    if !status.streaming {
+                        info!("USB camera streaming stopped for camera {}", camera_id_clone);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to get USB camera status: {e}");
+                    break;
+                }
+            }
+
             match state_clone.usb_camera_manager.capture_streaming_frame(&camera_id_clone).await {
                 Ok(frame_data) => {
                     // Create MJPEG frame with proper headers
