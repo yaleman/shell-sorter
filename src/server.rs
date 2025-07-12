@@ -18,6 +18,7 @@ use tower_http::services::ServeDir;
 use crate::camera_manager::CameraHandle;
 use crate::config::Settings;
 use crate::controller_monitor::{ControllerCommand, ControllerHandle, ControllerResponse};
+use crate::usb_camera_controller::UsbCameraHandle;
 use crate::{OurError, OurResult};
 use tracing::{error, info};
 
@@ -27,6 +28,7 @@ pub struct AppState {
     pub settings: Settings,
     pub controller: ControllerHandle,
     pub camera_manager: CameraHandle,
+    pub usb_camera_manager: UsbCameraHandle,
 }
 
 /// Dashboard template
@@ -43,14 +45,27 @@ struct DashboardTemplate {
 #[template(path = "config.html")]
 struct ConfigTemplate {}
 
+#[derive(Deserialize, Serialize)]
+enum CameraType {
+    #[serde(rename = "esphome")]
+    EspHome,
+    #[serde(rename = "usb")]
+    Usb,
+}
+
 /// Camera info response
 #[derive(Serialize)]
 struct CameraInfo {
     id: String,
     name: String,
-    hostname: String,
+    hostname: Option<String>,
     online: bool,
     view_type: Option<String>,
+    camera_type: CameraType,
+    index: Option<u32>, // For USB cameras
+    vendor_id: Option<String>,
+    product_id: Option<String>,
+    serial_number: Option<String>,
 }
 
 /// Generic API response
@@ -88,6 +103,17 @@ impl<T> ApiResponse<T> {
     }
 }
 
+/// Create a test router for integration testing
+pub fn create_test_router(state: Arc<AppState>) -> Router {
+    Router::new()
+        .route("/api/cameras", get(list_cameras))
+        .route("/api/cameras/detect", get(detect_cameras))
+        .route("/api/machine/hardware-status", get(hardware_status))
+        .route("/api/case-types", get(list_case_types))
+        .route("/", get(dashboard))
+        .with_state(state)
+}
+
 /// Start the web server
 pub async fn start_server(
     host: String,
@@ -95,11 +121,13 @@ pub async fn start_server(
     settings: Settings,
     controller: ControllerHandle,
     camera_manager: CameraHandle,
+    usb_camera_manager: UsbCameraHandle,
 ) -> OurResult<()> {
     let state = Arc::new(AppState {
         settings,
         controller,
         camera_manager,
+        usb_camera_manager,
     });
 
     let app = Router::new()
@@ -311,50 +339,124 @@ async fn hardware_status(
 }
 
 async fn list_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<CameraInfo>>> {
+    let mut all_cameras = Vec::new();
+
+    // Get ESPHome cameras
     match state.camera_manager.list_cameras().await {
         Ok(cameras) => {
-            let camera_infos: Vec<CameraInfo> = cameras
+            let esphome_cameras: Vec<CameraInfo> = cameras
                 .into_iter()
                 .map(|cam| CameraInfo {
                     id: cam.id,
                     name: cam.name,
-                    hostname: cam.hostname,
+                    hostname: Some(cam.hostname),
                     online: cam.online,
                     view_type: None,
+                    camera_type: CameraType::EspHome,
+                    index: None,
+                    vendor_id: None,
+                    product_id: None,
+                    serial_number: None,
                 })
                 .collect();
-            Json(ApiResponse::success(camera_infos))
+            all_cameras.extend(esphome_cameras);
         }
         Err(e) => {
-            error!("Failed to list cameras: {e}");
-            Json(ApiResponse::<Vec<CameraInfo>>::error(format!(
-                "Failed to list cameras: {e}"
-            )))
+            error!("Failed to list ESPHome cameras: {e}");
         }
     }
+
+    // Get USB cameras
+    match state.usb_camera_manager.list_cameras().await {
+        Ok(cameras) => {
+            let usb_cameras: Vec<CameraInfo> = cameras
+                .into_iter()
+                .map(|cam| CameraInfo {
+                    id: cam.hardware_id.clone(),
+                    name: cam.name,
+                    hostname: None,
+                    online: cam.connected,
+                    view_type: None,
+                    camera_type: CameraType::Usb,
+                    index: Some(cam.index),
+                    vendor_id: cam.vendor_id,
+                    product_id: cam.product_id,
+                    serial_number: cam.serial_number,
+                })
+                .collect();
+            all_cameras.extend(usb_cameras);
+        }
+        Err(e) => {
+            error!("Failed to list USB cameras: {e}");
+        }
+    }
+
+    Json(ApiResponse::success(all_cameras))
 }
 
 async fn detect_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<CameraInfo>>> {
+    let mut all_cameras = Vec::new();
+    let mut errors = Vec::new();
+
+    // Detect ESPHome cameras
     match state.camera_manager.detect_cameras().await {
         Ok(cameras) => {
-            let camera_infos: Vec<CameraInfo> = cameras
+            let esphome_cameras: Vec<CameraInfo> = cameras
                 .into_iter()
                 .map(|cam| CameraInfo {
                     id: cam.id,
                     name: cam.name,
-                    hostname: cam.hostname,
+                    hostname: Some(cam.hostname),
                     online: cam.online,
                     view_type: None,
+                    camera_type: CameraType::EspHome,
+                    index: None,
+                    vendor_id: None,
+                    product_id: None,
+                    serial_number: None,
                 })
                 .collect();
-            Json(ApiResponse::success(camera_infos))
+            all_cameras.extend(esphome_cameras);
         }
         Err(e) => {
-            error!("Failed to detect cameras: {e}");
-            Json(ApiResponse::<Vec<CameraInfo>>::error(format!(
-                "Failed to detect cameras: {e}"
-            )))
+            error!("Failed to detect ESPHome cameras: {e}");
+            errors.push(format!("ESPHome: {e}"));
         }
+    }
+
+    // Detect USB cameras
+    match state.usb_camera_manager.detect_cameras().await {
+        Ok(cameras) => {
+            let usb_cameras: Vec<CameraInfo> = cameras
+                .into_iter()
+                .map(|cam| CameraInfo {
+                    id: cam.hardware_id.clone(),
+                    name: cam.name,
+                    hostname: None,
+                    online: cam.connected,
+                    view_type: None,
+                    camera_type: CameraType::Usb,
+                    index: Some(cam.index),
+                    vendor_id: cam.vendor_id,
+                    product_id: cam.product_id,
+                    serial_number: cam.serial_number,
+                })
+                .collect();
+            all_cameras.extend(usb_cameras);
+        }
+        Err(e) => {
+            error!("Failed to detect USB cameras: {e}");
+            errors.push(format!("USB: {e}"));
+        }
+    }
+
+    if all_cameras.is_empty() && !errors.is_empty() {
+        Json(ApiResponse::<Vec<CameraInfo>>::error(format!(
+            "Failed to detect cameras: {}",
+            errors.join(", ")
+        )))
+    } else {
+        Json(ApiResponse::success(all_cameras))
     }
 }
 

@@ -15,7 +15,7 @@ mypy:
 
 # Run tests
 test:
-# uv run pytest -s -v
+    # uv run pytest -s -v
     cargo test
 
 # Run all checks

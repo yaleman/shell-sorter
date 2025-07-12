@@ -678,6 +678,11 @@ async fn start_web_server(host: String, port: NonZeroU16, settings: Settings) ->
         CameraManager::new(settings.network_camera_hostnames.clone())
             .map_err(|e| OurError::App(format!("Failed to create camera manager: {e}")))?;
 
+    // Create the USB camera manager and get a handle for communication
+    let usb_camera_handle = start_usb_camera_manager()
+        .await
+        .map_err(|e| OurError::App(format!("Failed to create USB camera manager: {e}")))?;
+
     // Spawn the controller monitor in a separate task
     tokio::spawn(async move {
         if let Err(e) = controller_monitor.run().await {
@@ -692,6 +697,14 @@ async fn start_web_server(host: String, port: NonZeroU16, settings: Settings) ->
         }
     });
 
-    // Start the web server with the controller and camera handles
-    server::start_server(host, port, settings, controller_handle, camera_handle).await
+    // Start the web server with all handles
+    server::start_server(
+        host,
+        port,
+        settings,
+        controller_handle,
+        camera_handle,
+        usb_camera_handle,
+    )
+    .await
 }

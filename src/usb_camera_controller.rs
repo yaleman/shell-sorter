@@ -449,7 +449,7 @@ impl UsbCameraManager {
         None
     }
 
-    /// Parse product ID from camera description  
+    /// Parse product ID from camera description
     fn parse_product_id_from_description(&self, description: &str) -> Option<String> {
         // Look for common patterns like "PID_5678" or "Product:5678"
         if let Some(captures) = regex::Regex::new(r"(?i)pid[_:]([0-9a-f]{4})")
@@ -497,7 +497,7 @@ impl UsbCameraManager {
         } else {
             // Fallback to description-based ID
             let desc = camera_info.description().replace(' ', "_").to_lowercase();
-            parts.push(format!("{}:{}", desc, index));
+            parts.push(format!("{desc}:{index}"));
         }
 
         parts.join(":")
@@ -505,35 +505,63 @@ impl UsbCameraManager {
 
     /// Get supported camera formats
     async fn get_camera_formats(&self, index: u32) -> OurResult<Vec<CameraFormatInfo>> {
-        // Try to create temporary camera to query formats
-        let camera_index = CameraIndex::Index(index);
+        // Try different approaches to query camera formats without initializing the camera
+        debug!("Querying formats for camera {}", index);
 
-        let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::None);
-        match Camera::new(camera_index, format) {
-            Ok(mut camera) => {
-                let formats = camera
-                    .compatible_list_by_resolution(FrameFormat::MJPEG)
-                    .unwrap_or_default();
+        // Try multiple formats that are commonly supported
+        let test_formats = vec![
+            (320, 240, 30),  // Very basic format that most cameras support
+            (640, 480, 30),  // Standard VGA
+            (1280, 720, 30), // 720p
+        ];
 
-                let mut format_infos = Vec::new();
-                for (resolution, fps_list) in formats {
-                    for fps in fps_list {
-                        format_infos.push(CameraFormatInfo {
-                            width: resolution.width(),
-                            height: resolution.height(),
-                            fps,
-                            format: "MJPEG".to_string(),
-                        });
-                    }
+        let mut format_infos = Vec::new();
+
+        // Try to get formats without actually setting them
+        for (width, height, fps) in test_formats {
+            let camera_index = CameraIndex::Index(index);
+            let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Exact(
+                CameraFormat::new(Resolution::new(width, height), FrameFormat::MJPEG, fps),
+            ));
+
+            // Try to create camera with this format to see if it's supported
+            match Camera::new(camera_index, format) {
+                Ok(_camera) => {
+                    format_infos.push(CameraFormatInfo {
+                        width,
+                        height,
+                        fps,
+                        format: "MJPEG".to_string(),
+                    });
+                    debug!(
+                        "Camera {} supports format {}x{}@{}fps",
+                        index, width, height, fps
+                    );
                 }
-
-                Ok(format_infos)
-            }
-            Err(e) => {
-                debug!("Failed to query camera {} formats: {e}", index);
-                Ok(Vec::new())
+                Err(e) => {
+                    debug!(
+                        "Camera {} does not support format {}x{}@{}fps: {}",
+                        index, width, height, fps, e
+                    );
+                }
             }
         }
+
+        // If no formats worked, add a basic default
+        if format_infos.is_empty() {
+            debug!(
+                "No supported formats found for camera {}, adding default",
+                index
+            );
+            format_infos.push(CameraFormatInfo {
+                width: 640,
+                height: 480,
+                fps: 30,
+                format: "Unknown".to_string(),
+            });
+        }
+
+        Ok(format_infos)
     }
 
     /// List currently known cameras
