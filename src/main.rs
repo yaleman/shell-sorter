@@ -176,18 +176,26 @@ async fn main() -> OurResult<()> {
     // Initialize tracing
     let base_level = if cli.debug { "debug" } else { "info" };
 
+    let default_directive = match format!("shell_sorter={base_level}").parse() {
+        Ok(directive) => directive,
+        Err(e) => {
+            eprintln!("Failed to parse default log directive: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let hyper_directive = match "hyper_util::client=warn".parse() {
+        Ok(directive) => directive,
+        Err(e) => {
+            eprintln!("Failed to parse hyper log directive: {e}");
+            std::process::exit(1);
+        }
+    };
+
     let filter = EnvFilter::builder()
-        .with_default_directive(
-            format!("shell_sorter={base_level}")
-                .parse()
-                .expect("Valid log directive"),
-        )
+        .with_default_directive(default_directive)
         .from_env_lossy()
-        .add_directive(
-            "hyper_util::client=warn"
-                .parse()
-                .expect("Valid log directive"),
-        );
+        .add_directive(hyper_directive);
 
     tracing_subscriber::registry()
         .with(filter)
