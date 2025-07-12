@@ -251,14 +251,16 @@ impl UsbCameraHandle {
 
 impl UsbCameraManager {
     /// Create new USB camera manager
-    pub fn new() -> (UsbCameraManager, UsbCameraHandle) {
+    pub fn new() -> OurResult<(UsbCameraManager, UsbCameraHandle)> {
         let (request_sender, request_receiver) = mpsc::unbounded_channel();
         let status = Arc::new(Mutex::new(UsbCameraStatus::default()));
+
+        let backend = Self::select_best_backend()?;
 
         let manager = UsbCameraManager {
             status: status.clone(),
             request_receiver,
-            backend: Self::select_best_backend(),
+            backend,
         };
 
         let handle = UsbCameraHandle {
@@ -266,22 +268,29 @@ impl UsbCameraManager {
             status,
         };
 
-        (manager, handle)
+        Ok((manager, handle))
     }
 
     /// Select the best API backend for the current platform
-    fn select_best_backend() -> ApiBackend {
+    fn select_best_backend() -> OurResult<ApiBackend> {
         #[cfg(target_os = "linux")]
-        return ApiBackend::Video4Linux;
+        return Ok(ApiBackend::Video4Linux);
 
         #[cfg(target_os = "windows")]
-        return ApiBackend::MediaFoundation;
+        return Ok(ApiBackend::MediaFoundation);
 
         #[cfg(target_os = "macos")]
-        return ApiBackend::AVFoundation;
+        return Ok(ApiBackend::AVFoundation);
 
         #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
-        return ApiBackend::OpenCv;
+        {
+            error!(
+                "Unsupported platform for USB camera access - only Linux, Windows, and macOS are supported"
+            );
+            Err(OurError::App(
+                "Unsupported platform for USB camera access".to_string(),
+            ))
+        }
     }
 
     /// Run the USB camera manager event loop
@@ -796,7 +805,7 @@ impl UsbCameraManager {
 
 /// Start USB camera manager in separate task
 pub async fn start_usb_camera_manager() -> OurResult<UsbCameraHandle> {
-    let (mut manager, handle) = UsbCameraManager::new();
+    let (mut manager, handle) = UsbCameraManager::new()?;
 
     tokio::spawn(async move {
         if let Err(e) = manager.run().await {
