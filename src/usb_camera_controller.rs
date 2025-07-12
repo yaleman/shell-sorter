@@ -96,7 +96,7 @@ pub enum UsbCameraRequest {
     },
     /// Get current status
     GetStatus {
-        respond_to: oneshot::Sender<UsbCameraStatus>,
+        respond_to: oneshot::Sender<OurResult<UsbCameraStatus>>,
     },
     /// Set camera format
     SetCameraFormat {
@@ -204,6 +204,17 @@ impl UsbCameraHandle {
             .map_err(|_| OurError::App("USB camera manager response failed".to_string()))?
     }
 
+    /// Get current status including selected cameras and streaming state
+    pub async fn get_status(&self) -> OurResult<UsbCameraStatus> {
+        let (sender, receiver) = oneshot::channel();
+        self.request_sender
+            .send(UsbCameraRequest::GetStatus { respond_to: sender })
+            .map_err(|_| OurError::App("USB camera manager channel closed".to_string()))?;
+        receiver
+            .await
+            .map_err(|_| OurError::App("USB camera manager response failed".to_string()))?
+    }
+
     /// Capture image from specific camera
     pub async fn capture_image(&self, hardware_id: String) -> OurResult<Vec<u8>> {
         let (sender, receiver) = oneshot::channel();
@@ -216,17 +227,6 @@ impl UsbCameraHandle {
         receiver
             .await
             .map_err(|_| OurError::App("USB camera manager response failed".to_string()))?
-    }
-
-    /// Get current status
-    pub fn get_status(&self) -> UsbCameraStatus {
-        self.status
-            .lock()
-            .unwrap_or_else(|e| {
-                error!("USB camera status mutex poisoned: {e}");
-                e.into_inner()
-            })
-            .clone()
     }
 
     /// Set camera format
@@ -347,7 +347,7 @@ impl UsbCameraManager {
                 }
                 UsbCameraRequest::GetStatus { respond_to } => {
                     let status = self.get_status_internal();
-                    if respond_to.send(status).is_err() {
+                    if respond_to.send(Ok(status)).is_err() {
                         debug!("Failed to send status response");
                     }
                 }

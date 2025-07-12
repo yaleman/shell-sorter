@@ -10,6 +10,7 @@ use axum::{
     response::{Html, Json, Response},
     routing::{delete, get, post},
 };
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::{collections::HashMap, num::NonZeroU16};
@@ -67,6 +68,8 @@ struct CameraInfo {
     vendor_id: Option<String>,
     product_id: Option<String>,
     serial_number: Option<String>,
+    is_active: bool,
+    is_selected: bool,
 }
 
 /// Generic API response
@@ -342,22 +345,32 @@ async fn hardware_status(
 async fn list_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<CameraInfo>>> {
     let mut all_cameras = Vec::new();
 
+    // Get ESPHome camera status
+    let esphome_status = state.camera_manager.get_status().await.unwrap_or_default();
+
     // Get ESPHome cameras
     match state.camera_manager.list_cameras().await {
         Ok(cameras) => {
             let esphome_cameras: Vec<CameraInfo> = cameras
                 .into_iter()
-                .map(|cam| CameraInfo {
-                    id: cam.id,
-                    name: cam.name,
-                    hostname: Some(cam.hostname),
-                    online: cam.online,
-                    view_type: None,
-                    camera_type: CameraType::EspHome,
-                    index: None,
-                    vendor_id: None,
-                    product_id: None,
-                    serial_number: None,
+                .map(|cam| {
+                    let is_selected = esphome_status.selected_cameras.contains(&cam.id);
+                    let is_active = is_selected && esphome_status.streaming;
+
+                    CameraInfo {
+                        id: cam.id,
+                        name: cam.name,
+                        hostname: Some(cam.hostname),
+                        online: cam.online,
+                        view_type: None,
+                        camera_type: CameraType::EspHome,
+                        index: None,
+                        vendor_id: None,
+                        product_id: None,
+                        serial_number: None,
+                        is_active,
+                        is_selected,
+                    }
                 })
                 .collect();
             all_cameras.extend(esphome_cameras);
@@ -367,22 +380,36 @@ async fn list_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Ve
         }
     }
 
+    // Get USB camera status
+    let usb_status = state
+        .usb_camera_manager
+        .get_status()
+        .await
+        .unwrap_or_default();
+
     // Get USB cameras
     match state.usb_camera_manager.list_cameras().await {
         Ok(cameras) => {
             let usb_cameras: Vec<CameraInfo> = cameras
                 .into_iter()
-                .map(|cam| CameraInfo {
-                    id: cam.hardware_id.clone(),
-                    name: cam.name,
-                    hostname: None,
-                    online: cam.connected,
-                    view_type: None,
-                    camera_type: CameraType::Usb,
-                    index: Some(cam.index),
-                    vendor_id: cam.vendor_id,
-                    product_id: cam.product_id,
-                    serial_number: cam.serial_number,
+                .map(|cam| {
+                    let is_selected = usb_status.selected_cameras.contains(&cam.hardware_id);
+                    let is_active = is_selected && usb_status.streaming;
+
+                    CameraInfo {
+                        id: cam.hardware_id.clone(),
+                        name: cam.name,
+                        hostname: None,
+                        online: cam.connected,
+                        view_type: None,
+                        camera_type: CameraType::Usb,
+                        index: Some(cam.index),
+                        vendor_id: cam.vendor_id,
+                        product_id: cam.product_id,
+                        serial_number: cam.serial_number,
+                        is_active,
+                        is_selected,
+                    }
                 })
                 .collect();
             all_cameras.extend(usb_cameras);
@@ -415,6 +442,8 @@ async fn detect_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<
                     vendor_id: None,
                     product_id: None,
                     serial_number: None,
+                    is_active: false,
+                    is_selected: false,
                 })
                 .collect();
             all_cameras.extend(esphome_cameras);
@@ -441,6 +470,8 @@ async fn detect_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<
                     vendor_id: cam.vendor_id,
                     product_id: cam.product_id,
                     serial_number: cam.serial_number,
+                    is_active: false,
+                    is_selected: false,
                 })
                 .collect();
             all_cameras.extend(usb_cameras);
@@ -581,7 +612,7 @@ async fn stop_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<()
 async fn capture_images(
     State(state): State<Arc<AppState>>,
 ) -> Json<ApiResponse<HashMap<String, String>>> {
-    let status = state.camera_manager.get_status();
+    let status = state.camera_manager.get_status().await.unwrap_or_default();
     let mut results = HashMap::new();
 
     for camera_id in &status.selected_cameras {
@@ -618,23 +649,60 @@ async fn stream_usb_camera(
     state: &Arc<AppState>,
     camera_id: &str,
 ) -> Result<Response<Body>, StatusCode> {
-    // For now, just return a single frame as JPEG
-    // TODO: Implement proper MJPEG streaming
-    match state
-        .usb_camera_manager
-        .capture_streaming_frame(camera_id)
-        .await
-    {
-        Ok(frame_data) => Response::builder()
-            .header("Content-Type", "image/jpeg")
-            .header("Cache-Control", "no-cache")
-            .body(Body::from(frame_data))
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR),
-        Err(e) => {
-            error!("Failed to capture frame from USB camera {}: {e}", camera_id);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+    let state_clone = state.clone();
+    let camera_id_clone = camera_id.to_string();
+
+    // Create an MJPEG stream
+    let stream = async_stream::stream! {
+        // Send initial boundary
+        yield Ok::<Vec<u8>, Box<dyn std::error::Error + Send + Sync>>(
+            b"--frame\r\n".to_vec()
+        );
+
+        loop {
+            match state_clone.usb_camera_manager.capture_streaming_frame(&camera_id_clone).await {
+                Ok(frame_data) => {
+                    // Create MJPEG frame with proper headers
+                    let header = format!(
+                        "Content-Type: image/jpeg\r\nContent-Length: {}\r\n\r\n",
+                        frame_data.len()
+                    );
+
+                    // Yield the header
+                    yield Ok(header.as_bytes().to_vec());
+
+                    // Yield the frame data
+                    yield Ok(frame_data);
+
+                    // Yield the boundary for next frame
+                    yield Ok(b"\r\n--frame\r\n".to_vec());
+                }
+                Err(e) => {
+                    error!("Failed to capture frame from USB camera {}: {e}", camera_id_clone);
+                    // Don't break the stream, just wait and try again
+                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                    continue;
+                }
+            }
+
+            // Control frame rate - roughly 5 FPS for streaming
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
         }
-    }
+    };
+
+    // Convert the stream to the format expected by Body::from_stream
+    let byte_stream = stream.map(|result| result.map(axum::body::Bytes::from));
+
+    let body = Body::from_stream(byte_stream);
+
+    Response::builder()
+        .header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+        .header("Cache-Control", "no-cache, no-store, must-revalidate")
+        .header("Pragma", "no-cache")
+        .header("Expires", "0")
+        .header("Connection", "close")
+        .body(body)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 async fn stream_esphome_camera(

@@ -33,6 +33,7 @@ uuid = { version = "1.17.0", features = ["v4", "serde"] }
 nokhwa = { version = "0.10.9", features = ["input-native"] }
 regex = "1.11.1"
 async-stream = "0.3"
+futures-util = "0.3"
 
 [dev-dependencies]
 tokio-test = "0.4.4"

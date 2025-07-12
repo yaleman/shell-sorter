@@ -54,7 +54,7 @@ pub enum CameraRequest {
         respond_to: oneshot::Sender<OurResult<Vec<u8>>>,
     },
     GetStatus {
-        respond_to: oneshot::Sender<CameraStatus>,
+        respond_to: oneshot::Sender<OurResult<CameraStatus>>,
     },
 }
 
@@ -138,11 +138,14 @@ impl CameraHandle {
             .map_err(|_| OurError::App("Camera manager response failed".to_string()))?
     }
 
-    pub fn get_status(&self) -> CameraStatus {
-        self.status
-            .lock()
-            .map(|status| status.clone())
-            .unwrap_or_default()
+    pub async fn get_status(&self) -> OurResult<CameraStatus> {
+        let (sender, receiver) = oneshot::channel();
+        self.request_sender
+            .send(CameraRequest::GetStatus { respond_to: sender })
+            .map_err(|_| OurError::App("Camera manager channel closed".to_string()))?;
+        receiver
+            .await
+            .map_err(|_| OurError::App("Camera manager response failed".to_string()))?
     }
 }
 
@@ -228,8 +231,8 @@ impl CameraManager {
                 }
                 CameraRequest::GetStatus { respond_to } => {
                     let status = match self.lock_status() {
-                        Ok(guard) => guard.clone(),
-                        Err(_) => CameraStatus::default(),
+                        Ok(guard) => Ok(guard.clone()),
+                        Err(e) => Err(e),
                     };
                     if respond_to.send(status).is_err() {
                         error!("Failed to send status response");
