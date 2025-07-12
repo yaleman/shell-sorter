@@ -253,7 +253,7 @@ async fn handle_camera_command(action: CameraAction, settings: &Settings) -> Our
             // Create HTTP client to communicate with running server
             let client = reqwest::Client::new();
             let base_url = settings.base_url();
-            let detect_url = format!("{}/api/cameras/detect", base_url);
+            let detect_url = format!("{base_url}/api/cameras/detect");
 
             match client.get(&detect_url).send().await {
                 Ok(response) => {
@@ -278,8 +278,8 @@ async fn handle_camera_command(action: CameraAction, settings: &Settings) -> Our
                                                 camera.get("hostname").and_then(|h| h.as_str()),
                                                 camera.get("online").and_then(|o| o.as_bool()),
                                             ) {
-                                                println!("  • {} ({})", name, id);
-                                                println!("    Hostname: {}", hostname);
+                                                println!("  • {name} ({id})");
+                                                println!("    Hostname: {hostname}");
                                                 println!(
                                                     "    Status: {}",
                                                     if online { "Online" } else { "Offline" }
@@ -307,8 +307,7 @@ async fn handle_camera_command(action: CameraAction, settings: &Settings) -> Our
                 }
                 Err(e) => {
                     return Err(OurError::App(format!(
-                        "Failed to connect to server at {}: {}\nMake sure the server is running with: shell-sorter serve",
-                        base_url, e
+                        "Failed to connect to server at {base_url}: {e}\nMake sure the server is running with: shell-sorter serve"
                     )));
                 }
             }
@@ -321,7 +320,7 @@ async fn handle_camera_command(action: CameraAction, settings: &Settings) -> Our
             // Create HTTP client to communicate with running server
             let client = reqwest::Client::new();
             let base_url = settings.base_url();
-            let cameras_url = format!("{}/api/cameras", base_url);
+            let cameras_url = format!("{base_url}/api/cameras");
 
             match client.get(&cameras_url).send().await {
                 Ok(response) => {
@@ -345,8 +344,8 @@ async fn handle_camera_command(action: CameraAction, settings: &Settings) -> Our
                                                 camera.get("hostname").and_then(|h| h.as_str()),
                                                 camera.get("online").and_then(|o| o.as_bool()),
                                             ) {
-                                                println!("  • {} ({})", name, id);
-                                                println!("    Hostname: {}", hostname);
+                                                println!("  • {name} ({id})");
+                                                println!("    Hostname: {hostname}");
                                                 println!(
                                                     "    Status: {}",
                                                     if online { "Online" } else { "Offline" }
@@ -374,8 +373,7 @@ async fn handle_camera_command(action: CameraAction, settings: &Settings) -> Our
                 }
                 Err(e) => {
                     return Err(OurError::App(format!(
-                        "Failed to connect to server at {}: {}\nMake sure the server is running with: shell-sorter serve",
-                        base_url, e
+                        "Failed to connect to server at {base_url}: {e}\nMake sure the server is running with: shell-sorter serve"
                     )));
                 }
             }
