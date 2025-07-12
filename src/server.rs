@@ -5,8 +5,9 @@ use askama_web::WebTemplate;
 use axum::{
     Router,
     body::Body,
-    extract::{Json as ExtractJson, Path, State},
-    http::StatusCode,
+    extract::{Json as ExtractJson, Path, Request, State},
+    http::{HeaderValue, StatusCode},
+    middleware::{self, Next},
     response::{Html, Json, Response},
     routing::{delete, get, post},
 };
@@ -22,7 +23,47 @@ use crate::config::Settings;
 use crate::controller_monitor::{ControllerCommand, ControllerHandle, ControllerResponse};
 use crate::usb_camera_controller::UsbCameraHandle;
 use crate::{OurError, OurResult};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{error, info};
+
+/// Middleware to add no-cache headers to prevent browser caching
+async fn no_cache_middleware(request: Request, next: Next) -> Response {
+    let path = request.uri().path().to_string();
+    let mut response = next.run(request).await;
+
+    // Get the headers map mutably
+    let headers = response.headers_mut();
+
+    // Add no-cache headers for all responses
+    headers.insert(
+        "Cache-Control",
+        HeaderValue::from_static("no-cache, no-store, must-revalidate, max-age=0"),
+    );
+    headers.insert("Pragma", HeaderValue::from_static("no-cache"));
+    headers.insert("Expires", HeaderValue::from_static("0"));
+
+    // Generate ETag with current timestamp
+    if let Ok(timestamp) = SystemTime::now().duration_since(UNIX_EPOCH) {
+        let etag_value = format!("\"{}\"", timestamp.as_secs());
+        if let Ok(etag_header) = HeaderValue::from_str(&etag_value) {
+            headers.insert("ETag", etag_header);
+        }
+    }
+
+    // Additional headers for static files (JS, CSS, HTML)
+    if path.ends_with(".js")
+        || path.ends_with(".css")
+        || path.ends_with(".html")
+        || path.ends_with(".htm")
+    {
+        headers.insert(
+            "Cache-Control",
+            HeaderValue::from_static("no-cache, no-store, must-revalidate, max-age=0, private"),
+        );
+    }
+
+    response
+}
 
 /// Application state shared across handlers
 #[derive(Clone)]
@@ -175,6 +216,7 @@ pub async fn start_server(
         .route("/api/config/cameras/{index}", delete(delete_camera_config))
         .route("/api/config/cameras", delete(clear_camera_configs))
         .route("/api/config/reset", post(reset_config))
+        .layer(middleware::from_fn(no_cache_middleware))
         .with_state(state);
 
     let addr = format!("{host}:{port}");
