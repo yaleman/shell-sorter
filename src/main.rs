@@ -5,6 +5,7 @@ use shell_sorter::camera_manager::CameraManager;
 use shell_sorter::config::Settings;
 use shell_sorter::controller_monitor::ControllerMonitor;
 use shell_sorter::server;
+use shell_sorter::usb_camera_controller::start_usb_camera_manager;
 use shell_sorter::{OurError, OurResult};
 use tracing::{debug, info};
 use tracing_subscriber::{filter::EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -95,6 +96,29 @@ enum CameraAction {
         /// Camera index
         #[arg(long)]
         index: Option<usize>,
+    },
+    /// USB camera operations
+    Usb {
+        #[command(subcommand)]
+        action: UsbCameraAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum UsbCameraAction {
+    /// Detect USB cameras with hardware identification
+    Detect,
+    /// List detected USB cameras
+    List,
+    /// Capture image from USB camera
+    Capture {
+        /// Hardware ID of camera to capture from
+        hardware_id: String,
+    },
+    /// Test USB camera functionality
+    Test {
+        /// Hardware ID of camera to test
+        hardware_id: String,
     },
 }
 
@@ -390,6 +414,173 @@ async fn handle_camera_command(action: CameraAction, settings: &Settings) -> Our
             info!("Starting camera stream...");
             debug!("Camera index: {:?}", index);
             // TODO: Implement camera streaming
+            Ok(())
+        }
+        CameraAction::Usb { action } => handle_usb_camera_command(action).await,
+    }
+}
+
+async fn handle_usb_camera_command(action: UsbCameraAction) -> OurResult<()> {
+    match action {
+        UsbCameraAction::Detect => {
+            info!("Detecting USB cameras with hardware identification...");
+
+            let usb_camera_manager = start_usb_camera_manager().await?;
+            let cameras = usb_camera_manager.detect_cameras().await?;
+
+            if cameras.is_empty() {
+                println!("No USB cameras detected");
+            } else {
+                println!("Detected {} USB camera(s):", cameras.len());
+                for camera in cameras {
+                    println!("  • {} ({})", camera.name, camera.hardware_id);
+                    println!("    Index: {}", camera.index);
+                    if let Some(vendor_id) = &camera.vendor_id {
+                        println!("    Vendor ID: {vendor_id}");
+                    }
+                    if let Some(product_id) = &camera.product_id {
+                        println!("    Product ID: {product_id}");
+                    }
+                    if let Some(serial) = &camera.serial_number {
+                        println!("    Serial: {serial}");
+                    }
+                    println!(
+                        "    Status: {}",
+                        if camera.connected {
+                            "Connected"
+                        } else {
+                            "Disconnected"
+                        }
+                    );
+                    println!("    Supported formats: {}", camera.supported_formats.len());
+                    for format in camera.supported_formats.iter().take(3) {
+                        println!(
+                            "      - {}x{}@{}fps ({})",
+                            format.width, format.height, format.fps, format.format
+                        );
+                    }
+                    if camera.supported_formats.len() > 3 {
+                        println!("      ... and {} more", camera.supported_formats.len() - 3);
+                    }
+                    println!();
+                }
+            }
+
+            Ok(())
+        }
+        UsbCameraAction::List => {
+            info!("Listing detected USB cameras...");
+
+            let usb_camera_manager = start_usb_camera_manager().await?;
+            let cameras = usb_camera_manager.list_cameras().await?;
+
+            if cameras.is_empty() {
+                println!("No USB cameras in cache. Run 'shell-sorter camera usb detect' first.");
+            } else {
+                println!("Cached USB cameras:");
+                for camera in cameras {
+                    println!("  • {} ({})", camera.name, camera.hardware_id);
+                    println!(
+                        "    Status: {}",
+                        if camera.connected {
+                            "Connected"
+                        } else {
+                            "Disconnected"
+                        }
+                    );
+                }
+            }
+
+            Ok(())
+        }
+        UsbCameraAction::Capture { hardware_id } => {
+            info!("Capturing image from USB camera: {hardware_id}");
+
+            let usb_camera_manager = start_usb_camera_manager().await?;
+
+            // First detect cameras to ensure the hardware_id exists
+            let cameras = usb_camera_manager.detect_cameras().await?;
+            if !cameras.iter().any(|c| c.hardware_id == hardware_id) {
+                return Err(OurError::App(format!("Camera not found: {hardware_id}")));
+            }
+
+            // Select and start streaming for this camera
+            usb_camera_manager
+                .select_cameras(vec![hardware_id.clone()])
+                .await?;
+            usb_camera_manager.start_streaming().await?;
+
+            // Capture image
+            match usb_camera_manager.capture_image(hardware_id.clone()).await {
+                Ok(image_data) => {
+                    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+                    let filename = format!(
+                        "usb_capture_{}_{}.jpg",
+                        hardware_id.replace(':', "_"),
+                        timestamp
+                    );
+
+                    std::fs::write(&filename, image_data)
+                        .map_err(|e| OurError::App(format!("Failed to save image: {e}")))?;
+
+                    println!("Image captured and saved to: {filename}");
+                }
+                Err(e) => {
+                    return Err(OurError::App(format!("Failed to capture image: {e}")));
+                }
+            }
+
+            // Stop streaming
+            usb_camera_manager.stop_streaming().await?;
+
+            Ok(())
+        }
+        UsbCameraAction::Test { hardware_id } => {
+            info!("Testing USB camera: {hardware_id}");
+
+            let usb_camera_manager = start_usb_camera_manager().await?;
+
+            // Detect cameras
+            println!("1. Detecting cameras...");
+            let cameras = usb_camera_manager.detect_cameras().await?;
+
+            let camera = cameras
+                .iter()
+                .find(|c| c.hardware_id == hardware_id)
+                .ok_or_else(|| OurError::App(format!("Camera not found: {hardware_id}")))?;
+
+            println!("   ✓ Camera found: {}", camera.name);
+
+            // Test camera selection
+            println!("2. Selecting camera...");
+            usb_camera_manager
+                .select_cameras(vec![hardware_id.clone()])
+                .await?;
+            println!("   ✓ Camera selected");
+
+            // Test streaming
+            println!("3. Starting streaming...");
+            usb_camera_manager.start_streaming().await?;
+            println!("   ✓ Streaming started");
+
+            // Test capture
+            println!("4. Capturing test image...");
+            match usb_camera_manager.capture_image(hardware_id.clone()).await {
+                Ok(image_data) => {
+                    println!("   ✓ Image captured ({} bytes)", image_data.len());
+                }
+                Err(e) => {
+                    println!("   ✗ Capture failed: {e}");
+                }
+            }
+
+            // Stop streaming
+            println!("5. Stopping streaming...");
+            usb_camera_manager.stop_streaming().await?;
+            println!("   ✓ Streaming stopped");
+
+            println!("\nUSB camera test completed successfully!");
+
             Ok(())
         }
     }

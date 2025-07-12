@@ -30,3 +30,5 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 url = { version = "2.5.4", features = ["serde"] }
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
+nokhwa = { version = "0.10.9", features = ["input-native"] }
+regex = "1.11.1"

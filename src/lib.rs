@@ -6,5 +6,6 @@ pub mod config;
 pub mod controller_monitor;
 pub mod error;
 pub mod server;
+pub mod usb_camera_controller;
 
 pub use error::{OurError, OurResult};

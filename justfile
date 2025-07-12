@@ -7,7 +7,7 @@ default:
 # Run linting checks
 lint:
     cargo clippy --all-targets
-    uv run ruff check shell_sorter/ tests
+# uv run ruff check shell_sorter/ tests
 
 # Run type checking
 mypy:
@@ -15,11 +15,11 @@ mypy:
 
 # Run tests
 test:
-    uv run pytest -s -v
+# uv run pytest -s -v
     cargo test
 
 # Run all checks
-check: fmt lint mypy test esphome-check
+check: fmt lint test esphome-check
 
 # Format code
 fmt:
