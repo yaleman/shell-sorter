@@ -68,6 +68,7 @@ pub struct CameraManager {
 #[derive(Clone)]
 pub struct CameraHandle {
     request_sender: mpsc::UnboundedSender<CameraRequest>,
+    #[allow(dead_code)]
     status: Arc<Mutex<CameraStatus>>,
 }
 

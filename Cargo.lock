@@ -1863,6 +1863,7 @@ dependencies = [
  "nokhwa-bindings-macos",
  "nokhwa-bindings-windows",
  "nokhwa-core",
+ "parking_lot",
  "paste",
  "thiserror 2.0.12",
 ]

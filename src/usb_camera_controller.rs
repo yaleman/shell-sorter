@@ -5,7 +5,7 @@
 
 use image::DynamicImage;
 use nokhwa::{
-    Camera,
+    CallbackCamera, Camera,
     pixel_format::RgbFormat,
     utils::{
         ApiBackend, CameraFormat, CameraIndex, CameraInfo as NokhwaCameraInfo, FrameFormat,
@@ -125,6 +125,7 @@ pub struct UsbCameraManager {
 #[derive(Clone)]
 pub struct UsbCameraHandle {
     request_sender: mpsc::UnboundedSender<UsbCameraRequest>,
+    #[allow(dead_code)]
     status: Arc<Mutex<UsbCameraStatus>>,
 }
 
@@ -674,14 +675,17 @@ impl UsbCameraManager {
         let camera_format = CameraFormat::new(resolution, FrameFormat::MJPEG, 30);
         let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Exact(camera_format));
 
-        let mut camera = Camera::new(camera_index, format)
-            .map_err(|e| OurError::App(format!("Failed to create streaming camera: {e}")))?;
+        let mut camera = CallbackCamera::new(camera_index, format, |buffer| {
+            let image = buffer.decode_image::<RgbFormat>().unwrap();
+            debug!("{}x{} {}", image.width(), image.height(), image.len());
+        })
+        .map_err(|e| OurError::App(format!("Failed to create streaming camera: {e}")))?;
 
         camera
             .open_stream()
             .map_err(|e| OurError::App(format!("Failed to open camera stream: {e}")))?;
 
-        match camera.frame() {
+        match camera.poll_frame() {
             Ok(frame) => {
                 // Convert frame to JPEG bytes
                 let image = frame
