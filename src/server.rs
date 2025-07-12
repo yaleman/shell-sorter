@@ -464,42 +464,116 @@ async fn select_cameras(
     State(state): State<Arc<AppState>>,
     ExtractJson(payload): ExtractJson<SelectCamerasRequest>,
 ) -> Json<ApiResponse<()>> {
-    match state
-        .camera_manager
-        .select_cameras(payload.camera_ids)
-        .await
-    {
-        Ok(()) => Json(ApiResponse::success(())),
-        Err(e) => {
-            error!("Failed to select cameras: {e}");
-            Json(ApiResponse::<()>::error(format!(
-                "Failed to select cameras: {e}"
-            )))
+    // Separate camera IDs by type
+    let mut esphome_cameras = Vec::new();
+    let mut usb_cameras = Vec::new();
+
+    for camera_id in payload.camera_ids {
+        if camera_id.starts_with("usb:") {
+            usb_cameras.push(camera_id);
+        } else {
+            esphome_cameras.push(camera_id);
         }
     }
+
+    // Select ESPHome cameras if any
+    if !esphome_cameras.is_empty() {
+        if let Err(e) = state.camera_manager.select_cameras(esphome_cameras).await {
+            error!("Failed to select ESPHome cameras: {e}");
+            return Json(ApiResponse::<()>::error(format!(
+                "Failed to select ESPHome cameras: {e}"
+            )));
+        }
+    }
+
+    // Select USB cameras if any
+    if !usb_cameras.is_empty() {
+        if let Err(e) = state.usb_camera_manager.select_cameras(usb_cameras).await {
+            error!("Failed to select USB cameras: {e}");
+            return Json(ApiResponse::<()>::error(format!(
+                "Failed to select USB cameras: {e}"
+            )));
+        }
+    }
+
+    Json(ApiResponse::success(()))
 }
 
 async fn start_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
+    let mut errors = Vec::new();
+    let mut started_any = false;
+
+    // Try to start ESPHome cameras
     match state.camera_manager.start_streaming().await {
-        Ok(()) => Json(ApiResponse::success(())),
-        Err(e) => {
-            error!("Failed to start cameras: {e}");
-            Json(ApiResponse::<()>::error(format!(
-                "Failed to start cameras: {e}"
-            )))
+        Ok(()) => {
+            started_any = true;
         }
+        Err(e) => {
+            error!("Failed to start ESPHome cameras: {e}");
+            errors.push(format!("ESPHome: {e}"));
+        }
+    }
+
+    // Try to start USB cameras
+    match state.usb_camera_manager.start_streaming().await {
+        Ok(()) => {
+            started_any = true;
+        }
+        Err(e) => {
+            error!("Failed to start USB cameras: {e}");
+            errors.push(format!("USB: {e}"));
+        }
+    }
+
+    if started_any {
+        if errors.is_empty() {
+            Json(ApiResponse::success(()))
+        } else {
+            // Some cameras started but others failed
+            Json(ApiResponse::success(()))
+        }
+    } else {
+        // No cameras started
+        Json(ApiResponse::<()>::error(format!(
+            "Failed to start cameras: {}",
+            errors.join(", ")
+        )))
     }
 }
 
 async fn stop_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
+    let mut errors = Vec::new();
+    let mut stopped_any = false;
+
+    // Try to stop ESPHome cameras
     match state.camera_manager.stop_streaming().await {
-        Ok(()) => Json(ApiResponse::success(())),
-        Err(e) => {
-            error!("Failed to stop cameras: {e}");
-            Json(ApiResponse::<()>::error(format!(
-                "Failed to stop cameras: {e}"
-            )))
+        Ok(()) => {
+            stopped_any = true;
         }
+        Err(e) => {
+            error!("Failed to stop ESPHome cameras: {e}");
+            errors.push(format!("ESPHome: {e}"));
+        }
+    }
+
+    // Try to stop USB cameras
+    match state.usb_camera_manager.stop_streaming().await {
+        Ok(()) => {
+            stopped_any = true;
+        }
+        Err(e) => {
+            error!("Failed to stop USB cameras: {e}");
+            errors.push(format!("USB: {e}"));
+        }
+    }
+
+    if stopped_any || errors.is_empty() {
+        Json(ApiResponse::success(()))
+    } else {
+        Json(ApiResponse::<()>::error(format!(
+            "Failed to stop cameras: {}",
+            errors.join(", ")
+        )))
     }
 }
 
