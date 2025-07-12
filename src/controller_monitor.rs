@@ -12,11 +12,11 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::{interval, sleep};
 use tracing::{debug, error, info, warn};
 
-use crate::OurResult;
 use crate::config::Settings;
+use crate::{OurError, OurResult};
 
 /// Controller status information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ControllerStatus {
     pub online: bool,
     pub hostname: String,
@@ -52,7 +52,7 @@ pub enum ControllerCommand {
     GetHardwareStatus,
     TriggerVibration,
     SetServoPosition { servo: String, position: u8 },
-    UpdateConfig { new_settings: Settings },
+    UpdateConfig { new_settings: Box<Settings> },
 }
 
 /// Responses from controller operations
@@ -89,12 +89,21 @@ pub struct ControllerHandle {
 }
 
 impl ControllerHandle {
+    /// Safely lock the status mutex
+    fn lock_status(&self) -> Result<std::sync::MutexGuard<ControllerStatus>, String> {
+        self.status
+            .lock()
+            .map_err(|_| "Status lock poisoned".to_string())
+    }
+
     /// Update the controller configuration
     pub async fn update_config(&self, new_settings: Settings) -> Result<(), String> {
         let (response_sender, response_receiver) = oneshot::channel();
 
         let request = ControllerRequest {
-            command: ControllerCommand::UpdateConfig { new_settings },
+            command: ControllerCommand::UpdateConfig {
+                new_settings: Box::new(new_settings),
+            },
             response_sender,
         };
 
@@ -112,23 +121,48 @@ impl ControllerHandle {
 
     /// Get current controller status
     pub fn get_status(&self) -> ControllerStatus {
-        self.status.lock().expect("Status lock poisoned").clone()
+        self.lock_status()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
     }
 }
 
 impl ControllerMonitor {
+    /// Safely lock the settings for reading
+    fn lock_settings_read(&self) -> Result<std::sync::RwLockReadGuard<Settings>, OurError> {
+        self.settings
+            .read()
+            .map_err(|_| OurError::App("Settings lock poisoned".to_string()))
+    }
+
+    /// Safely lock the settings for writing
+    fn lock_settings_write(&self) -> Result<std::sync::RwLockWriteGuard<Settings>, OurError> {
+        self.settings
+            .write()
+            .map_err(|_| OurError::App("Settings lock poisoned".to_string()))
+    }
+
+    /// Safely lock the status mutex
+    fn lock_status(&self) -> Result<std::sync::MutexGuard<ControllerStatus>, OurError> {
+        self.status
+            .lock()
+            .map_err(|_| OurError::App("Status lock poisoned".to_string()))
+    }
+
     /// Create a new controller monitor and return a handle for communication
     pub fn new(settings: Settings) -> Result<(Self, ControllerHandle), Box<dyn std::error::Error>> {
         let (request_sender, request_receiver) = mpsc::unbounded_channel();
 
         let settings = Arc::new(RwLock::new(settings.clone()));
+        let hostname = settings
+            .read()
+            .map_err(|_| "Settings lock poisoned")?
+            .esphome_hostname
+            .clone();
+
         let status = Arc::new(Mutex::new(ControllerStatus {
             online: false,
-            hostname: settings
-                .read()
-                .expect("Settings lock poisoned")
-                .esphome_hostname
-                .clone(),
+            hostname,
             last_seen: None,
             response_time_ms: None,
             error_count: 0,
@@ -157,7 +191,7 @@ impl ControllerMonitor {
     /// Start the controller monitoring loop
     pub async fn run(mut self) -> OurResult<()> {
         let hostname = {
-            let settings = self.settings.read().expect("Settings lock poisoned");
+            let settings = self.lock_settings_read()?;
             settings.esphome_hostname.clone()
         };
 
@@ -173,10 +207,13 @@ impl ControllerMonitor {
             loop {
                 interval.tick().await;
                 let hostname = {
-                    let settings = health_check_settings
-                        .read()
-                        .expect("Settings lock poisoned");
-                    settings.esphome_hostname.clone()
+                    match health_check_settings.read() {
+                        Ok(settings) => settings.esphome_hostname.clone(),
+                        Err(_) => {
+                            tracing::error!("Settings lock poisoned in health check");
+                            return;
+                        }
+                    }
                 };
                 Self::perform_health_check(&health_check_client, &hostname, &health_check_status)
                     .await;
@@ -211,7 +248,7 @@ impl ControllerMonitor {
                 self.set_servo_position(&servo, position).await
             }
             ControllerCommand::UpdateConfig { new_settings } => {
-                self.update_config(new_settings).await
+                self.update_config(*new_settings).await
             }
         };
 
@@ -223,29 +260,47 @@ impl ControllerMonitor {
     /// Update controller configuration
     async fn update_config(&self, new_settings: Settings) -> ControllerResponse {
         let old_hostname = {
-            let settings = self.settings.read().expect("Settings lock poisoned");
-            settings.esphome_hostname.clone()
+            match self.lock_settings_read() {
+                Ok(settings) => settings.esphome_hostname.clone(),
+                Err(e) => {
+                    return ControllerResponse::Error(format!("Failed to read settings: {e}"));
+                }
+            }
         };
 
         // Update settings
         {
-            let mut settings = self.settings.write().expect("Settings lock poisoned");
-            *settings = new_settings;
+            match self.lock_settings_write() {
+                Ok(mut settings) => *settings = new_settings,
+                Err(e) => {
+                    return ControllerResponse::Error(format!("Failed to write settings: {e}"));
+                }
+            }
         }
 
         let new_hostname = {
-            let settings = self.settings.read().expect("Settings lock poisoned");
-            settings.esphome_hostname.clone()
+            match self.lock_settings_read() {
+                Ok(settings) => settings.esphome_hostname.clone(),
+                Err(e) => {
+                    return ControllerResponse::Error(format!("Failed to read new settings: {e}"));
+                }
+            }
         };
 
         // Update status with new hostname if it changed
         if old_hostname != new_hostname {
-            let mut status = self.status.lock().expect("Status lock poisoned");
-            status.hostname = new_hostname.clone();
-            status.online = false; // Reset online status until next health check
-            status.last_seen = None;
-            status.response_time_ms = None;
-            status.error_count = 0;
+            match self.lock_status() {
+                Ok(mut status) => {
+                    status.hostname = new_hostname.clone();
+                    status.online = false; // Reset online status until next health check
+                    status.last_seen = None;
+                    status.response_time_ms = None;
+                    status.error_count = 0;
+                }
+                Err(e) => {
+                    return ControllerResponse::Error(format!("Failed to update status: {e}"));
+                }
+            }
 
             info!(
                 "Controller hostname updated from '{}' to '{}'",
@@ -259,11 +314,15 @@ impl ControllerMonitor {
     /// Trigger the next case sequence on the controller
     async fn trigger_next_case(&self) -> ControllerResponse {
         let hostname = {
-            let settings = self.settings.read().expect("Settings lock poisoned");
-            settings.esphome_hostname.clone()
+            match self.lock_settings_read() {
+                Ok(settings) => settings.esphome_hostname.clone(),
+                Err(e) => {
+                    return ControllerResponse::Error(format!("Failed to read settings: {e}"));
+                }
+            }
         };
 
-        let url = format!("http://{}/button/trigger_next_case/press", hostname);
+        let url = format!("http://{hostname}/button/trigger_next_case/press");
 
         match self.make_request(&url, "POST").await {
             Ok(_) => {
@@ -323,10 +382,11 @@ impl ControllerMonitor {
 
         if self.is_online().await {
             status.insert("controller".to_string(), "Connected".to_string());
-            status.insert("esphome_hostname".to_string(), {
-                let settings = self.settings.read().expect("Settings lock poisoned");
-                settings.esphome_hostname.clone()
-            });
+            let hostname = match self.lock_settings_read() {
+                Ok(settings) => settings.esphome_hostname.clone(),
+                Err(_) => "unknown".to_string(),
+            };
+            status.insert("esphome_hostname".to_string(), hostname);
 
             // Try to get additional status info
             if let Ok(info) = self.get_device_info().await {
@@ -334,10 +394,11 @@ impl ControllerMonitor {
             }
         } else {
             status.insert("controller".to_string(), "Disconnected".to_string());
-            status.insert("esphome_hostname".to_string(), {
-                let settings = self.settings.read().expect("Settings lock poisoned");
-                settings.esphome_hostname.clone()
-            });
+            let hostname = match self.lock_settings_read() {
+                Ok(settings) => settings.esphome_hostname.clone(),
+                Err(_) => "unknown".to_string(),
+            };
+            status.insert("esphome_hostname".to_string(), hostname);
         }
 
         ControllerResponse::HardwareData(status)
@@ -345,10 +406,11 @@ impl ControllerMonitor {
 
     /// Trigger vibration motor
     async fn trigger_vibration(&self) -> ControllerResponse {
-        let url = format!("http://{}/switch/vibration_motor/turn_on", {
-            let settings = self.settings.read().expect("Settings lock poisoned");
-            settings.esphome_hostname.clone()
-        });
+        let hostname = match self.lock_settings_read() {
+            Ok(settings) => settings.esphome_hostname.clone(),
+            Err(e) => return ControllerResponse::Error(format!("Failed to read settings: {e}")),
+        };
+        let url = format!("http://{hostname}/switch/vibration_motor/turn_on");
 
         match self.make_request(&url, "POST").await {
             Ok(_) => {
@@ -365,10 +427,11 @@ impl ControllerMonitor {
 
     /// Set servo position
     async fn set_servo_position(&self, servo: &str, position: u8) -> ControllerResponse {
-        let url = format!("http://{}/number/{servo}/set?value={position}", {
-            let settings = self.settings.read().expect("Settings lock poisoned");
-            settings.esphome_hostname.clone()
-        });
+        let hostname = match self.lock_settings_read() {
+            Ok(settings) => settings.esphome_hostname.clone(),
+            Err(e) => return ControllerResponse::Error(format!("Failed to read settings: {e}")),
+        };
+        let url = format!("http://{hostname}/number/{servo}/set?value={position}");
 
         match self.make_request(&url, "POST").await {
             Ok(_) => {
@@ -384,8 +447,10 @@ impl ControllerMonitor {
 
     /// Check if the controller is online
     async fn is_online(&self) -> bool {
-        let status = self.status.lock().expect("Status lock poisoned");
-        status.online
+        match self.lock_status() {
+            Ok(status) => status.online,
+            Err(_) => false,
+        }
     }
 
     /// Get binary sensor state from ESPHome
@@ -393,14 +458,11 @@ impl ControllerMonitor {
         &self,
         sensor_name: &str,
     ) -> Result<bool, Box<dyn std::error::Error>> {
-        let url = format!(
-            "http://{}/binary_sensor/{}/state",
-            {
-                let settings = self.settings.read().expect("Settings lock poisoned");
-                settings.esphome_hostname.clone()
-            },
-            sensor_name
-        );
+        let hostname = match self.lock_settings_read() {
+            Ok(settings) => settings.esphome_hostname.clone(),
+            Err(e) => return Err(format!("Failed to read settings: {e}").into()),
+        };
+        let url = format!("http://{hostname}/binary_sensor/{sensor_name}/state");
         let response = self.make_request(&url, "GET").await?;
 
         // ESPHome returns "ON" or "OFF" for binary sensors
@@ -409,10 +471,11 @@ impl ControllerMonitor {
 
     /// Get device information from ESPHome
     async fn get_device_info(&self) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
-        let url = format!("http://{}/text_sensor/device_info/state", {
-            let settings = self.settings.read().expect("Settings lock poisoned");
-            settings.esphome_hostname.clone()
-        });
+        let hostname = match self.lock_settings_read() {
+            Ok(settings) => settings.esphome_hostname.clone(),
+            Err(e) => return Err(format!("Failed to read settings: {e}").into()),
+        };
+        let url = format!("http://{hostname}/text_sensor/device_info/state");
 
         let mut info = HashMap::new();
         match self.make_request(&url, "GET").await {
@@ -460,8 +523,7 @@ impl ControllerMonitor {
             let text = response.text().await?;
 
             // Update response time in status
-            {
-                let mut status = self.status.lock().expect("Status lock poisoned");
+            if let Ok(mut status) = self.lock_status() {
                 status.response_time_ms = Some(elapsed.as_millis() as u64);
                 status.last_seen = Some(Instant::now());
             }
@@ -503,8 +565,7 @@ impl ControllerMonitor {
                 }
 
                 // Update status
-                {
-                    let mut status_lock = status.lock().expect("Status lock poisoned");
+                if let Ok(mut status_lock) = status.lock() {
                     status_lock.online = success;
                     status_lock.last_seen = Some(Instant::now());
                     status_lock.response_time_ms = Some(elapsed.as_millis() as u64);
@@ -522,8 +583,7 @@ impl ControllerMonitor {
                 warn!("Health check failed: {e}");
 
                 // Update status
-                {
-                    let mut status_lock = status.lock().expect("Status lock poisoned");
+                if let Ok(mut status_lock) = status.lock() {
                     status_lock.online = false;
                     status_lock.error_count += 1;
                     status_lock.response_time_ms = None;
