@@ -374,9 +374,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 clearTimeout(timeoutId);
 
                 if (response.ok) {
-                    const cameras = await response.json();
-                    showToast(`Detected ${cameras.length} cameras`, 'success');
-                    location.reload();
+                    const apiResponse = await response.json();
+                    if (apiResponse.success && apiResponse.data) {
+                        const cameras = apiResponse.data;
+                        showToast(`Detected ${cameras.length} cameras`, 'success');
+                        location.reload();
+                    } else {
+                        showToast(`Error detecting cameras: ${apiResponse.message || 'Unknown error'}`, 'error');
+                    }
                 } else {
                     showToast('Error detecting cameras: Server returned an error', 'error');
                 }
@@ -886,16 +891,22 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                     
                     if (detectResponse.ok) {
-                        const detectedCameras = await detectResponse.json();
-                        console.log(`Auto-detected ${detectedCameras.length} cameras`);
-                        
-                        if (detectedCameras.length > 0) {
-                            showToast(`Auto-detected ${detectedCameras.length} cameras`, 'success');
-                            // Reload to show the detected cameras
-                            setTimeout(() => location.reload(), 1000);
+                        const detectApiResponse = await detectResponse.json();
+                        if (detectApiResponse.success && detectApiResponse.data) {
+                            const detectedCameras = detectApiResponse.data;
+                            console.log(`Auto-detected ${detectedCameras.length} cameras`);
+                            
+                            if (detectedCameras.length > 0) {
+                                showToast(`Auto-detected ${detectedCameras.length} cameras`, 'success');
+                                // Reload to show the detected cameras
+                                setTimeout(() => location.reload(), 1000);
+                            } else {
+                                console.log('No cameras found during auto-detection');
+                                showToast('No cameras found on this system', 'warning');
+                            }
                         } else {
-                            console.log('No cameras found during auto-detection');
-                            showToast('No cameras found on this system', 'warning');
+                            console.log('Auto-detection failed:', detectApiResponse.message || 'Unknown error');
+                            showToast(`Auto-detection failed: ${detectApiResponse.message || 'Unknown error'}`, 'error');
                         }
                     } else {
                         console.log('Auto-detection failed');

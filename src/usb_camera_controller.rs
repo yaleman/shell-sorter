@@ -505,63 +505,44 @@ impl UsbCameraManager {
 
     /// Get supported camera formats
     async fn get_camera_formats(&self, index: u32) -> OurResult<Vec<CameraFormatInfo>> {
-        // Try different approaches to query camera formats without initializing the camera
-        debug!("Querying formats for camera {}", index);
+        debug!("Getting default formats for camera {}", index);
 
-        // Try multiple formats that are commonly supported
-        let test_formats = vec![
-            (320, 240, 30),  // Very basic format that most cameras support
-            (640, 480, 30),  // Standard VGA
-            (1280, 720, 30), // 720p
-        ];
-
-        let mut format_infos = Vec::new();
-
-        // Try to get formats without actually setting them
-        for (width, height, fps) in test_formats {
-            let camera_index = CameraIndex::Index(index);
-            let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Exact(
-                CameraFormat::new(Resolution::new(width, height), FrameFormat::MJPEG, fps),
-            ));
-
-            // Try to create camera with this format to see if it's supported
-            match Camera::new(camera_index, format) {
-                Ok(_camera) => {
-                    format_infos.push(CameraFormatInfo {
-                        width,
-                        height,
-                        fps,
-                        format: "MJPEG".to_string(),
-                    });
-                    debug!(
-                        "Camera {} supports format {}x{}@{}fps",
-                        index, width, height, fps
-                    );
-                }
-                Err(e) => {
-                    debug!(
-                        "Camera {} does not support format {}x{}@{}fps: {}",
-                        index, width, height, fps, e
-                    );
-                }
-            }
-        }
-
-        // If no formats worked, add a basic default
-        if format_infos.is_empty() {
-            debug!(
-                "No supported formats found for camera {}, adding default",
-                index
-            );
-            format_infos.push(CameraFormatInfo {
+        // Instead of trying to access the camera (which can panic or fail),
+        // return a reasonable set of common formats that most USB cameras support
+        let default_formats = vec![
+            CameraFormatInfo {
+                width: 320,
+                height: 240,
+                fps: 30,
+                format: "MJPEG".to_string(),
+            },
+            CameraFormatInfo {
                 width: 640,
                 height: 480,
                 fps: 30,
-                format: "Unknown".to_string(),
-            });
-        }
+                format: "MJPEG".to_string(),
+            },
+            CameraFormatInfo {
+                width: 1280,
+                height: 720,
+                fps: 30,
+                format: "MJPEG".to_string(),
+            },
+            CameraFormatInfo {
+                width: 1920,
+                height: 1080,
+                fps: 30,
+                format: "MJPEG".to_string(),
+            },
+        ];
 
-        Ok(format_infos)
+        debug!(
+            "Returning {} default formats for camera {}",
+            default_formats.len(),
+            index
+        );
+
+        Ok(default_formats)
     }
 
     /// List currently known cameras

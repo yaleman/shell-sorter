@@ -253,7 +253,9 @@ impl ControllerMonitor {
         };
 
         if request.response_sender.send(response).is_err() {
-            warn!("Failed to send response back to web server (receiver dropped)");
+            debug!(
+                "Failed to send response back to web server (receiver dropped - likely due to client timeout or connection closed)"
+            );
         }
     }
 
