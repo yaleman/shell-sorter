@@ -297,6 +297,11 @@ impl Settings {
         println!("Saved user config to {config_path:?}");
         Ok(())
     }
+
+    /// Get the base URL for the API server
+    pub fn base_url(&self) -> String {
+        format!("http://{}:{}", self.host, self.port)
+    }
 }
 
 #[cfg(test)]
@@ -371,5 +376,18 @@ mod tests {
         let deserialized: Settings = serde_json::from_str(&json).expect("JSON should deserialize");
         assert_eq!(settings.host, deserialized.host);
         assert_eq!(settings.port, deserialized.port);
+    }
+
+    #[test]
+    fn test_base_url() {
+        let settings = Settings {
+            host: "localhost".to_string(),
+            port: 3000,
+            ..Settings::default()
+        };
+        assert_eq!(settings.base_url(), "http://localhost:3000");
+
+        let default_settings = Settings::default();
+        assert_eq!(default_settings.base_url(), "http://127.0.0.1:8000");
     }
 }

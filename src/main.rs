@@ -236,17 +236,142 @@ async fn handle_machine_command(action: MachineAction, _settings: &Settings) -> 
     }
 }
 
-async fn handle_camera_command(action: CameraAction, _settings: &Settings) -> OurResult<()> {
+async fn handle_camera_command(action: CameraAction, settings: &Settings) -> OurResult<()> {
     match action {
         CameraAction::Detect => {
             info!("Detecting cameras...");
             debug!("Camera detection process starting");
-            // TODO: Implement camera detection
+
+            // Create HTTP client to communicate with running server
+            let client = reqwest::Client::new();
+            let base_url = settings.base_url();
+            let detect_url = format!("{}/api/cameras/detect", base_url);
+
+            match client.get(&detect_url).send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        match response.json::<serde_json::Value>().await {
+                            Ok(json) => {
+                                if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
+                                    println!("Camera detection completed!");
+                                    if data.is_empty() {
+                                        println!("No cameras detected");
+                                    } else {
+                                        println!("Detected {} camera(s):", data.len());
+                                        for camera in data {
+                                            if let (
+                                                Some(name),
+                                                Some(id),
+                                                Some(hostname),
+                                                Some(online),
+                                            ) = (
+                                                camera.get("name").and_then(|n| n.as_str()),
+                                                camera.get("id").and_then(|i| i.as_str()),
+                                                camera.get("hostname").and_then(|h| h.as_str()),
+                                                camera.get("online").and_then(|o| o.as_bool()),
+                                            ) {
+                                                println!("  • {} ({})", name, id);
+                                                println!("    Hostname: {}", hostname);
+                                                println!(
+                                                    "    Status: {}",
+                                                    if online { "Online" } else { "Offline" }
+                                                );
+                                                println!();
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    println!("No camera data found in response");
+                                }
+                            }
+                            Err(e) => {
+                                return Err(OurError::App(format!(
+                                    "Failed to parse response: {e}"
+                                )));
+                            }
+                        }
+                    } else {
+                        return Err(OurError::App(format!(
+                            "Server returned error: {}",
+                            response.status()
+                        )));
+                    }
+                }
+                Err(e) => {
+                    return Err(OurError::App(format!(
+                        "Failed to connect to server at {}: {}\nMake sure the server is running with: shell-sorter serve",
+                        base_url, e
+                    )));
+                }
+            }
+
             Ok(())
         }
         CameraAction::List => {
-            info!("Configured cameras:");
-            // TODO: Implement camera listing
+            info!("Listing cameras...");
+
+            // Create HTTP client to communicate with running server
+            let client = reqwest::Client::new();
+            let base_url = settings.base_url();
+            let cameras_url = format!("{}/api/cameras", base_url);
+
+            match client.get(&cameras_url).send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        match response.json::<serde_json::Value>().await {
+                            Ok(json) => {
+                                if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
+                                    if data.is_empty() {
+                                        println!("No cameras found");
+                                    } else {
+                                        println!("Found {} camera(s):", data.len());
+                                        for camera in data {
+                                            if let (
+                                                Some(name),
+                                                Some(id),
+                                                Some(hostname),
+                                                Some(online),
+                                            ) = (
+                                                camera.get("name").and_then(|n| n.as_str()),
+                                                camera.get("id").and_then(|i| i.as_str()),
+                                                camera.get("hostname").and_then(|h| h.as_str()),
+                                                camera.get("online").and_then(|o| o.as_bool()),
+                                            ) {
+                                                println!("  • {} ({})", name, id);
+                                                println!("    Hostname: {}", hostname);
+                                                println!(
+                                                    "    Status: {}",
+                                                    if online { "Online" } else { "Offline" }
+                                                );
+                                                println!();
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    println!("No camera data found in response");
+                                }
+                            }
+                            Err(e) => {
+                                return Err(OurError::App(format!(
+                                    "Failed to parse response: {e}"
+                                )));
+                            }
+                        }
+                    } else {
+                        return Err(OurError::App(format!(
+                            "Server returned error: {}",
+                            response.status()
+                        )));
+                    }
+                }
+                Err(e) => {
+                    return Err(OurError::App(format!(
+                        "Failed to connect to server at {}: {}\nMake sure the server is running with: shell-sorter serve",
+                        base_url, e
+                    )));
+                }
+            }
+
             Ok(())
         }
         CameraAction::Capture { session_id } => {
