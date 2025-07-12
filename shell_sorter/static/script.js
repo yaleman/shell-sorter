@@ -175,6 +175,17 @@ function displayCameras(cameras) {
                     <input type="checkbox" class="camera-checkbox" data-camera-id="${camera.id}">
                     <span class="camera-name">${camera.name}</span>
                     <span class="camera-type">(${camera.camera_type})</span>
+                    <span class="camera-details">
+                        <span class="camera-info-icon" title="Camera Details">ℹ️</span>
+                        <div class="camera-info-tooltip">
+                            <div><strong>ID:</strong> ${camera.id}</div>
+                            ${camera.hostname ? `<div><strong>Host:</strong> ${camera.hostname}</div>` : ''}
+                            ${camera.index !== undefined ? `<div><strong>Index:</strong> ${camera.index}</div>` : ''}
+                            ${camera.vendor_id ? `<div><strong>Vendor:</strong> ${camera.vendor_id}</div>` : ''}
+                            ${camera.product_id ? `<div><strong>Product:</strong> ${camera.product_id}</div>` : ''}
+                            ${camera.serial_number ? `<div><strong>Serial:</strong> ${camera.serial_number}</div>` : ''}
+                        </div>
+                    </span>
                 </label>
                 <span class="camera-status status-inactive">Inactive</span>
             </div>
@@ -188,17 +199,6 @@ function displayCameras(cameras) {
                 <button class="btn btn-sm btn-secondary camera-autofocus-btn" data-camera-id="${camera.id}" ${camera.index !== undefined ? `data-camera-index="${camera.index}"` : ''}>
                     Autofocus
                 </button>
-            </div>
-            <div class="camera-details">
-                <span class="camera-info-icon" title="Camera Details">ℹ️</span>
-                <div class="camera-info-tooltip">
-                    <div><strong>ID:</strong> ${camera.id}</div>
-                    ${camera.hostname ? `<div><strong>Host:</strong> ${camera.hostname}</div>` : ''}
-                    ${camera.index !== undefined ? `<div><strong>Index:</strong> ${camera.index}</div>` : ''}
-                    ${camera.vendor_id ? `<div><strong>Vendor:</strong> ${camera.vendor_id}</div>` : ''}
-                    ${camera.product_id ? `<div><strong>Product:</strong> ${camera.product_id}</div>` : ''}
-                    ${camera.serial_number ? `<div><strong>Serial:</strong> ${camera.serial_number}</div>` : ''}
-                </div>
             </div>
         `;
 

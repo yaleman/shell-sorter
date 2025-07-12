@@ -676,8 +676,14 @@ impl UsbCameraManager {
         let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Exact(camera_format));
 
         let mut camera = CallbackCamera::new(camera_index, format, |buffer| {
-            let image = buffer.decode_image::<RgbFormat>().unwrap();
-            debug!("{}x{} {}", image.width(), image.height(), image.len());
+            match buffer.decode_image::<RgbFormat>() {
+                Ok(image) => {
+                    debug!("{}x{} {}", image.width(), image.height(), image.len());
+                }
+                Err(e) => {
+                    error!("Failed to decode camera frame: {e}");
+                }
+            }
         })
         .map_err(|e| OurError::App(format!("Failed to create streaming camera: {e}")))?;
 
