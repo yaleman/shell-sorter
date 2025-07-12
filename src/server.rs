@@ -544,12 +544,14 @@ async fn train_model(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()
     Json(ApiResponse::success(()))
 }
 
-async fn get_config(State(state): State<Arc<AppState>>) -> Json<ApiResponse<ConfigData>> {
+async fn get_config(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<ConfigData>> {
+    // Load current configuration from user config file to ensure it's up to date
+    let user_config = Settings::load_user_config();
     let config_data = ConfigData {
-        auto_start_cameras: state.settings.auto_start_esp32_cameras,
-        auto_detect_cameras: state.settings.auto_detect_cameras,
-        esphome_hostname: state.settings.esphome_hostname.clone(),
-        network_camera_hostnames: state.settings.network_camera_hostnames.clone(),
+        auto_start_cameras: user_config.auto_start_esp32_cameras,
+        auto_detect_cameras: user_config.auto_detect_cameras,
+        esphome_hostname: user_config.esphome_hostname,
+        network_camera_hostnames: user_config.network_camera_hostnames,
     };
     Json(ApiResponse::success(config_data))
 }
@@ -566,39 +568,59 @@ async fn save_config(
         config.network_camera_hostnames
     );
 
-    // Check if ESPHome hostname has changed
-    let hostname_changed = state.settings.esphome_hostname != config.esphome_hostname;
-    let camera_hostnames_changed =
-        state.settings.network_camera_hostnames != config.network_camera_hostnames;
+    // Load current user config to check for changes
+    let current_user_config = Settings::load_user_config();
 
-    if hostname_changed || camera_hostnames_changed {
-        // Create updated settings
+    // Check if ESPHome hostname has changed
+    let hostname_changed = current_user_config.esphome_hostname != config.esphome_hostname;
+    let camera_hostnames_changed =
+        current_user_config.network_camera_hostnames != config.network_camera_hostnames;
+
+    // Update controller monitor configuration if hostname changed
+    if hostname_changed {
+        // Create updated settings for the controller
         let mut new_settings = state.settings.clone();
         new_settings.esphome_hostname = config.esphome_hostname.clone();
         new_settings.network_camera_hostnames = config.network_camera_hostnames.clone();
 
-        // Update controller monitor configuration
-        if hostname_changed {
-            match state.controller.update_config(new_settings.clone()).await {
-                Ok(()) => {
-                    info!("Controller monitor configuration updated successfully");
-                }
-                Err(e) => {
-                    error!("Failed to update controller monitor configuration: {}", e);
-                    return Json(ApiResponse::<()>::error(format!(
-                        "Failed to update controller configuration: {e}"
-                    )));
-                }
+        match state.controller.update_config(new_settings).await {
+            Ok(()) => {
+                info!("Controller monitor configuration updated successfully");
+            }
+            Err(e) => {
+                error!("Failed to update controller monitor configuration: {}", e);
+                return Json(ApiResponse::<()>::error(format!(
+                    "Failed to update controller configuration: {e}"
+                )));
             }
         }
-
-        // TODO: Also update camera manager configuration if camera hostnames changed
-        if camera_hostnames_changed {
-            info!("Camera hostname configuration changed - camera manager restart needed");
-        }
-
-        info!("Configuration updated successfully");
     }
+
+    // TODO: Also update camera manager configuration if camera hostnames changed
+    if camera_hostnames_changed {
+        info!("Camera hostname configuration changed - camera manager restart needed");
+    }
+
+    // Save changes to persistent user config file
+    let mut user_config = current_user_config;
+    user_config.esphome_hostname = config.esphome_hostname;
+    user_config.network_camera_hostnames = config.network_camera_hostnames;
+    user_config.auto_detect_cameras = config.auto_detect_cameras;
+    user_config.auto_start_esp32_cameras = config.auto_start_cameras;
+
+    match Settings::save_user_config(&user_config) {
+        Ok(()) => {
+            info!("Configuration saved to user config file successfully");
+        }
+        Err(e) => {
+            error!("Failed to save configuration to file: {}", e);
+            return Json(ApiResponse::<()>::error(format!(
+                "Failed to save configuration to file: {e}"
+            )));
+        }
+    }
+
+    info!("Configuration updated successfully");
 
     Json(ApiResponse::success(()))
 }

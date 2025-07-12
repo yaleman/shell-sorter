@@ -130,6 +130,10 @@ pub struct UserConfig {
     pub network_camera_hostnames: Vec<String>,
     /// Automatically detect and configure cameras on startup
     pub auto_detect_cameras: bool,
+    /// Automatically start configured ESP32 cameras when they come online
+    pub auto_start_esp32_cameras: bool,
+    /// ESPHome device hostname for API communication
+    pub esphome_hostname: String,
 }
 
 impl Default for UserConfig {
@@ -138,6 +142,8 @@ impl Default for UserConfig {
             camera_configs: HashMap::new(),
             network_camera_hostnames: vec!["esp32cam1.local".to_string()],
             auto_detect_cameras: false,
+            auto_start_esp32_cameras: true,
+            esphome_hostname: "shell-sorter-controller.local".to_string(),
         }
     }
 }
@@ -171,6 +177,13 @@ impl Settings {
     /// Create a new instance of Settings with environment variable overrides
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let mut settings = Settings::default();
+
+        // Load user configuration from file if it exists
+        let user_config = Self::load_user_config();
+        settings.esphome_hostname = user_config.esphome_hostname;
+        settings.network_camera_hostnames = user_config.network_camera_hostnames;
+        settings.auto_detect_cameras = user_config.auto_detect_cameras;
+        settings.auto_start_esp32_cameras = user_config.auto_start_esp32_cameras;
 
         // Override with environment variables if present
         if let Ok(host) = env::var("SHELL_SORTER_HOST") {
