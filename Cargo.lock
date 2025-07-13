@@ -2819,6 +2819,7 @@ dependencies = [
  "futures-util",
  "image",
  "nokhwa",
+ "rand 0.9.1",
  "regex",
  "reqwest",
  "serde",

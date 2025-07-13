@@ -47,20 +47,29 @@ async fn start_test_server()
     // Try to find an available port in the high port range
     let mut listener = None;
     let mut port = 0;
-
-    for attempt in 0..10 {
+    let max_attempts = 20;
+    for attempt in 0..max_attempts {
         // Try random ports in the range 49152-65535 (IANA dynamic/private port range)
-        let test_port =
-            49152 + (std::process::id() as u16 + attempt as u16 * 1000) % (65535 - 49152);
+        let test_port = rand::random_range(49152u16..65530u16);
         match tokio::net::TcpListener::bind(format!("127.0.0.1:{test_port}")).await {
             Ok(l) => {
                 port = test_port;
                 listener = Some(l);
                 break;
             }
-            Err(_) if attempt < 9 => continue, // Try another port
+            Err(err) if attempt < 9 => {
+                // If binding fails, try another port
+                eprintln!(
+                    "Port {test_port} is in use, trying another... {err:?}, attempt {} of {max_attempts}",
+                    attempt + 1,
+                );
+                continue;
+            } // Try another port
             Err(e) => {
-                return Err(format!("Failed to bind to any port after 10 attempts: {e}").into());
+                return Err(format!(
+                    "Failed to bind to any port after {max_attempts} attempts: {e}"
+                )
+                .into());
             }
         }
     }

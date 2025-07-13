@@ -134,6 +134,8 @@ pub struct UserConfig {
     pub auto_start_esp32_cameras: bool,
     /// ESPHome device hostname for API communication
     pub esphome_hostname: String,
+    /// Selected camera IDs that should be restored when cameras are detected
+    pub selected_cameras: Vec<String>,
 }
 
 impl Default for UserConfig {
@@ -144,6 +146,7 @@ impl Default for UserConfig {
             auto_detect_cameras: false,
             auto_start_esp32_cameras: true,
             esphome_hostname: "shell-sorter-controller.local".to_string(),
+            selected_cameras: Vec::new(),
         }
     }
 }
@@ -170,6 +173,21 @@ impl UserConfig {
     /// Remove configuration for a camera by name (alias for clear_camera_config)
     pub fn remove_camera_config(&mut self, camera_name: &str) {
         self.clear_camera_config(camera_name);
+    }
+
+    /// Set the selected camera IDs
+    pub fn set_selected_cameras(&mut self, camera_ids: Vec<String>) {
+        self.selected_cameras = camera_ids;
+    }
+
+    /// Get the selected camera IDs
+    pub fn get_selected_cameras(&self) -> &Vec<String> {
+        &self.selected_cameras
+    }
+
+    /// Check if a camera ID is selected
+    pub fn is_camera_selected(&self, camera_id: &str) -> bool {
+        self.selected_cameras.contains(&camera_id.to_string())
     }
 }
 
