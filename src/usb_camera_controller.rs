@@ -251,6 +251,33 @@ impl UsbCameraHandle {
 }
 
 impl UsbCameraManager {
+    /// Get read-only access to camera status
+    fn get_status(&self) -> std::sync::MutexGuard<UsbCameraStatus> {
+        self.status.lock().unwrap_or_else(|e| {
+            error!("USB camera status mutex poisoned: {e}");
+            e.into_inner()
+        })
+    }
+
+    /// Get mutable access to camera status
+    fn get_status_mut(&mut self) -> std::sync::MutexGuard<UsbCameraStatus> {
+        self.status.lock().unwrap_or_else(|e| {
+            error!("USB camera status mutex poisoned: {e}");
+            e.into_inner()
+        })
+    }
+
+    /// Get camera info by hardware ID
+    fn get_camera_info(&self, hardware_id: &str) -> OurResult<UsbCameraInfo> {
+        let status = self.get_status();
+        status
+            .cameras
+            .values()
+            .find(|camera| camera.hardware_id == hardware_id)
+            .cloned()
+            .ok_or_else(|| OurError::App(format!("Camera with ID '{hardware_id}' not found")))
+    }
+
     /// Create new USB camera manager
     pub fn new() -> OurResult<(UsbCameraManager, UsbCameraHandle)> {
         let (request_sender, request_receiver) = mpsc::unbounded_channel();
@@ -407,10 +434,7 @@ impl UsbCameraManager {
 
             // Update status one camera at a time to avoid holding lock across await
             {
-                let mut status = self.status.lock().unwrap_or_else(|e| {
-                    error!("USB camera status mutex poisoned: {e}");
-                    e.into_inner()
-                });
+                let mut status = self.get_status_mut();
                 status
                     .cameras
                     .insert(usb_camera_info.hardware_id.clone(), usb_camera_info);
@@ -419,10 +443,7 @@ impl UsbCameraManager {
 
         // Update last detection time
         {
-            let mut status = self.status.lock().unwrap_or_else(|e| {
-                error!("USB camera status mutex poisoned: {e}");
-                e.into_inner()
-            });
+            let mut status = self.get_status_mut();
             status.last_detection = Some(chrono::Utc::now());
         }
 
@@ -588,19 +609,13 @@ impl UsbCameraManager {
 
     /// List currently known cameras
     fn list_cameras_internal(&self) -> Vec<UsbCameraInfo> {
-        let status = self.status.lock().unwrap_or_else(|e| {
-            error!("USB camera status mutex poisoned: {e}");
-            e.into_inner()
-        });
+        let status = self.get_status();
         status.cameras.values().cloned().collect()
     }
 
     /// Select cameras for operations
     fn select_cameras_internal(&mut self, hardware_ids: Vec<String>) -> OurResult<()> {
-        let mut status = self.status.lock().unwrap_or_else(|e| {
-            error!("USB camera status mutex poisoned: {e}");
-            e.into_inner()
-        });
+        let mut status = self.get_status_mut();
 
         // Validate that all requested cameras exist
         for hardware_id in &hardware_ids {
@@ -617,10 +632,7 @@ impl UsbCameraManager {
     /// Start streaming from selected cameras
     async fn start_streaming_internal(&mut self) -> OurResult<()> {
         // Update streaming status - actual streaming is done on-demand during capture
-        let mut status = self.status.lock().unwrap_or_else(|e| {
-            error!("USB camera status mutex poisoned: {e}");
-            e.into_inner()
-        });
+        let mut status = self.get_status_mut();
 
         if status.selected_cameras.is_empty() {
             return Err(OurError::App(
@@ -639,10 +651,7 @@ impl UsbCameraManager {
     /// Stop all streaming
     fn stop_streaming_internal(&mut self) -> OurResult<()> {
         // Update streaming status
-        let mut status = self.status.lock().unwrap_or_else(|e| {
-            error!("USB camera status mutex poisoned: {e}");
-            e.into_inner()
-        });
+        let mut status = self.get_status_mut();
 
         let camera_count = status.selected_cameras.len();
         status.streaming = false;
@@ -654,19 +663,7 @@ impl UsbCameraManager {
     /// Capture streaming frame from specific camera (optimized for streaming)
     async fn capture_streaming_frame_internal(&mut self, hardware_id: &str) -> OurResult<Vec<u8>> {
         // Find camera by hardware ID
-        let camera_info = {
-            let status = self.status.lock().unwrap_or_else(|e| {
-                error!("USB camera status mutex poisoned: {e}");
-                e.into_inner()
-            });
-
-            status
-                .cameras
-                .values()
-                .find(|camera| camera.hardware_id == hardware_id)
-                .cloned()
-                .ok_or_else(|| OurError::App(format!("Camera with ID '{hardware_id}' not found")))?
-        };
+        let camera_info = self.get_camera_info(hardware_id)?;
 
         let camera_index = CameraIndex::Index(camera_info.index);
 
@@ -725,16 +722,7 @@ impl UsbCameraManager {
     }
 
     async fn capture_image_internal(&mut self, hardware_id: &str) -> OurResult<Vec<u8>> {
-        let camera_info = {
-            let status = self.status.lock().unwrap_or_else(|e| {
-                error!("USB camera status mutex poisoned: {e}");
-                e.into_inner()
-            });
-            status.cameras.get(hardware_id).cloned()
-        };
-
-        let camera_info =
-            camera_info.ok_or_else(|| OurError::App(format!("Camera not found: {hardware_id}")))?;
+        let camera_info = self.get_camera_info(hardware_id)?;
 
         let camera_index = CameraIndex::Index(camera_info.index);
 
@@ -778,13 +766,7 @@ impl UsbCameraManager {
 
     /// Get current status
     fn get_status_internal(&self) -> UsbCameraStatus {
-        self.status
-            .lock()
-            .unwrap_or_else(|e| {
-                error!("USB camera status mutex poisoned: {e}");
-                e.into_inner()
-            })
-            .clone()
+        self.get_status().clone()
     }
 
     /// Set camera format
@@ -795,11 +777,7 @@ impl UsbCameraManager {
     ) -> OurResult<()> {
         // Update camera info with new format
         {
-            let mut status = self.status.lock().unwrap_or_else(|e| {
-                error!("USB camera status mutex poisoned: {e}");
-                e.into_inner()
-            });
-
+            let mut status = self.get_status_mut();
             if let Some(camera_info) = status.cameras.get_mut(hardware_id) {
                 camera_info.current_format = Some(format_info.clone());
             }
