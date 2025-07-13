@@ -424,6 +424,10 @@ async fn hardware_status(
 async fn list_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<CameraInfo>>> {
     let mut all_cameras = Vec::new();
 
+    // Load saved camera selections from config
+    let user_config = Settings::load_user_config();
+    let saved_selections = user_config.get_selected_cameras();
+
     // Get ESPHome camera status
     let esphome_status = state.camera_manager.get_status().await.unwrap_or_default();
 
@@ -433,8 +437,11 @@ async fn list_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Ve
             let esphome_cameras: Vec<CameraInfo> = cameras
                 .into_iter()
                 .map(|cam| {
-                    let is_selected = esphome_status.selected_cameras.contains(&cam.id);
-                    let is_active = is_selected && esphome_status.streaming;
+                    // Check both in-memory status and saved config for selection
+                    let is_selected_in_memory = esphome_status.selected_cameras.contains(&cam.id);
+                    let is_selected_in_config = saved_selections.contains(&cam.id);
+                    let is_selected = is_selected_in_memory || is_selected_in_config;
+                    let is_active = is_selected_in_memory && esphome_status.streaming;
 
                     CameraInfo {
                         id: cam.id,
@@ -472,8 +479,12 @@ async fn list_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Ve
             let usb_cameras: Vec<CameraInfo> = cameras
                 .into_iter()
                 .map(|cam| {
-                    let is_selected = usb_status.selected_cameras.contains(&cam.hardware_id);
-                    let is_active = is_selected && usb_status.streaming;
+                    // Check both in-memory status and saved config for selection
+                    let is_selected_in_memory =
+                        usb_status.selected_cameras.contains(&cam.hardware_id);
+                    let is_selected_in_config = saved_selections.contains(&cam.hardware_id);
+                    let is_selected = is_selected_in_memory || is_selected_in_config;
+                    let is_active = is_selected_in_memory && usb_status.streaming;
 
                     CameraInfo {
                         id: cam.hardware_id.clone(),
@@ -502,6 +513,48 @@ async fn list_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Ve
     all_cameras.sort_by(|a, b| a.name.cmp(&b.name));
 
     Json(ApiResponse::success(all_cameras))
+}
+
+/// Restore saved camera selections from persistent config
+async fn restore_saved_camera_selections(state: &Arc<AppState>) {
+    let user_config = Settings::load_user_config();
+    let saved_selections = user_config.get_selected_cameras();
+
+    if saved_selections.is_empty() {
+        return;
+    }
+
+    info!("Restoring saved camera selections: {:?}", saved_selections);
+
+    // Separate camera IDs by type
+    let mut esphome_cameras = Vec::new();
+    let mut usb_cameras = Vec::new();
+
+    for camera_id in saved_selections {
+        if camera_id.starts_with("usb:") {
+            usb_cameras.push(camera_id.clone());
+        } else {
+            esphome_cameras.push(camera_id.clone());
+        }
+    }
+
+    // Restore ESPHome camera selections
+    if !esphome_cameras.is_empty() {
+        if let Err(e) = state.camera_manager.select_cameras(esphome_cameras).await {
+            error!("Failed to restore ESPHome camera selections: {e}");
+        } else {
+            info!("Restored ESPHome camera selections");
+        }
+    }
+
+    // Restore USB camera selections
+    if !usb_cameras.is_empty() {
+        if let Err(e) = state.usb_camera_manager.select_cameras(usb_cameras).await {
+            error!("Failed to restore USB camera selections: {e}");
+        } else {
+            info!("Restored USB camera selections");
+        }
+    }
 }
 
 async fn detect_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<CameraInfo>>> {
@@ -570,6 +623,9 @@ async fn detect_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<
             errors.join(", ")
         )))
     } else {
+        // Restore saved camera selections after detection
+        restore_saved_camera_selections(&state).await;
+
         // Sort cameras by human-facing name for consistency
         all_cameras.sort_by(|a, b| a.name.cmp(&b.name));
         Json(ApiResponse::success(all_cameras))
@@ -580,6 +636,9 @@ async fn select_cameras(
     State(state): State<Arc<AppState>>,
     ExtractJson(payload): ExtractJson<SelectCamerasRequest>,
 ) -> Json<ApiResponse<()>> {
+    // Store camera IDs for persistence before consuming them
+    let camera_ids_for_config = payload.camera_ids.clone();
+
     // Separate camera IDs by type
     let mut esphome_cameras = Vec::new();
     let mut usb_cameras = Vec::new();
@@ -610,6 +669,16 @@ async fn select_cameras(
                 "Failed to select USB cameras: {e}"
             )));
         }
+    }
+
+    // Save selected camera IDs to persistent configuration
+    let mut user_config = Settings::load_user_config();
+    user_config.set_selected_cameras(camera_ids_for_config);
+    if let Err(e) = Settings::save_user_config(&user_config) {
+        error!("Failed to save camera selections to config: {e}");
+        // Don't fail the request, just log the error
+    } else {
+        info!("Saved camera selections to persistent configuration");
     }
 
     Json(ApiResponse::success(()))
