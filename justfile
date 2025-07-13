@@ -1,5 +1,6 @@
 # Shell Sorter development tasks
 
+
 # list the available tasks
 default:
     just --list
@@ -63,3 +64,13 @@ esphome-check:
     yamllint esphome*.yaml
     esphome config esphome-shell-sorter.yaml > /dev/null
     esphome config esphome-esp32cam1.yaml > /dev/null
+
+favicon_file := "2025-07-13-favicon-1-purple.png"
+static_dir := "./shell_sorter/static"
+favicon:
+    magick assets/{{favicon_file}} -geometry 32x32 -background transparent -gravity center {{static_dir}}/favicon-32.png
+    magick assets/{{favicon_file}} -geometry 32x32 -gravity center {{static_dir}}/favicon-32.jpg
+    magick assets/{{favicon_file}} -geometry 32x32 -gravity center {{static_dir}}/favicon-32.ico
+    magick assets/{{favicon_file}} -geometry 512x -background transparent -gravity center -quality 9 {{static_dir}}/favicon.png
+    magick assets/{{favicon_file}} -geometry 180x -background transparent -gravity center -quality 9 {{static_dir}}/apple-touch-icon.png
+    find shell_sorter/static/ -name '*.png' -exec pngcrush -ow '{}'  \;
