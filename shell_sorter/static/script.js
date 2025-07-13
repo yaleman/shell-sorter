@@ -172,7 +172,7 @@ function displayCameras(cameras) {
         cameraItem.innerHTML = `
             <div class="camera-header">
                 <label class="camera-checkbox-label">
-                    <input type="checkbox" class="camera-checkbox" data-camera-id="${camera.id}">
+                    <input type="checkbox" class="camera-checkbox" data-camera-id="${camera.id}" ${camera.is_selected ? 'checked' : ''}>
                     <span class="camera-name">${camera.name}</span>
                     <span class="camera-type">(${camera.camera_type})</span>
                     <span class="camera-details">
@@ -187,7 +187,7 @@ function displayCameras(cameras) {
                         </div>
                     </span>
                 </label>
-                <span class="camera-status status-inactive">Inactive</span>
+                <span class="camera-status ${camera.is_active ? 'status-active' : 'status-inactive'}">${camera.is_active ? 'Active' : 'Inactive'}</span>
             </div>
             <div class="camera-controls">
                 <button class="btn btn-sm btn-secondary camera-view-type-btn" data-camera-id="${camera.id}" ${camera.index !== undefined ? `data-camera-index="${camera.index}"` : ''}>
@@ -206,6 +206,9 @@ function displayCameras(cameras) {
     });
 
     console.log(`Displayed ${cameras.length} cameras`);
+    
+    // Update camera selection state immediately after displaying
+    updateCameraSelection();
 }
 
 // Function to display "no cameras" message

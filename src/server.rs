@@ -498,6 +498,9 @@ async fn list_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Ve
         }
     }
 
+    // Sort cameras by human-facing name for consistency
+    all_cameras.sort_by(|a, b| a.name.cmp(&b.name));
+
     Json(ApiResponse::success(all_cameras))
 }
 
@@ -567,6 +570,8 @@ async fn detect_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<
             errors.join(", ")
         )))
     } else {
+        // Sort cameras by human-facing name for consistency
+        all_cameras.sort_by(|a, b| a.name.cmp(&b.name));
         Json(ApiResponse::success(all_cameras))
     }
 }
