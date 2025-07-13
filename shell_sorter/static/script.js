@@ -44,6 +44,21 @@ function removeToast(toast) {
     }, 300);
 }
 
+function updateCameraSelection() {
+    const checkboxes = document.querySelectorAll('.camera-checkbox');
+    checkboxes.forEach(checkbox => {
+        const cameraItem = checkbox.closest('.camera-item');
+        if (checkbox.checked) {
+            cameraItem.classList.add('selected');
+        } else {
+            cameraItem.classList.remove('selected');
+        }
+    });
+
+    // Always show overlays when cameras are active
+    showRegionOverlays();
+}
+
 // Region data management with localStorage
 const RegionStorage = {
     STORAGE_KEY: 'shell-sorter-regions',
@@ -206,7 +221,7 @@ function displayCameras(cameras) {
     });
 
     console.log(`Displayed ${cameras.length} cameras`);
-    
+
     // Update camera selection state immediately after displaying
     updateCameraSelection();
 }
@@ -219,7 +234,337 @@ function displayNoCameras() {
     cameraList.innerHTML = '<p class="no-cameras">No cameras detected. Click "Detect Cameras" to search for available cameras.</p>';
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+async function updateCameraFeeds() {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+        const response = await fetch('/api/cameras', {
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+            const result = await response.json();
+            const cameras = result.success ? result.data || [] : [];
+            console.debug('Updating camera feeds:', cameras); // Debug log
+            cameras.forEach(camera => {
+                const cameraItem = document.querySelector(`[data-camera-id="${camera.id}"]`);
+                if (cameraItem) {
+                    const statusSpan = cameraItem.querySelector('.camera-status');
+                    const existingFeed = cameraItem.querySelector('.camera-feed');
+
+                    // Update status
+                    if (statusSpan) {
+                        statusSpan.className = `camera-status status-${camera.is_active ? 'active' : 'inactive'}`;
+                        statusSpan.textContent = camera.is_active ? 'Active' : 'Inactive';
+                    }
+
+                    // Add or remove camera feed
+                    if (camera.is_active && !existingFeed) {
+                        const feedDiv = document.createElement('div');
+                        feedDiv.className = 'camera-feed';
+                        feedDiv.dataset.cameraId = camera.id;
+                        // Also set camera-index for backward compatibility with region code
+                        if (camera.index !== undefined) {
+                            feedDiv.dataset.cameraIndex = camera.index.toString();
+                        }
+
+                        // Add region data if available
+                        if (camera.region_x !== null && camera.region_x !== undefined) {
+                            feedDiv.dataset.region = JSON.stringify({
+                                x: camera.region_x,
+                                y: camera.region_y,
+                                width: camera.region_width,
+                                height: camera.region_height
+                            });
+                        }
+
+                        feedDiv.innerHTML = `<img src="/api/cameras/${camera.id}/stream" 
+                                                     alt="Camera ${camera.name} feed"
+                                                     class="camera-stream"
+                                                     onerror="console.error('Failed to load camera stream for ${camera.id}')">`;
+                        cameraItem.appendChild(feedDiv);
+                        console.log(`Created camera feed for ${camera.id} with stream URL: /api/cameras/${camera.id}/stream`);
+                    } else if (!camera.is_active && existingFeed) {
+                        existingFeed.remove();
+                        console.log(`Removed camera feed for ${camera.id}`);
+                    } else if (camera.is_active && existingFeed) {
+                        console.log(`Camera feed already exists for ${camera.id}`);
+                    }
+                } else {
+                    console.warn(`Could not find camera item for ID: ${camera.id}`);
+                }
+            });
+
+            // Show overlays when camera status changes
+            showRegionOverlays();
+
+            return cameras;
+        }
+    } catch (error) {
+        console.error('Error updating camera feeds:', error);
+    }
+    return null;
+}
+
+let currentCameraPollInterval = null;
+
+function pollForCameraUpdates() {
+    // Clear any existing polling first
+    if (currentCameraPollInterval) {
+        clearInterval(currentCameraPollInterval);
+    }
+
+    console.log('Starting camera status polling...');
+    let pollCount = 0;
+    const maxPolls = 12; // Poll for up to 60 seconds (12 * 5s)
+
+    currentCameraPollInterval = setInterval(async () => {
+        pollCount++;
+        console.log(`Camera status poll ${pollCount}/${maxPolls}`);
+
+        const cameras = await updateCameraFeeds();
+
+        // Check if any selected cameras are now active
+        if (cameras) {
+            const selectedActive = cameras.filter(cam => cam.is_selected && cam.is_active);
+            const selectedTotal = cameras.filter(cam => cam.is_selected);
+
+            console.log(`Active cameras: ${selectedActive.length}/${selectedTotal.length}`);
+
+            // Stop polling if all selected cameras are active or we've reached max polls
+            if (selectedActive.length === selectedTotal.length || pollCount >= maxPolls) {
+                clearInterval(currentCameraPollInterval);
+                currentCameraPollInterval = null;
+                if (selectedActive.length === selectedTotal.length) {
+                    console.log('All selected cameras are now active');
+                } else {
+                    console.log('Stopped polling - some cameras may have failed to start');
+                }
+            }
+        }
+    }, 5000); // Poll every 5 seconds
+}
+
+
+
+
+function updateStatusDisplay(status) {
+    const statusIndicator = document.querySelector('.status-indicator');
+    if (statusIndicator) {
+        statusIndicator.className = `status-indicator status-${status.status}`;
+        statusIndicator.textContent = `Status: ${status.status.charAt(0).toUpperCase() + status.status.slice(1)}`;
+    }
+
+    const totalSorted = document.querySelector('.status-item .value');
+    if (totalSorted) {
+        totalSorted.textContent = status.total_sorted;
+    }
+}
+
+// Initialize overlay state on page load - always show overlays
+initializeOverlays();
+
+function initializeOverlays() {
+    // Always show overlays when available
+    showRegionOverlays();
+}
+
+function showRegionOverlays() {
+    let overlays = document.querySelectorAll('.camera-region-overlay');
+
+    // If no overlays exist, try to create them from region buttons
+    if (overlays.length === 0) {
+        const created = createMissingOverlays();
+        overlays = document.querySelectorAll('.camera-region-overlay');
+        if (created > 0) {
+            console.log(`Successfully created ${created} overlays`);
+        }
+    }
+
+    // Show all overlays
+    overlays.forEach(overlay => {
+        updateOverlayPosition(overlay);
+        overlay.style.display = 'block';
+    });
+
+    console.log(`Showing ${overlays.length} region overlays`);
+}
+
+function createMissingOverlays() {
+    let overlaysCreated = 0;
+
+    // Look for camera feeds that have region info but no overlay
+    const cameraFeeds = document.querySelectorAll('.camera-feed');
+    console.log(`Checking ${cameraFeeds.length} camera feeds for missing overlays`);
+
+    cameraFeeds.forEach((feed) => {
+        const existing = feed.querySelector('.camera-region-overlay');
+        if (existing) {
+            return; // Already has overlay
+        }
+
+        const cameraIndexStr = feed.dataset.cameraIndex;
+        const cameraIndex = parseInt(cameraIndexStr);
+
+        if (isNaN(cameraIndex)) {
+            console.warn(`Invalid camera index "${cameraIndexStr}" for feed:`, feed);
+            return;
+        }
+
+        console.log(`Checking camera ${cameraIndex} for region data`);
+
+        // Try multiple sources for region data (in order of preference)
+        let region = null;
+
+        // 1. localStorage (most reliable)
+        region = RegionStorage.getRegion(cameraIndex);
+        if (region) {
+            console.log(`Found region data in localStorage for camera ${cameraIndex}:`, region);
+        }
+
+        // 2. Template JSON data attribute
+        if (!region && feed.dataset.region) {
+            try {
+                region = JSON.parse(feed.dataset.region);
+                console.log(`Found region data in template for camera ${cameraIndex}:`, region);
+                // Store in localStorage for future use
+                RegionStorage.setRegion(cameraIndex, region);
+            } catch (error) {
+                console.error(`Failed to parse template region JSON for camera ${cameraIndex}:`, error);
+            }
+        }
+
+        if (region) {
+            const { x, y, width, height } = region;
+
+            // Create overlay element
+            const overlay = document.createElement('div');
+            overlay.className = 'camera-region-overlay';
+            overlay.dataset.regionX = x.toString();
+            overlay.dataset.regionY = y.toString();
+            overlay.dataset.regionWidth = width.toString();
+            overlay.dataset.regionHeight = height.toString();
+            overlay.style.display = 'none';
+
+            feed.appendChild(overlay);
+            overlaysCreated++;
+            console.log(`Created overlay for camera ${cameraIndex} with region ${x},${y} (${width}x${height})`);
+        } else {
+            console.log(`No region data found for camera ${cameraIndex}`);
+        }
+    });
+
+    console.log(`Created ${overlaysCreated} missing overlays`);
+    return overlaysCreated;
+}
+
+function updateOverlayPosition(overlay) {
+    const cameraFeed = overlay.parentElement;
+    const cameraImage = cameraFeed.querySelector('.camera-stream');
+
+    if (!cameraImage) return;
+
+    const regionX = parseInt(overlay.dataset.regionX);
+    const regionY = parseInt(overlay.dataset.regionY);
+    const regionWidth = parseInt(overlay.dataset.regionWidth);
+    const regionHeight = parseInt(overlay.dataset.regionHeight);
+
+    // Wait for image to load if not loaded yet
+    if (cameraImage.naturalWidth === 0) {
+        cameraImage.addEventListener('load', () => updateOverlayPosition(overlay), { once: true });
+        return;
+    }
+
+    const scaleX = cameraImage.clientWidth / cameraImage.naturalWidth;
+    const scaleY = cameraImage.clientHeight / cameraImage.naturalHeight;
+
+    const overlayLeft = regionX * scaleX;
+    const overlayTop = regionY * scaleY;
+    const overlayWidth = regionWidth * scaleX;
+    const overlayHeight = regionHeight * scaleY;
+
+    overlay.style.left = overlayLeft + 'px';
+    overlay.style.top = overlayTop + 'px';
+    overlay.style.width = overlayWidth + 'px';
+    overlay.style.height = overlayHeight + 'px';
+}
+
+// ESPHome status monitoring with adaptive polling support
+let isControllerOnline = false;
+let esphomeStatusInterval = null;
+
+async function updateESPHomeStatus() {
+    try {
+        const response = await fetch('/api/machine/hardware-status');
+        if (response.ok) {
+            const status = await response.json();
+            const statusElement = document.getElementById('esphome-status');
+            const statusText = document.getElementById('esphome-status-text');
+
+            if (statusElement && statusText) {
+                // Remove all status classes
+                statusElement.className = 'status-indicator';
+
+                const wasOnline = isControllerOnline;
+                isControllerOnline = status.data && status.data.controller === 'Connected';
+
+                if (isControllerOnline) {
+                    statusElement.classList.add('esphome-status-online');
+                    statusText.textContent = 'Online';
+                } else {
+                    statusElement.classList.add('esphome-status-offline');
+                    statusText.textContent = 'Offline';
+                }
+
+                // If status changed, update polling interval
+                if (wasOnline !== isControllerOnline && esphomeStatusInterval) {
+                    clearInterval(esphomeStatusInterval);
+                    const pollInterval = isControllerOnline ? 5000 : 1000;
+                    esphomeStatusInterval = setInterval(updateESPHomeStatusWithAdaptivePolling, pollInterval);
+                    console.log(`Controller status changed, polling every ${pollInterval / 1000}s`);
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching ESPHome status:', error);
+        const statusElement = document.getElementById('esphome-status');
+        const statusText = document.getElementById('esphome-status-text');
+
+        if (statusElement && statusText) {
+            statusElement.className = 'status-indicator esphome-status-offline';
+            statusText.textContent = 'Error';
+        }
+
+        // Set to offline state on error
+        const wasOnline = isControllerOnline;
+        isControllerOnline = false;
+
+        // Update polling interval if needed
+        if (wasOnline !== isControllerOnline && esphomeStatusInterval) {
+            clearInterval(esphomeStatusInterval);
+            esphomeStatusInterval = setInterval(updateESPHomeStatusWithAdaptivePolling, 1000);
+            console.log('Controller error, polling every 1s');
+        }
+    }
+}
+
+async function updateESPHomeStatusWithAdaptivePolling() {
+    await updateESPHomeStatus();
+
+    // Clear existing interval
+    if (esphomeStatusInterval) {
+        clearInterval(esphomeStatusInterval);
+    }
+
+    // Set interval based on current status
+    const pollInterval = isControllerOnline ? 5000 : 1000; // 5s when online, 1s when offline
+    esphomeStatusInterval = setInterval(updateESPHomeStatusWithAdaptivePolling, pollInterval);
+}
+
+document.addEventListener('DOMContentLoaded', function () {
     // Camera management elements
     const detectCamerasBtn = document.getElementById('detect-cameras-btn');
     const startSelectedBtn = document.getElementById('start-selected-btn');
@@ -230,7 +575,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const configBtn = document.getElementById('config-btn');
 
     if (captureImagesBtn) {
-        captureImagesBtn.addEventListener('click', async function() {
+        captureImagesBtn.addEventListener('click', async function () {
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -263,7 +608,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     if (nextCaseBtn) {
-        nextCaseBtn.addEventListener('click', async function() {
+        nextCaseBtn.addEventListener('click', async function () {
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -296,19 +641,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     if (mlTrainingBtn) {
-        mlTrainingBtn.addEventListener('click', function() {
+        mlTrainingBtn.addEventListener('click', function () {
             window.location.href = '/ml-training';
         });
     }
 
     if (configBtn) {
-        configBtn.addEventListener('click', function() {
+        configBtn.addEventListener('click', function () {
             window.location.href = '/config';
         });
     }
 
     // Auto-refresh status every 25 seconds
-    let statusInterval = setInterval(async function() {
+    let statusInterval = setInterval(async function () {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2500);
@@ -328,119 +673,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, 25000);
 
-    // ESPHome status monitoring
-    async function updateESPHomeStatus() {
-        try {
-            const response = await fetch('/api/machine/hardware-status');
-            if (response.ok) {
-                const status = await response.json();
-                const statusElement = document.getElementById('esphome-status');
-                const statusText = document.getElementById('esphome-status-text');
 
-                if (statusElement && statusText) {
-                    // Remove all status classes
-                    statusElement.className = 'status-indicator';
 
-                    if (status.data && status.data.controller === 'Connected') {
-                        statusElement.classList.add('esphome-status-online');
-                        statusText.textContent = 'Online';
-                    } else {
-                        statusElement.classList.add('esphome-status-offline');
-                        statusText.textContent = 'Offline';
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching ESPHome status:', error);
-            const statusElement = document.getElementById('esphome-status');
-            const statusText = document.getElementById('esphome-status-text');
-
-            if (statusElement && statusText) {
-                statusElement.className = 'status-indicator esphome-status-offline';
-                statusText.textContent = 'Error';
-            }
-        }
-    }
-
-    // Adaptive ESPHome status monitoring
-    let esphomeStatusInterval = null;
-    let isControllerOnline = false;
-
-    async function updateESPHomeStatusWithAdaptivePolling() {
-        await updateESPHomeStatus();
-
-        // Clear existing interval
-        if (esphomeStatusInterval) {
-            clearInterval(esphomeStatusInterval);
-        }
-
-        // Set interval based on current status
-        const pollInterval = isControllerOnline ? 5000 : 1000; // 5s when online, 1s when offline
-        esphomeStatusInterval = setInterval(updateESPHomeStatusWithAdaptivePolling, pollInterval);
-    }
-
-    // Enhanced updateESPHomeStatus to track online state
-    const originalUpdateESPHomeStatus = updateESPHomeStatus;
-    updateESPHomeStatus = async function() {
-        try {
-            const response = await fetch('/api/machine/hardware-status');
-            if (response.ok) {
-                const status = await response.json();
-                const statusElement = document.getElementById('esphome-status');
-                const statusText = document.getElementById('esphome-status-text');
-
-                if (statusElement && statusText) {
-                    // Remove all status classes
-                    statusElement.className = 'status-indicator';
-
-                    const wasOnline = isControllerOnline;
-                    isControllerOnline = status.data && status.data.controller === 'Connected';
-
-                    if (isControllerOnline) {
-                        statusElement.classList.add('esphome-status-online');
-                        statusText.textContent = 'Online';
-                    } else {
-                        statusElement.classList.add('esphome-status-offline');
-                        statusText.textContent = 'Offline';
-                    }
-
-                    // If status changed, update polling interval
-                    if (wasOnline !== isControllerOnline && esphomeStatusInterval) {
-                        clearInterval(esphomeStatusInterval);
-                        const pollInterval = isControllerOnline ? 5000 : 1000;
-                        esphomeStatusInterval = setInterval(updateESPHomeStatusWithAdaptivePolling, pollInterval);
-                        console.log(`Controller status changed, polling every ${pollInterval/1000}s`);
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error fetching ESPHome status:', error);
-            const statusElement = document.getElementById('esphome-status');
-            const statusText = document.getElementById('esphome-status-text');
-
-            if (statusElement && statusText) {
-                statusElement.className = 'status-indicator esphome-status-offline';
-                statusText.textContent = 'Error';
-            }
-
-            // Set to offline state on error
-            const wasOnline = isControllerOnline;
-            isControllerOnline = false;
-
-            // Update polling interval if needed
-            if (wasOnline !== isControllerOnline && esphomeStatusInterval) {
-                clearInterval(esphomeStatusInterval);
-                esphomeStatusInterval = setInterval(updateESPHomeStatusWithAdaptivePolling, 1000);
-                console.log('Controller error, polling every 1s');
-            }
-        }
-    };
+    // ESPHome status monitoring is now handled globally
 
     // Initial status check and start adaptive polling
     updateESPHomeStatusWithAdaptivePolling();
 
     // Clean up intervals when page unloads
-    window.addEventListener('beforeunload', function() {
+    window.addEventListener('beforeunload', function () {
         if (statusInterval) {
             clearInterval(statusInterval);
         }
@@ -454,7 +695,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Camera management functions
     if (detectCamerasBtn) {
-        detectCamerasBtn.addEventListener('click', async function() {
+        detectCamerasBtn.addEventListener('click', async function () {
             // Show immediate notification that detection is starting
             showToast('Detecting cameras...', 'info');
 
@@ -493,7 +734,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     if (startSelectedBtn) {
-        startSelectedBtn.addEventListener('click', async function() {
+        startSelectedBtn.addEventListener('click', async function () {
             console.debug('Starting selected cameras...'); // Debug log
             try {
                 const controller = new AbortController();
@@ -522,7 +763,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     if (stopAllBtn) {
-        stopAllBtn.addEventListener('click', async function() {
+        stopAllBtn.addEventListener('click', async function () {
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 2500);
@@ -550,7 +791,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Handle view type selection
-    document.addEventListener('change', async function(e) {
+    document.addEventListener('change', async function (e) {
         if (e.target.classList.contains('view-type-select')) {
             const select = e.target;
             const cameraIndex = parseInt(select.dataset.cameraIndex);
@@ -628,7 +869,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Handle region selection buttons
-    document.addEventListener('click', async function(e) {
+    document.addEventListener('click', async function (e) {
         if (e.target.classList.contains('region-select-btn')) {
             const cameraIndex = parseInt(e.target.dataset.cameraIndex);
             window.location.href = `/region-selection/${cameraIndex}`;
@@ -661,276 +902,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    async function updateCameraFeeds() {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-            const response = await fetch('/api/cameras', {
-                signal: controller.signal
-            });
-
-            clearTimeout(timeoutId);
-
-            if (response.ok) {
-                const result = await response.json();
-                const cameras = result.success ? result.data || [] : [];
-                console.debug('Updating camera feeds:', cameras); // Debug log
-                cameras.forEach(camera => {
-                    const cameraItem = document.querySelector(`[data-camera-id="${camera.id}"]`);
-                    if (cameraItem) {
-                        const statusSpan = cameraItem.querySelector('.camera-status');
-                        const existingFeed = cameraItem.querySelector('.camera-feed');
-
-                        // Update status
-                        if (statusSpan) {
-                            statusSpan.className = `camera-status status-${camera.is_active ? 'active' : 'inactive'}`;
-                            statusSpan.textContent = camera.is_active ? 'Active' : 'Inactive';
-                        }
-
-                        // Add or remove camera feed
-                        if (camera.is_active && !existingFeed) {
-                            const feedDiv = document.createElement('div');
-                            feedDiv.className = 'camera-feed';
-                            feedDiv.dataset.cameraId = camera.id;
-                            // Also set camera-index for backward compatibility with region code
-                            if (camera.index !== undefined) {
-                                feedDiv.dataset.cameraIndex = camera.index.toString();
-                            }
-
-                            // Add region data if available
-                            if (camera.region_x !== null && camera.region_x !== undefined) {
-                                feedDiv.dataset.region = JSON.stringify({
-                                    x: camera.region_x,
-                                    y: camera.region_y,
-                                    width: camera.region_width,
-                                    height: camera.region_height
-                                });
-                            }
-
-                            feedDiv.innerHTML = `<img src="/api/cameras/${camera.id}/stream" 
-                                                     alt="Camera ${camera.name} feed"
-                                                     class="camera-stream"
-                                                     onerror="console.error('Failed to load camera stream for ${camera.id}')">`;
-                            cameraItem.appendChild(feedDiv);
-                            console.log(`Created camera feed for ${camera.id} with stream URL: /api/cameras/${camera.id}/stream`);
-                        } else if (!camera.is_active && existingFeed) {
-                            existingFeed.remove();
-                            console.log(`Removed camera feed for ${camera.id}`);
-                        } else if (camera.is_active && existingFeed) {
-                            console.log(`Camera feed already exists for ${camera.id}`);
-                        }
-                    } else {
-                        console.warn(`Could not find camera item for ID: ${camera.id}`);
-                    }
-                });
-
-                // Show overlays when camera status changes
-                showRegionOverlays();
-
-                return cameras;
-            }
-        } catch (error) {
-            console.error('Error updating camera feeds:', error);
-        }
-        return null;
-    }
-
-    let currentCameraPollInterval = null;
-
-    function pollForCameraUpdates() {
-        // Clear any existing polling first
-        if (currentCameraPollInterval) {
-            clearInterval(currentCameraPollInterval);
-        }
-
-        console.log('Starting camera status polling...');
-        let pollCount = 0;
-        const maxPolls = 12; // Poll for up to 60 seconds (12 * 5s)
-
-        currentCameraPollInterval = setInterval(async () => {
-            pollCount++;
-            console.log(`Camera status poll ${pollCount}/${maxPolls}`);
-
-            const cameras = await updateCameraFeeds();
-
-            // Check if any selected cameras are now active
-            if (cameras) {
-                const selectedActive = cameras.filter(cam => cam.is_selected && cam.is_active);
-                const selectedTotal = cameras.filter(cam => cam.is_selected);
-
-                console.log(`Active cameras: ${selectedActive.length}/${selectedTotal.length}`);
-
-                // Stop polling if all selected cameras are active or we've reached max polls
-                if (selectedActive.length === selectedTotal.length || pollCount >= maxPolls) {
-                    clearInterval(currentCameraPollInterval);
-                    currentCameraPollInterval = null;
-                    if (selectedActive.length === selectedTotal.length) {
-                        console.log('All selected cameras are now active');
-                    } else {
-                        console.log('Stopped polling - some cameras may have failed to start');
-                    }
-                }
-            }
-        }, 5000); // Poll every 5 seconds
-    }
-
-    function updateCameraSelection() {
-        const checkboxes = document.querySelectorAll('.camera-checkbox');
-        checkboxes.forEach(checkbox => {
-            const cameraItem = checkbox.closest('.camera-item');
-            if (checkbox.checked) {
-                cameraItem.classList.add('selected');
-            } else {
-                cameraItem.classList.remove('selected');
-            }
-        });
-
-        // Always show overlays when cameras are active
-        showRegionOverlays();
-    }
-
-
-    function updateStatusDisplay(status) {
-        const statusIndicator = document.querySelector('.status-indicator');
-        if (statusIndicator) {
-            statusIndicator.className = `status-indicator status-${status.status}`;
-            statusIndicator.textContent = `Status: ${status.status.charAt(0).toUpperCase() + status.status.slice(1)}`;
-        }
-
-        const totalSorted = document.querySelector('.status-item .value');
-        if (totalSorted) {
-            totalSorted.textContent = status.total_sorted;
-        }
-    }
-
-    // Initialize overlay state on page load - always show overlays
-    initializeOverlays();
-
-    function initializeOverlays() {
-        // Always show overlays when available
-        showRegionOverlays();
-    }
-
-    function showRegionOverlays() {
-        let overlays = document.querySelectorAll('.camera-region-overlay');
-
-        // If no overlays exist, try to create them from region buttons
-        if (overlays.length === 0) {
-            const created = createMissingOverlays();
-            overlays = document.querySelectorAll('.camera-region-overlay');
-            if (created > 0) {
-                console.log(`Successfully created ${created} overlays`);
-            }
-        }
-
-        // Show all overlays
-        overlays.forEach(overlay => {
-            updateOverlayPosition(overlay);
-            overlay.style.display = 'block';
-        });
-
-        console.log(`Showing ${overlays.length} region overlays`);
-    }
-
-    function createMissingOverlays() {
-        let overlaysCreated = 0;
-
-        // Look for camera feeds that have region info but no overlay
-        const cameraFeeds = document.querySelectorAll('.camera-feed');
-        console.log(`Checking ${cameraFeeds.length} camera feeds for missing overlays`);
-
-        cameraFeeds.forEach((feed) => {
-            const existing = feed.querySelector('.camera-region-overlay');
-            if (existing) {
-                return; // Already has overlay
-            }
-
-            const cameraIndexStr = feed.dataset.cameraIndex;
-            const cameraIndex = parseInt(cameraIndexStr);
-
-            if (isNaN(cameraIndex)) {
-                console.warn(`Invalid camera index "${cameraIndexStr}" for feed:`, feed);
-                return;
-            }
-
-            console.log(`Checking camera ${cameraIndex} for region data`);
-
-            // Try multiple sources for region data (in order of preference)
-            let region = null;
-
-            // 1. localStorage (most reliable)
-            region = RegionStorage.getRegion(cameraIndex);
-            if (region) {
-                console.log(`Found region data in localStorage for camera ${cameraIndex}:`, region);
-            }
-
-            // 2. Template JSON data attribute
-            if (!region && feed.dataset.region) {
-                try {
-                    region = JSON.parse(feed.dataset.region);
-                    console.log(`Found region data in template for camera ${cameraIndex}:`, region);
-                    // Store in localStorage for future use
-                    RegionStorage.setRegion(cameraIndex, region);
-                } catch (error) {
-                    console.error(`Failed to parse template region JSON for camera ${cameraIndex}:`, error);
-                }
-            }
-
-            if (region) {
-                const { x, y, width, height } = region;
-
-                // Create overlay element
-                const overlay = document.createElement('div');
-                overlay.className = 'camera-region-overlay';
-                overlay.dataset.regionX = x.toString();
-                overlay.dataset.regionY = y.toString();
-                overlay.dataset.regionWidth = width.toString();
-                overlay.dataset.regionHeight = height.toString();
-                overlay.style.display = 'none';
-
-                feed.appendChild(overlay);
-                overlaysCreated++;
-                console.log(`Created overlay for camera ${cameraIndex} with region ${x},${y} (${width}x${height})`);
-            } else {
-                console.log(`No region data found for camera ${cameraIndex}`);
-            }
-        });
-
-        console.log(`Created ${overlaysCreated} missing overlays`);
-        return overlaysCreated;
-    }
-
-    function updateOverlayPosition(overlay) {
-        const cameraFeed = overlay.parentElement;
-        const cameraImage = cameraFeed.querySelector('.camera-stream');
-
-        if (!cameraImage) return;
-
-        const regionX = parseInt(overlay.dataset.regionX);
-        const regionY = parseInt(overlay.dataset.regionY);
-        const regionWidth = parseInt(overlay.dataset.regionWidth);
-        const regionHeight = parseInt(overlay.dataset.regionHeight);
-
-        // Wait for image to load if not loaded yet
-        if (cameraImage.naturalWidth === 0) {
-            cameraImage.addEventListener('load', () => updateOverlayPosition(overlay), { once: true });
-            return;
-        }
-
-        const scaleX = cameraImage.clientWidth / cameraImage.naturalWidth;
-        const scaleY = cameraImage.clientHeight / cameraImage.naturalHeight;
-
-        const overlayLeft = regionX * scaleX;
-        const overlayTop = regionY * scaleY;
-        const overlayWidth = regionWidth * scaleX;
-        const overlayHeight = regionHeight * scaleY;
-
-        overlay.style.left = overlayLeft + 'px';
-        overlay.style.top = overlayTop + 'px';
-        overlay.style.width = overlayWidth + 'px';
-        overlay.style.height = overlayHeight + 'px';
-    }
 
     // Load and display cameras on page load
     loadCameras();
@@ -1052,7 +1024,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Show debug console and connect WebSocket
         if (showDebugBtn) {
-            showDebugBtn.addEventListener('click', function() {
+            showDebugBtn.addEventListener('click', function () {
                 debugVisible = true;
                 if (debugConsole) {
                     debugConsole.style.display = 'block';
@@ -1069,7 +1041,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Close debug console and disconnect WebSocket
         if (debugCloseBtn) {
-            debugCloseBtn.addEventListener('click', function() {
+            debugCloseBtn.addEventListener('click', function () {
                 debugVisible = false;
                 if (debugConsole) {
                     debugConsole.style.display = 'none';
@@ -1087,7 +1059,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Clear debug log
         if (debugClearBtn) {
-            debugClearBtn.addEventListener('click', function() {
+            debugClearBtn.addEventListener('click', function () {
                 if (debugLog) {
                     debugLog.innerHTML = '<div class="debug-entry debug-info">' +
                         '<span class="debug-timestamp">' + new Date().toISOString().slice(0, 19) + '</span>' +
@@ -1101,7 +1073,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Add debug entry function
-        window.addDebugEntry = function(type, message, data = null) {
+        window.addDebugEntry = function (type, message, data = null) {
             const timestamp = new Date().toISOString().slice(0, 19);
             const entry = {
                 timestamp: timestamp,
@@ -1165,7 +1137,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 debugWebSocket = new WebSocket(wsUrl);
 
-                debugWebSocket.onopen = function(event) {
+                debugWebSocket.onopen = function (event) {
                     console.log('Debug WebSocket connected');
                     debugStatusText.textContent = 'Connected';
                     debugIndicator.className = 'debug-indicator debug-info';
@@ -1173,7 +1145,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     isDebugConnected = true;
                 };
 
-                debugWebSocket.onmessage = function(event) {
+                debugWebSocket.onmessage = function (event) {
                     try {
                         const cmd = JSON.parse(event.data);
 
@@ -1193,7 +1165,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 };
 
-                debugWebSocket.onclose = function(event) {
+                debugWebSocket.onclose = function (event) {
                     console.log('Debug WebSocket disconnected');
                     debugStatusText.textContent = 'Disconnected';
                     debugIndicator.className = 'debug-indicator';
@@ -1210,7 +1182,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 };
 
-                debugWebSocket.onerror = function(error) {
+                debugWebSocket.onerror = function (error) {
                     console.error('Debug WebSocket error:', error);
                     debugStatusText.textContent = 'Error';
                     debugIndicator.className = 'debug-indicator debug-error';
