@@ -5,11 +5,11 @@
 
 use image::DynamicImage;
 use nokhwa::{
-    CallbackCamera, Camera,
+    Camera,
     pixel_format::RgbFormat,
     utils::{
-        ApiBackend, CameraFormat, CameraIndex, CameraInfo as NokhwaCameraInfo, ControlValueSetter,
-        FrameFormat, KnownCameraControl, RequestedFormat, RequestedFormatType, Resolution,
+        ApiBackend, CameraIndex, CameraInfo as NokhwaCameraInfo, ControlValueSetter,
+        KnownCameraControl, RequestedFormat, RequestedFormatType,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -318,6 +318,18 @@ impl UsbCameraManager {
             .ok_or_else(|| OurError::App(format!("Camera with ID '{hardware_id}' not found")))
     }
 
+    /// Create a new camera instance with efficient error handling
+    fn create_camera(&self, hardware_id: &str) -> OurResult<Camera> {
+        let camera_info = self.get_camera_info(hardware_id)?;
+        let camera_index = CameraIndex::Index(camera_info.index);
+
+        // Use highest resolution for best quality
+        let format =
+            RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestResolution);
+        Camera::new(camera_index, format)
+            .map_err(|e| OurError::App(format!("Failed to create camera {hardware_id}: {e}")))
+    }
+
     /// Create new USB camera manager
     pub fn new() -> OurResult<(UsbCameraManager, UsbCameraHandle)> {
         let (request_sender, request_receiver) = mpsc::unbounded_channel();
@@ -486,10 +498,12 @@ impl UsbCameraManager {
         };
 
         let mut detected_cameras = Vec::new();
+        let mut detected_hardware_ids = std::collections::HashSet::new();
 
         for (index, camera_info) in cameras.iter().enumerate() {
             let usb_camera_info = self.create_camera_info(index as u32, camera_info).await;
             detected_cameras.push(usb_camera_info.clone());
+            detected_hardware_ids.insert(usb_camera_info.hardware_id.clone());
 
             // Update status one camera at a time to avoid holding lock across await
             {
@@ -498,6 +512,23 @@ impl UsbCameraManager {
                     .cameras
                     .insert(usb_camera_info.hardware_id.clone(), usb_camera_info);
             }
+        }
+
+        // Remove cameras that are no longer detected from status
+        let cameras_to_remove: Vec<String> = {
+            let status = self.get_status();
+            status
+                .cameras
+                .keys()
+                .filter(|hardware_id| !detected_hardware_ids.contains(*hardware_id))
+                .cloned()
+                .collect()
+        };
+
+        for hardware_id in cameras_to_remove {
+            info!("Camera {hardware_id} no longer detected, removing from status");
+            let mut status = self.get_status_mut();
+            status.cameras.remove(&hardware_id);
         }
 
         // Update last detection time
@@ -721,33 +752,15 @@ impl UsbCameraManager {
 
     /// Capture streaming frame from specific camera (optimized for streaming)
     async fn capture_streaming_frame_internal(&mut self, hardware_id: &str) -> OurResult<Vec<u8>> {
-        // Find camera by hardware ID
-        let camera_info = self.get_camera_info(hardware_id)?;
+        // Create camera instance
+        let mut camera = self.create_camera(hardware_id)?;
 
-        let camera_index = CameraIndex::Index(camera_info.index);
-
-        // Use lower resolution for streaming to improve performance
-        let resolution = Resolution::new(640, 480);
-        let camera_format = CameraFormat::new(resolution, FrameFormat::MJPEG, 30);
-        let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Exact(camera_format));
-
-        let mut camera = CallbackCamera::new(camera_index, format, |buffer| {
-            match buffer.decode_image::<RgbFormat>() {
-                Ok(image) => {
-                    debug!("{}x{} {}", image.width(), image.height(), image.len());
-                }
-                Err(e) => {
-                    error!("Failed to decode camera frame: {e}");
-                }
-            }
-        })
-        .map_err(|e| OurError::App(format!("Failed to create streaming camera: {e}")))?;
-
+        // Open camera stream
         camera
             .open_stream()
             .map_err(|e| OurError::App(format!("Failed to open camera stream: {e}")))?;
 
-        match camera.poll_frame() {
+        match camera.frame() {
             Ok(frame) => {
                 // Convert frame to JPEG bytes
                 let image = frame
@@ -774,25 +787,23 @@ impl UsbCameraManager {
                 );
                 Ok(jpeg_data)
             }
-            Err(e) => Err(OurError::App(format!(
-                "Failed to capture streaming frame: {e}"
-            ))),
+            Err(e) => {
+                warn!("Failed to capture frame from camera {hardware_id}: {e}");
+                if let Err(stop_err) = camera.stop_stream() {
+                    warn!("Failed to stop camera stream after error: {stop_err}");
+                }
+                Err(OurError::App(format!(
+                    "Failed to capture streaming frame: {e}"
+                )))
+            }
         }
     }
 
     async fn capture_image_internal(&mut self, hardware_id: &str) -> OurResult<Vec<u8>> {
-        let camera_info = self.get_camera_info(hardware_id)?;
+        // Create camera instance
+        let mut camera = self.create_camera(hardware_id)?;
 
-        let camera_index = CameraIndex::Index(camera_info.index);
-
-        // Create camera with default resolution
-        let resolution = Resolution::new(640, 480);
-        let camera_format = CameraFormat::new(resolution, FrameFormat::MJPEG, 30);
-        let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::Exact(camera_format));
-
-        let mut camera = Camera::new(camera_index, format)
-            .map_err(|e| OurError::App(format!("Failed to create camera: {e}")))?;
-
+        // Open camera stream
         camera
             .open_stream()
             .map_err(|e| OurError::App(format!("Failed to open camera stream: {e}")))?;
@@ -819,7 +830,13 @@ impl UsbCameraManager {
 
                 Ok(jpeg_data)
             }
-            Err(e) => Err(OurError::App(format!("Failed to capture frame: {e}"))),
+            Err(e) => {
+                warn!("Failed to capture frame from camera {hardware_id}: {e}");
+                if let Err(stop_err) = camera.stop_stream() {
+                    warn!("Failed to stop camera stream after error: {stop_err}");
+                }
+                Err(OurError::App(format!("Failed to capture frame: {e}")))
+            }
         }
     }
 
@@ -860,92 +877,64 @@ impl UsbCameraManager {
             hardware_id, brightness
         );
 
-        // Find the camera in our status
-        let status = self.get_status();
-        if let Some(camera_info) = status.cameras.get(hardware_id) {
-            let camera_index = CameraIndex::Index(camera_info.index);
+        // Create camera instance for brightness control
+        let mut camera = self.create_camera(hardware_id)?;
 
-            // Create a temporary camera to access controls
-            let format =
-                RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestResolution);
-            let mut camera = Camera::new(camera_index, format).map_err(|e| {
-                OurError::App(format!(
-                    "Failed to create camera for brightness control: {e}"
-                ))
-            })?;
-
-            // Try to set brightness using nokhwa controls
-            if let Err(e) = camera.set_camera_control(
-                KnownCameraControl::Brightness,
-                ControlValueSetter::Float(brightness as f64),
-            ) {
-                error!("Failed to set brightness for camera {}: {}", hardware_id, e);
-                return Err(OurError::App(format!("Failed to set brightness: {e}")));
-            }
-
-            info!(
-                "Successfully set brightness for camera {} to {}",
-                hardware_id, brightness
-            );
-            Ok(())
-        } else {
-            Err(OurError::App(format!("Camera {} not found", hardware_id)))
+        // Try to set brightness using nokhwa controls
+        if let Err(e) = camera.set_camera_control(
+            KnownCameraControl::Brightness,
+            ControlValueSetter::Float(brightness as f64),
+        ) {
+            error!("Failed to set brightness for camera {}: {}", hardware_id, e);
+            return Err(OurError::App(format!("Failed to set brightness: {e}")));
         }
+
+        info!(
+            "Successfully set brightness for camera {} to {}",
+            hardware_id, brightness
+        );
+        Ok(())
     }
 
     /// Get camera brightness control
     async fn get_brightness_internal(&mut self, hardware_id: &str) -> OurResult<i64> {
         info!("Getting brightness for camera {}", hardware_id);
 
-        // Find the camera in our status
-        let status = self.get_status();
-        if let Some(camera_info) = status.cameras.get(hardware_id) {
-            let camera_index = CameraIndex::Index(camera_info.index);
+        // Create camera instance for brightness control
+        let camera = self.create_camera(hardware_id)?;
 
-            // Create a temporary camera to access controls
-            let format =
-                RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
-            let camera = Camera::new(camera_index, format).map_err(|e| {
-                OurError::App(format!(
-                    "Failed to create camera for brightness control: {e}"
-                ))
-            })?;
-
-            // Try to get brightness using nokhwa controls
-            match camera.camera_control(KnownCameraControl::Brightness) {
-                Ok(control) => match control.value() {
-                    ControlValueSetter::Integer(brightness) => {
-                        info!(
-                            "Current brightness for camera {}: {}",
-                            hardware_id, brightness
-                        );
-                        Ok(brightness)
-                    }
-                    ControlValueSetter::Float(brightness) => {
-                        let brightness_int = brightness as i64;
-                        info!(
-                            "Current brightness for camera {}: {} (converted from float)",
-                            hardware_id, brightness_int
-                        );
-                        Ok(brightness_int)
-                    }
-                    _ => {
-                        error!(
-                            "Brightness control returned unsupported value type for camera {}",
-                            hardware_id
-                        );
-                        Err(OurError::App(
-                            "Brightness control returned unsupported value type".to_string(),
-                        ))
-                    }
-                },
-                Err(e) => {
-                    error!("Failed to get brightness for camera {}: {}", hardware_id, e);
-                    Err(OurError::App(format!("Failed to get brightness: {e}")))
+        // Try to get brightness using nokhwa controls
+        match camera.camera_control(KnownCameraControl::Brightness) {
+            Ok(control) => match control.value() {
+                ControlValueSetter::Integer(brightness) => {
+                    info!(
+                        "Current brightness for camera {}: {}",
+                        hardware_id, brightness
+                    );
+                    Ok(brightness)
                 }
+                ControlValueSetter::Float(brightness) => {
+                    let brightness_int = brightness as i64;
+                    info!(
+                        "Current brightness for camera {}: {} (converted from float)",
+                        hardware_id, brightness_int
+                    );
+                    Ok(brightness_int)
+                }
+                _ => {
+                    error!(
+                        "Brightness control returned unsupported value type for camera {}",
+                        hardware_id
+                    );
+                    Err(OurError::App(
+                        "Brightness control returned unsupported value type".to_string(),
+                    ))
+                }
+            },
+            Err(e) => {
+                error!("Failed to get brightness for camera {}: {}", hardware_id, e);
+                Err(OurError::App(format!("Failed to get brightness: {e}")))
             }
-        } else {
-            Err(OurError::App(format!("Camera {} not found", hardware_id)))
         }
     }
 }
