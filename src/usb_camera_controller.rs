@@ -8,8 +8,8 @@ use nokhwa::{
     CallbackCamera, Camera,
     pixel_format::RgbFormat,
     utils::{
-        ApiBackend, CameraFormat, CameraIndex, CameraInfo as NokhwaCameraInfo, FrameFormat,
-        RequestedFormat, RequestedFormatType, Resolution,
+        ApiBackend, CameraFormat, CameraIndex, CameraInfo as NokhwaCameraInfo, ControlValueSetter,
+        FrameFormat, KnownCameraControl, RequestedFormat, RequestedFormatType, Resolution,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -97,6 +97,17 @@ pub enum UsbCameraRequest {
     /// Get current status
     GetStatus {
         respond_to: oneshot::Sender<OurResult<UsbCameraStatus>>,
+    },
+    /// Set camera brightness
+    SetBrightness {
+        hardware_id: String,
+        brightness: i64,
+        respond_to: oneshot::Sender<OurResult<()>>,
+    },
+    /// Get camera brightness
+    GetBrightness {
+        hardware_id: String,
+        respond_to: oneshot::Sender<OurResult<i64>>,
     },
     /// Set camera format
     SetCameraFormat {
@@ -241,6 +252,35 @@ impl UsbCameraHandle {
             .send(UsbCameraRequest::SetCameraFormat {
                 hardware_id,
                 format,
+                respond_to: sender,
+            })
+            .map_err(|_| OurError::App("USB camera manager channel closed".to_string()))?;
+        receiver
+            .await
+            .map_err(|_| OurError::App("USB camera manager response failed".to_string()))?
+    }
+
+    /// Set camera brightness
+    pub async fn set_brightness(&self, hardware_id: String, brightness: i64) -> OurResult<()> {
+        let (sender, receiver) = oneshot::channel();
+        self.request_sender
+            .send(UsbCameraRequest::SetBrightness {
+                hardware_id,
+                brightness,
+                respond_to: sender,
+            })
+            .map_err(|_| OurError::App("USB camera manager channel closed".to_string()))?;
+        receiver
+            .await
+            .map_err(|_| OurError::App("USB camera manager response failed".to_string()))?
+    }
+
+    /// Get camera brightness
+    pub async fn get_brightness(&self, hardware_id: String) -> OurResult<i64> {
+        let (sender, receiver) = oneshot::channel();
+        self.request_sender
+            .send(UsbCameraRequest::GetBrightness {
+                hardware_id,
                 respond_to: sender,
             })
             .map_err(|_| OurError::App("USB camera manager channel closed".to_string()))?;
@@ -405,6 +445,25 @@ impl UsbCameraManager {
                     let result = self.capture_streaming_frame_internal(&hardware_id).await;
                     if response_sender.send(result).is_err() {
                         debug!("Failed to send streaming frame response");
+                    }
+                }
+                UsbCameraRequest::SetBrightness {
+                    hardware_id,
+                    brightness,
+                    respond_to,
+                } => {
+                    let result = self.set_brightness_internal(&hardware_id, brightness).await;
+                    if respond_to.send(result).is_err() {
+                        debug!("Failed to send brightness set response");
+                    }
+                }
+                UsbCameraRequest::GetBrightness {
+                    hardware_id,
+                    respond_to,
+                } => {
+                    let result = self.get_brightness_internal(&hardware_id).await;
+                    if respond_to.send(result).is_err() {
+                        debug!("Failed to send brightness get response");
                     }
                 }
             }
@@ -788,6 +847,98 @@ impl UsbCameraManager {
             format_info.width, format_info.height, format_info.fps
         );
         Ok(())
+    }
+
+    /// Set camera brightness control
+    async fn set_brightness_internal(
+        &mut self,
+        hardware_id: &str,
+        brightness: i64,
+    ) -> OurResult<()> {
+        info!(
+            "Setting brightness for camera {} to {}",
+            hardware_id, brightness
+        );
+
+        // Find the camera in our status
+        let status = self.get_status();
+        if let Some(camera_info) = status.cameras.get(hardware_id) {
+            let camera_index = CameraIndex::Index(camera_info.index);
+
+            // Create a temporary camera to access controls
+            let format =
+                RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
+            let mut camera = Camera::new(camera_index, format).map_err(|e| {
+                OurError::App(format!(
+                    "Failed to create camera for brightness control: {e}"
+                ))
+            })?;
+
+            // Try to set brightness using nokhwa controls
+            if let Err(e) = camera.set_camera_control(
+                KnownCameraControl::Brightness,
+                ControlValueSetter::Integer(brightness),
+            ) {
+                error!("Failed to set brightness for camera {}: {}", hardware_id, e);
+                return Err(OurError::App(format!("Failed to set brightness: {e}")));
+            }
+
+            info!(
+                "Successfully set brightness for camera {} to {}",
+                hardware_id, brightness
+            );
+            Ok(())
+        } else {
+            Err(OurError::App(format!("Camera {} not found", hardware_id)))
+        }
+    }
+
+    /// Get camera brightness control
+    async fn get_brightness_internal(&mut self, hardware_id: &str) -> OurResult<i64> {
+        info!("Getting brightness for camera {}", hardware_id);
+
+        // Find the camera in our status
+        let status = self.get_status();
+        if let Some(camera_info) = status.cameras.get(hardware_id) {
+            let camera_index = CameraIndex::Index(camera_info.index);
+
+            // Create a temporary camera to access controls
+            let format =
+                RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
+            let camera = Camera::new(camera_index, format).map_err(|e| {
+                OurError::App(format!(
+                    "Failed to create camera for brightness control: {e}"
+                ))
+            })?;
+
+            // Try to get brightness using nokhwa controls
+            match camera.camera_control(KnownCameraControl::Brightness) {
+                Ok(control) => match control.value() {
+                    ControlValueSetter::Integer(brightness) => {
+                        info!(
+                            "Current brightness for camera {}: {}",
+                            hardware_id, brightness
+                        );
+                        Ok(brightness)
+                    }
+                    _ => {
+                        error!(
+                            "Brightness control returned non-integer value for camera {}",
+                            hardware_id
+                        );
+                        Err(OurError::App(
+                            "Brightness control returned non-integer value".to_string(),
+                        ))
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to get brightness for camera {}: {}", hardware_id, e);
+                    Err(OurError::App(format!("Failed to get brightness: {e}")))
+                }
+            }
+        } else {
+            Err(OurError::App(format!("Camera {} not found", hardware_id)))
+        }
     }
 }
 

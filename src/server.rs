@@ -203,6 +203,14 @@ pub async fn start_server(
         .route("/api/cameras/stop-all", post(stop_cameras))
         .route("/api/cameras/capture", post(capture_images))
         .route("/api/cameras/{camera_id}/stream", get(camera_stream))
+        .route(
+            "/api/cameras/{camera_id}/brightness",
+            get(get_camera_brightness),
+        )
+        .route(
+            "/api/cameras/{camera_id}/brightness",
+            post(set_camera_brightness),
+        )
         .route("/api/cameras/{index}/view-type", post(set_camera_view_type))
         .route("/api/cameras/{index}/region", post(set_camera_region))
         .route("/api/cameras/{index}/region", delete(clear_camera_region))
@@ -1022,6 +1030,16 @@ struct SelectCamerasRequest {
     camera_ids: Vec<String>,
 }
 
+#[derive(Deserialize)]
+struct BrightnessRequest {
+    brightness: i64,
+}
+
+#[derive(Serialize)]
+struct BrightnessResponse {
+    brightness: i64,
+}
+
 async fn create_case_type(
     State(_state): State<Arc<AppState>>,
     Json(_payload): Json<CreateCaseTypeRequest>,
@@ -1138,4 +1156,75 @@ async fn reset_config(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<(
     // In a full implementation, this would reset configuration to defaults
     info!("Config reset to defaults requested");
     Json(ApiResponse::success(()))
+}
+
+async fn get_camera_brightness(
+    Path(camera_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Json<ApiResponse<BrightnessResponse>> {
+    info!("Getting brightness for camera: {}", camera_id);
+
+    // Determine camera type and route to appropriate manager
+    if camera_id.starts_with("usb:") {
+        match state.usb_camera_manager.get_brightness(camera_id).await {
+            Ok(brightness) => {
+                info!("Current brightness for USB camera: {}", brightness);
+                Json(ApiResponse::success(BrightnessResponse { brightness }))
+            }
+            Err(e) => {
+                error!("Failed to get USB camera brightness: {}", e);
+                Json(ApiResponse::<BrightnessResponse>::error(format!(
+                    "Failed to get camera brightness: {e}"
+                )))
+            }
+        }
+    } else {
+        // ESPHome cameras don't support brightness control
+        Json(ApiResponse::<BrightnessResponse>::error(
+            "ESPHome cameras do not support brightness control".to_string(),
+        ))
+    }
+}
+
+async fn set_camera_brightness(
+    Path(camera_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<BrightnessRequest>,
+) -> Json<ApiResponse<()>> {
+    info!(
+        "Setting brightness for camera: {} to {}",
+        camera_id, payload.brightness
+    );
+
+    // Validate brightness range (typically 0-100 or similar)
+    if payload.brightness < 0 || payload.brightness > 255 {
+        return Json(ApiResponse::<()>::error(
+            "Brightness must be between 0 and 255".to_string(),
+        ));
+    }
+
+    // Determine camera type and route to appropriate manager
+    if camera_id.starts_with("usb:") {
+        match state
+            .usb_camera_manager
+            .set_brightness(camera_id, payload.brightness)
+            .await
+        {
+            Ok(()) => {
+                info!("Successfully set USB camera brightness");
+                Json(ApiResponse::success(()))
+            }
+            Err(e) => {
+                error!("Failed to set USB camera brightness: {}", e);
+                Json(ApiResponse::<()>::error(format!(
+                    "Failed to set camera brightness: {e}"
+                )))
+            }
+        }
+    } else {
+        // ESPHome cameras don't support brightness control
+        Json(ApiResponse::<()>::error(
+            "ESPHome cameras do not support brightness control".to_string(),
+        ))
+    }
 }

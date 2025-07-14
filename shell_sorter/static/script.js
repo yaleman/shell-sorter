@@ -214,6 +214,15 @@ function displayCameras(cameras) {
                 <button class="btn btn-sm btn-secondary camera-autofocus-btn" data-camera-id="${camera.id}" ${camera.index !== undefined ? `data-camera-index="${camera.index}"` : ''}>
                     Autofocus
                 </button>
+                ${camera.camera_type === 'usb' ? `
+                    <div class="brightness-control">
+                        <label for="brightness-${camera.id}" class="brightness-label">Brightness:</label>
+                        <input type="range" id="brightness-${camera.id}" class="brightness-slider" 
+                               min="0" max="255" step="1" value="128" 
+                               data-camera-id="${camera.id}">
+                        <span class="brightness-value" id="brightness-value-${camera.id}">128</span>
+                    </div>
+                ` : ''}
             </div>
         `;
 
@@ -1245,4 +1254,101 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Initialize debug console
     initializeDebugConsole();
+
+    // Brightness control event handlers
+    document.addEventListener('input', function(e) {
+        if (e.target.classList.contains('brightness-slider')) {
+            const cameraId = e.target.dataset.cameraId;
+            const brightness = parseInt(e.target.value);
+            const valueSpan = document.getElementById(`brightness-value-${cameraId}`);
+            
+            // Update display value immediately
+            if (valueSpan) {
+                valueSpan.textContent = brightness;
+            }
+            
+            // Debounce the API calls
+            clearTimeout(e.target.brightnessTimeout);
+            e.target.brightnessTimeout = setTimeout(() => {
+                setBrightness(cameraId, brightness);
+            }, 500);
+        }
+    });
+
+    // Load initial brightness values for USB cameras
+    setTimeout(loadCameraBrightness, 1000);
 });
+
+// Brightness control functions
+async function setBrightness(cameraId, brightness) {
+    try {
+        console.log(`Setting brightness for camera ${cameraId} to ${brightness}`);
+        
+        const response = await fetch(`/api/cameras/${cameraId}/brightness`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ brightness: brightness })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                console.log(`Successfully set brightness for camera ${cameraId}`);
+            } else {
+                console.error(`Failed to set brightness: ${result.message}`);
+                showToast(`Failed to set brightness: ${result.message}`, 'error');
+            }
+        } else {
+            const errorText = await response.text();
+            console.error(`HTTP error setting brightness: ${response.status} - ${errorText}`);
+            showToast(`Failed to set brightness: ${response.status}`, 'error');
+        }
+    } catch (error) {
+        console.error('Error setting brightness:', error);
+        showToast(`Error setting brightness: ${error.message}`, 'error');
+    }
+}
+
+async function getBrightness(cameraId) {
+    try {
+        const response = await fetch(`/api/cameras/${cameraId}/brightness`);
+
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success && result.data) {
+                return result.data.brightness;
+            } else {
+                console.warn(`Failed to get brightness for camera ${cameraId}: ${result.message}`);
+                return null;
+            }
+        } else {
+            console.warn(`HTTP error getting brightness for camera ${cameraId}: ${response.status}`);
+            return null;
+        }
+    } catch (error) {
+        console.warn(`Error getting brightness for camera ${cameraId}:`, error);
+        return null;
+    }
+}
+
+async function loadCameraBrightness() {
+    // Find all USB cameras and load their current brightness
+    const brightnessSliders = document.querySelectorAll('.brightness-slider');
+    
+    for (const slider of brightnessSliders) {
+        const cameraId = slider.dataset.cameraId;
+        if (cameraId && cameraId.startsWith('usb:')) {
+            const currentBrightness = await getBrightness(cameraId);
+            if (currentBrightness !== null) {
+                slider.value = currentBrightness;
+                const valueSpan = document.getElementById(`brightness-value-${cameraId}`);
+                if (valueSpan) {
+                    valueSpan.textContent = currentBrightness;
+                }
+                console.log(`Loaded brightness for camera ${cameraId}: ${currentBrightness}`);
+            }
+        }
+    }
+}
