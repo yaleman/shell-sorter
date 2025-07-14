@@ -867,7 +867,7 @@ impl UsbCameraManager {
 
             // Create a temporary camera to access controls
             let format =
-                RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestFrameRate);
+                RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestResolution);
             let mut camera = Camera::new(camera_index, format).map_err(|e| {
                 OurError::App(format!(
                     "Failed to create camera for brightness control: {e}"
@@ -877,7 +877,7 @@ impl UsbCameraManager {
             // Try to set brightness using nokhwa controls
             if let Err(e) = camera.set_camera_control(
                 KnownCameraControl::Brightness,
-                ControlValueSetter::Integer(brightness),
+                ControlValueSetter::Float(brightness as f64),
             ) {
                 error!("Failed to set brightness for camera {}: {}", hardware_id, e);
                 return Err(OurError::App(format!("Failed to set brightness: {e}")));
@@ -921,13 +921,21 @@ impl UsbCameraManager {
                         );
                         Ok(brightness)
                     }
+                    ControlValueSetter::Float(brightness) => {
+                        let brightness_int = brightness as i64;
+                        info!(
+                            "Current brightness for camera {}: {} (converted from float)",
+                            hardware_id, brightness_int
+                        );
+                        Ok(brightness_int)
+                    }
                     _ => {
                         error!(
-                            "Brightness control returned non-integer value for camera {}",
+                            "Brightness control returned unsupported value type for camera {}",
                             hardware_id
                         );
                         Err(OurError::App(
-                            "Brightness control returned non-integer value".to_string(),
+                            "Brightness control returned unsupported value type".to_string(),
                         ))
                     }
                 },
