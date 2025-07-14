@@ -634,9 +634,22 @@ async fn detect_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<
         // Restore saved camera selections after detection
         restore_saved_camera_selections(&state).await;
 
-        // Sort cameras by human-facing name for consistency
-        all_cameras.sort_by(|a, b| a.name.cmp(&b.name));
-        Json(ApiResponse::success(all_cameras))
+        // Get the updated camera list with proper selection status
+        match list_cameras(State(state)).await {
+            Json(response) => {
+                if response.success {
+                    if let Some(cameras) = response.data {
+                        Json(ApiResponse::success(cameras))
+                    } else {
+                        Json(ApiResponse::success(all_cameras))
+                    }
+                } else {
+                    // Fallback to the original list if list_cameras fails
+                    all_cameras.sort_by(|a, b| a.name.cmp(&b.name));
+                    Json(ApiResponse::success(all_cameras))
+                }
+            }
+        }
     }
 }
 

@@ -233,6 +233,9 @@ function displayCameras(cameras) {
 
     // Update camera selection state immediately after displaying
     updateCameraSelection();
+    
+    // Sync frontend selection with backend for cameras shown as selected
+    syncCameraSelection();
 }
 
 // Function to display "no cameras" message
@@ -725,6 +728,8 @@ document.addEventListener('DOMContentLoaded', function () {
                         showToast(`Detected ${cameras.length} cameras`, 'success');
                         displayCameras(cameras);
                         updateCameraSelection();
+                        // Sync selection with backend after manual detection
+                        setTimeout(syncCameraSelection, 500);
                     } else {
                         showToast(`Error detecting cameras: ${apiResponse.message || 'Unknown error'}`, 'error');
                     }
@@ -992,6 +997,8 @@ document.addEventListener('DOMContentLoaded', function () {
                                 showToast(`Auto-detected ${detectedCameras.length} cameras`, 'success');
                                 displayCameras(detectedCameras);
                                 updateCameraSelection();
+                                // Sync selection with backend after auto-detection
+                                setTimeout(syncCameraSelection, 500);
                             } else {
                                 console.log('No cameras found during auto-detection');
                                 showToast('No cameras found on this system', 'warning');
@@ -1278,6 +1285,39 @@ document.addEventListener('DOMContentLoaded', function () {
     // Load initial brightness values for USB cameras
     setTimeout(loadCameraBrightness, 1000);
 });
+
+// Sync camera selection with backend
+async function syncCameraSelection() {
+    const selectedCameras = Array.from(document.querySelectorAll('.camera-checkbox:checked'))
+        .map(cb => cb.dataset.cameraId);
+    
+    if (selectedCameras.length > 0) {
+        console.log('Syncing camera selection with backend:', selectedCameras);
+        
+        try {
+            const response = await fetch('/api/cameras/select', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ camera_ids: selectedCameras })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    console.log('Successfully synced camera selection');
+                } else {
+                    console.warn('Failed to sync camera selection:', result.message);
+                }
+            } else {
+                console.warn('HTTP error syncing camera selection:', response.status);
+            }
+        } catch (error) {
+            console.warn('Error syncing camera selection:', error);
+        }
+    }
+}
 
 // Brightness control functions
 async function setBrightness(cameraId, brightness) {
