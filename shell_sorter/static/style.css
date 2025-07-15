@@ -22,7 +22,7 @@ header {
     color: white;
     padding: 30px;
     border-radius: 10px;
-    /* margin-bottom: 30px; */
+    margin-bottom: 30px;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -97,7 +97,7 @@ main {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto;
-    gap: 0.0em;
+    gap: 1.0em;
     max-width: 100%;
 }
 
@@ -745,7 +745,7 @@ select:focus, input:focus {
 
     header {
         flex-direction: column;
-        gap: 0px;
+        gap: 15px;
         text-align: center;
     }
 
