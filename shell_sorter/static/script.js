@@ -234,8 +234,8 @@ function displayCameras(cameras) {
     // Update camera selection state immediately after displaying
     updateCameraSelection();
     
-    // Sync frontend selection with backend for cameras shown as selected
-    syncCameraSelection();
+    // Note: Do not call syncCameraSelection() here as it would overwrite
+    // the restored selections that were just applied from the backend
 }
 
 // Function to display "no cameras" message
@@ -728,8 +728,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         showToast(`Detected ${cameras.length} cameras`, 'success');
                         displayCameras(cameras);
                         updateCameraSelection();
-                        // Sync selection with backend after manual detection
-                        setTimeout(syncCameraSelection, 500);
+                        // Note: No need to sync here - cameras come from backend with correct selection state
                     } else {
                         showToast(`Error detecting cameras: ${apiResponse.message || 'Unknown error'}`, 'error');
                     }
@@ -997,8 +996,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                 showToast(`Auto-detected ${detectedCameras.length} cameras`, 'success');
                                 displayCameras(detectedCameras);
                                 updateCameraSelection();
-                                // Sync selection with backend after auto-detection
-                                setTimeout(syncCameraSelection, 500);
+                                // Note: No need to sync here - cameras come from backend with correct selection state
                             } else {
                                 console.log('No cameras found during auto-detection');
                                 showToast('No cameras found on this system', 'warning');
