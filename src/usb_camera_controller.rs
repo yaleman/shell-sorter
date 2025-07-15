@@ -339,8 +339,15 @@ impl UsbCameraManager {
                 debug!("Applying brightness adjustment of {} to camera {}", brightness_offset, hardware_id);
                 
                 // Convert brightness from -100 to +100 range to a multiplier
-                // -100 = 0.0 (black), 0 = 1.0 (no change), +100 = 2.0 (double brightness)
-                let brightness_multiplier = (brightness_offset + 100.0) / 100.0;
+                // -100 = 0.0 (black), 0 = 1.0 (no change), +100 = 4.0 (quadruple brightness)
+                // This provides much brighter images for dark cameras like FaceTime
+                let brightness_multiplier = if brightness_offset >= 0.0 {
+                    // For positive adjustments: 0 to +100 maps to 1.0 to 4.0
+                    1.0 + (brightness_offset / 100.0) * 3.0
+                } else {
+                    // For negative adjustments: -100 to 0 maps to 0.0 to 1.0
+                    (brightness_offset + 100.0) / 100.0
+                };
                 
                 // Apply brightness adjustment to each pixel
                 for pixel in image.pixels_mut() {
