@@ -8,8 +8,8 @@ use nokhwa::{
     Camera,
     pixel_format::RgbFormat,
     utils::{
-        ApiBackend, CameraIndex, CameraInfo as NokhwaCameraInfo, ControlValueSetter,
-        KnownCameraControl, RequestedFormat, RequestedFormatType,
+        ApiBackend, CameraIndex, CameraInfo as NokhwaCameraInfo,
+        RequestedFormat, RequestedFormatType,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -130,6 +130,8 @@ pub struct UsbCameraManager {
     request_receiver: mpsc::UnboundedReceiver<UsbCameraRequest>,
     /// Preferred API backend
     backend: ApiBackend,
+    /// Software brightness adjustments per camera (hardware_id -> brightness_offset)
+    brightness_adjustments: HashMap<String, f32>,
 }
 
 /// Handle for communicating with USB Camera Manager
@@ -330,6 +332,31 @@ impl UsbCameraManager {
             .map_err(|e| OurError::App(format!("Failed to create camera {hardware_id}: {e}")))
     }
 
+    /// Apply software brightness adjustment to an image
+    fn apply_brightness_adjustment(&self, image: &mut image::RgbImage, hardware_id: &str) {
+        if let Some(&brightness_offset) = self.brightness_adjustments.get(hardware_id) {
+            if brightness_offset != 0.0 {
+                debug!("Applying brightness adjustment of {} to camera {}", brightness_offset, hardware_id);
+                
+                // Convert brightness from -100 to +100 range to a multiplier
+                // -100 = 0.0 (black), 0 = 1.0 (no change), +100 = 2.0 (double brightness)
+                let brightness_multiplier = (brightness_offset + 100.0) / 100.0;
+                
+                // Apply brightness adjustment to each pixel
+                for pixel in image.pixels_mut() {
+                    let [r, g, b] = pixel.0;
+                    
+                    // Apply brightness adjustment and clamp to valid range
+                    let new_r = ((r as f32 * brightness_multiplier).min(255.0).max(0.0)) as u8;
+                    let new_g = ((g as f32 * brightness_multiplier).min(255.0).max(0.0)) as u8;
+                    let new_b = ((b as f32 * brightness_multiplier).min(255.0).max(0.0)) as u8;
+                    
+                    *pixel = image::Rgb([new_r, new_g, new_b]);
+                }
+            }
+        }
+    }
+
     /// Create new USB camera manager
     pub fn new() -> OurResult<(UsbCameraManager, UsbCameraHandle)> {
         let (request_sender, request_receiver) = mpsc::unbounded_channel();
@@ -341,6 +368,7 @@ impl UsbCameraManager {
             status: status.clone(),
             request_receiver,
             backend,
+            brightness_adjustments: HashMap::new(),
         };
 
         let handle = UsbCameraHandle {
@@ -762,10 +790,13 @@ impl UsbCameraManager {
 
         match camera.frame() {
             Ok(frame) => {
-                // Convert frame to JPEG bytes
-                let image = frame
+                // Convert frame to RGB image
+                let mut image = frame
                     .decode_image::<RgbFormat>()
                     .map_err(|e| OurError::App(format!("Failed to decode frame: {e}")))?;
+
+                // Apply software brightness adjustment
+                self.apply_brightness_adjustment(&mut image, hardware_id);
 
                 // Convert to JPEG with lower quality for streaming
                 let mut jpeg_data = Vec::new();
@@ -810,10 +841,13 @@ impl UsbCameraManager {
 
         match camera.frame() {
             Ok(frame) => {
-                // Convert frame to JPEG bytes
-                let image = frame
+                // Convert frame to RGB image
+                let mut image = frame
                     .decode_image::<RgbFormat>()
                     .map_err(|e| OurError::App(format!("Failed to decode frame: {e}")))?;
+
+                // Apply software brightness adjustment
+                self.apply_brightness_adjustment(&mut image, hardware_id);
 
                 // Convert to JPEG
                 let mut jpeg_data = Vec::new();
@@ -866,131 +900,55 @@ impl UsbCameraManager {
         Ok(())
     }
 
-    /// Set camera brightness control
+    /// Set camera brightness control (software-based image adjustment)
     async fn set_brightness_internal(
         &mut self,
         hardware_id: &str,
         brightness: i64,
     ) -> OurResult<()> {
         info!(
-            "Setting brightness for camera {} to {}",
+            "Setting software brightness adjustment for camera {} to {}",
             hardware_id, brightness
         );
 
-        // Create camera instance for brightness control
-        let mut camera = self.create_camera(hardware_id)?;
+        // Validate camera exists
+        let _camera_info = self.get_camera_info(hardware_id)?;
 
-        // Clamp brightness to a reasonable range (0-100) since camera ranges vary
-        let adjusted_brightness = brightness.clamp(0, 100);
-
-        if adjusted_brightness != brightness {
-            info!(
-                "Adjusted brightness from {} to {} (clamped to 0-100 range)",
-                brightness, adjusted_brightness
-            );
-        }
-
-        info!("Setting brightness to {adjusted_brightness}");
-
-        // Try setting brightness with multiple approaches to handle different camera requirements
-        let mut success = false;
-        let mut last_error = String::new();
-
-        // Approach 1: Try integer value (many cameras prefer this)
-        if let Err(e) = camera.set_camera_control(
-            KnownCameraControl::Brightness,
-            ControlValueSetter::Integer(adjusted_brightness),
-        ) {
-            last_error = format!("Integer: {e}");
-            warn!("Integer brightness setting failed, trying float: {e}");
-
-            // Approach 2: Try float value
-            if let Err(e2) = camera.set_camera_control(
-                KnownCameraControl::Brightness,
-                ControlValueSetter::Float(adjusted_brightness as f64),
-            ) {
-                last_error.push_str(&format!(", Float: {e2}"));
-                warn!("Float brightness setting failed, trying normalized: {e2}");
-
-                // Approach 3: Try normalized float value (0.0-1.0 range)
-                let normalized_brightness = (adjusted_brightness as f64) / 100.0;
-                if let Err(e3) = camera.set_camera_control(
-                    KnownCameraControl::Brightness,
-                    ControlValueSetter::Float(normalized_brightness),
-                ) {
-                    last_error.push_str(&format!(", Normalized: {e3}"));
-                    error!(
-                        "All brightness setting approaches failed for camera {}: {last_error}",
-                        hardware_id
-                    );
-                } else {
-                    success = true;
-                    info!(
-                        "Successfully set brightness using normalized float approach ({normalized_brightness})"
-                    );
-                }
-            } else {
-                success = true;
-                info!("Successfully set brightness using float approach");
-            }
-        } else {
-            success = true;
-            info!("Successfully set brightness using integer approach");
-        }
-
-        if !success {
-            return Err(OurError::App(format!(
-                "Failed to set brightness after trying all approaches: {last_error}"
-            )));
-        }
-
+        // Convert brightness from 0-100 range to -100 to +100 offset
+        // 50 = no adjustment (0), 0 = darkest (-100), 100 = brightest (+100)
+        let brightness_offset = (brightness as f32 - 50.0) * 2.0;
+        
+        // Store the brightness adjustment for this camera
+        self.brightness_adjustments.insert(hardware_id.to_string(), brightness_offset);
+        
         info!(
-            "Successfully set brightness for camera {} to {}",
-            hardware_id, adjusted_brightness
+            "Set software brightness offset for camera {} to {} (original: {})",
+            hardware_id, brightness_offset, brightness
         );
+        
         Ok(())
     }
 
-    /// Get camera brightness control
+    /// Get camera brightness control (software-based image adjustment)
     async fn get_brightness_internal(&mut self, hardware_id: &str) -> OurResult<i64> {
-        info!("Getting brightness for camera {}", hardware_id);
+        info!("Getting software brightness adjustment for camera {}", hardware_id);
 
-        // Create camera instance for brightness control
-        let camera = self.create_camera(hardware_id)?;
+        // Validate camera exists
+        let _camera_info = self.get_camera_info(hardware_id)?;
 
-        // Try to get brightness using nokhwa controls
-        match camera.camera_control(KnownCameraControl::Brightness) {
-            Ok(control) => match control.value() {
-                ControlValueSetter::Integer(brightness) => {
-                    info!(
-                        "Current brightness for camera {}: {}",
-                        hardware_id, brightness
-                    );
-                    Ok(brightness)
-                }
-                ControlValueSetter::Float(brightness) => {
-                    let brightness_int = brightness as i64;
-                    info!(
-                        "Current brightness for camera {}: {} (converted from float)",
-                        hardware_id, brightness_int
-                    );
-                    Ok(brightness_int)
-                }
-                _ => {
-                    error!(
-                        "Brightness control returned unsupported value type for camera {}",
-                        hardware_id
-                    );
-                    Err(OurError::App(
-                        "Brightness control returned unsupported value type".to_string(),
-                    ))
-                }
-            },
-            Err(e) => {
-                error!("Failed to get brightness for camera {}: {}", hardware_id, e);
-                Err(OurError::App(format!("Failed to get brightness: {e}")))
-            }
-        }
+        // Get the stored brightness offset and convert back to 0-100 range
+        let brightness_offset = self.brightness_adjustments.get(hardware_id).copied().unwrap_or(0.0);
+        
+        // Convert from -100 to +100 offset back to 0-100 brightness scale
+        // 0 offset = 50 brightness, -100 offset = 0 brightness, +100 offset = 100 brightness
+        let brightness = ((brightness_offset / 2.0) + 50.0) as i64;
+        
+        info!(
+            "Current software brightness for camera {}: {} (offset: {})",
+            hardware_id, brightness, brightness_offset
+        );
+        
+        Ok(brightness)
     }
 }
 
