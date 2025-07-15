@@ -22,7 +22,7 @@ header {
     color: white;
     padding: 30px;
     border-radius: 10px;
-    margin-bottom: 30px;
+    /* margin-bottom: 30px; */
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -97,7 +97,7 @@ main {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto;
-    gap: 30px;
+    gap: 0.0em;
     max-width: 100%;
 }
 
@@ -105,7 +105,7 @@ main {
     main {
         gap: 40px;
     }
-    
+
     .container {
         padding: 20px 40px;
     }
@@ -113,7 +113,6 @@ main {
 
 .control-panel {
     grid-column: 1 / -1;
-    padding: 15px 30px !important;
 }
 
 .control-row {
@@ -126,8 +125,8 @@ main {
 
 section {
     background: white;
-    padding: 30px;
-    border-radius: 10px;
+    padding: 1.0em;
+    border-radius: 1.0em;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
@@ -739,54 +738,54 @@ select:focus, input:focus {
     main {
         grid-template-columns: 1fr;
     }
-    
+
     .sorting-form {
         grid-template-columns: 1fr;
     }
-    
+
     header {
         flex-direction: column;
-        gap: 15px;
+        gap: 0px;
         text-align: center;
     }
-    
+
     .status-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .camera-controls {
         justify-content: center;
     }
-    
+
     .camera-list {
         flex-direction: column;
         overflow-x: visible;
     }
-    
+
     .camera-item {
         flex: none;
         min-width: auto;
     }
-    
+
     .toast-container {
         top: 10px;
         right: 10px;
         left: 10px;
         max-width: none;
     }
-    
+
     .toast {
         min-width: auto;
     }
-    
+
     .tagging-main {
         grid-template-columns: 1fr;
     }
-    
+
     .tagging-form-panel {
         position: static;
     }
-    
+
     .images-grid {
         grid-template-columns: 1fr;
     }
@@ -1393,11 +1392,11 @@ select:focus, input:focus {
         grid-template-columns: 1fr;
         grid-template-rows: auto auto;
     }
-    
+
     .composite-section-side {
         order: -1; /* Move composite to top on smaller screens */
     }
-    
+
     .composite-preview-side {
         max-height: 200px;
     }
@@ -1564,11 +1563,11 @@ select:focus, input:focus {
         grid-template-columns: 1fr;
         grid-template-rows: auto auto;
     }
-    
+
     .composite-section-side {
         order: -1;
     }
-    
+
     .form-section {
         grid-template-columns: 1fr;
     }
@@ -1578,16 +1577,16 @@ select:focus, input:focus {
     .ml-training-main {
         grid-template-columns: 1fr;
     }
-    
+
     .training-control-panel {
         position: static;
     }
-    
+
     .header-actions {
         flex-direction: column;
         gap: 10px;
     }
-    
+
     .filter-controls {
         grid-template-columns: 1fr;
     }
@@ -1713,25 +1712,25 @@ select:focus, input:focus {
     .config-main {
         gap: 20px;
     }
-    
+
     .camera-config-item {
         flex-direction: column;
         gap: 15px;
         align-items: stretch;
     }
-    
+
     .camera-config-header {
         justify-content: space-between;
     }
-    
+
     .camera-config-details {
         justify-content: center;
     }
-    
+
     .camera-config-actions {
         justify-content: center;
     }
-    
+
     .config-actions {
         flex-direction: column;
     }

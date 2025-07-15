@@ -880,18 +880,73 @@ impl UsbCameraManager {
         // Create camera instance for brightness control
         let mut camera = self.create_camera(hardware_id)?;
 
-        // Try to set brightness using nokhwa controls
+        // Clamp brightness to a reasonable range (0-100) since camera ranges vary
+        let adjusted_brightness = brightness.clamp(0, 100);
+
+        if adjusted_brightness != brightness {
+            info!(
+                "Adjusted brightness from {} to {} (clamped to 0-100 range)",
+                brightness, adjusted_brightness
+            );
+        }
+
+        info!("Setting brightness to {adjusted_brightness}");
+
+        // Try setting brightness with multiple approaches to handle different camera requirements
+        let mut success = false;
+        let mut last_error = String::new();
+
+        // Approach 1: Try integer value (many cameras prefer this)
         if let Err(e) = camera.set_camera_control(
             KnownCameraControl::Brightness,
-            ControlValueSetter::Float(brightness as f64),
+            ControlValueSetter::Integer(adjusted_brightness),
         ) {
-            error!("Failed to set brightness for camera {}: {}", hardware_id, e);
-            return Err(OurError::App(format!("Failed to set brightness: {e}")));
+            last_error = format!("Integer: {e}");
+            warn!("Integer brightness setting failed, trying float: {e}");
+
+            // Approach 2: Try float value
+            if let Err(e2) = camera.set_camera_control(
+                KnownCameraControl::Brightness,
+                ControlValueSetter::Float(adjusted_brightness as f64),
+            ) {
+                last_error.push_str(&format!(", Float: {e2}"));
+                warn!("Float brightness setting failed, trying normalized: {e2}");
+
+                // Approach 3: Try normalized float value (0.0-1.0 range)
+                let normalized_brightness = (adjusted_brightness as f64) / 100.0;
+                if let Err(e3) = camera.set_camera_control(
+                    KnownCameraControl::Brightness,
+                    ControlValueSetter::Float(normalized_brightness),
+                ) {
+                    last_error.push_str(&format!(", Normalized: {e3}"));
+                    error!(
+                        "All brightness setting approaches failed for camera {}: {last_error}",
+                        hardware_id
+                    );
+                } else {
+                    success = true;
+                    info!(
+                        "Successfully set brightness using normalized float approach ({normalized_brightness})"
+                    );
+                }
+            } else {
+                success = true;
+                info!("Successfully set brightness using float approach");
+            }
+        } else {
+            success = true;
+            info!("Successfully set brightness using integer approach");
+        }
+
+        if !success {
+            return Err(OurError::App(format!(
+                "Failed to set brightness after trying all approaches: {last_error}"
+            )));
         }
 
         info!(
             "Successfully set brightness for camera {} to {}",
-            hardware_id, brightness
+            hardware_id, adjusted_brightness
         );
         Ok(())
     }
