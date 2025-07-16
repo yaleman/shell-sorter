@@ -1,5 +1,5 @@
 // Configuration page JavaScript
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     // UI Elements
     const backToDashboardBtn = document.getElementById('back-to-dashboard-btn');
     const autoStartCamerasCheckbox = document.getElementById('auto-start-cameras');
@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Navigation
     if (backToDashboardBtn) {
-        backToDashboardBtn.addEventListener('click', function() {
+        backToDashboardBtn.addEventListener('click', function () {
             window.location.href = '/';
         });
     }
@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Auto-start cameras checkbox
     if (autoStartCamerasCheckbox) {
-        autoStartCamerasCheckbox.addEventListener('change', function() {
+        autoStartCamerasCheckbox.addEventListener('change', function () {
             configData.auto_start_cameras = this.checked;
             console.log('Auto-start cameras:', configData.auto_start_cameras);
         });
@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Auto-detect cameras checkbox
     if (autoDetectCamerasCheckbox) {
-        autoDetectCamerasCheckbox.addEventListener('change', function() {
+        autoDetectCamerasCheckbox.addEventListener('change', function () {
             configData.auto_detect_cameras = this.checked;
             console.log('Auto-detect cameras:', configData.auto_detect_cameras);
         });
@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ESPHome hostname input
     if (esphomeHostnameInput) {
-        esphomeHostnameInput.addEventListener('change', function() {
+        esphomeHostnameInput.addEventListener('change', function () {
             configData.esphome_hostname = this.value.trim();
             console.log('ESPHome hostname:', configData.esphome_hostname);
         });
@@ -58,21 +58,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Add network camera button
     if (addNetworkCameraBtn) {
-        addNetworkCameraBtn.addEventListener('click', function() {
+        addNetworkCameraBtn.addEventListener('click', function () {
             addNetworkCameraItem('');
         });
     }
 
     // Refresh cameras button
     if (refreshCamerasBtn) {
-        refreshCamerasBtn.addEventListener('click', async function() {
+        refreshCamerasBtn.addEventListener('click', async function () {
             await refreshCameraList();
         });
     }
 
     // Clear all cameras button
     if (clearAllCamerasBtn) {
-        clearAllCamerasBtn.addEventListener('click', async function() {
+        clearAllCamerasBtn.addEventListener('click', async function () {
             if (confirm('Are you sure you want to remove all cameras from the configuration? This will clear all camera settings including regions and view types.')) {
                 await clearAllCameras();
             }
@@ -81,14 +81,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Save configuration button
     if (saveConfigBtn) {
-        saveConfigBtn.addEventListener('click', async function() {
+        saveConfigBtn.addEventListener('click', async function () {
             await saveConfiguration();
         });
     }
 
     // Reset configuration button
     if (resetConfigBtn) {
-        resetConfigBtn.addEventListener('click', async function() {
+        resetConfigBtn.addEventListener('click', async function () {
             if (confirm('Are you sure you want to reset all configuration to defaults? This will clear all settings.')) {
                 await resetConfiguration();
             }
@@ -96,12 +96,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Handle camera deletion and network camera actions using event delegation
-    document.addEventListener('click', async function(e) {
+    document.addEventListener('click', async function (e) {
         if (e.target.classList.contains('delete-camera-btn')) {
             const cameraIndex = parseInt(e.target.dataset.cameraIndex);
             const cameraItem = e.target.closest('.camera-config-item');
             const cameraName = cameraItem.querySelector('h3').textContent;
-            
+
             if (confirm(`Are you sure you want to delete camera "${cameraName}"? This will remove all settings for this camera including regions and view type.`)) {
                 await deleteCamera(cameraIndex);
             }
@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Handle network camera hostname changes using event delegation
-    document.addEventListener('input', function(e) {
+    document.addEventListener('input', function (e) {
         if (e.target.classList.contains('network-camera-hostname')) {
             updateNetworkCamerasFromUI();
         }
@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', function() {
     async function refreshCameraList() {
         try {
             showToast('Refreshing camera list...', 'info');
-            
+
             const response = await fetch('/api/cameras');
             if (response.ok) {
                 const cameras = await response.json();
@@ -242,12 +242,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (autoStartCamerasCheckbox) {
             autoStartCamerasCheckbox.checked = configData.auto_start_cameras || false;
         }
-        
+
         // Update auto-detect checkbox
         if (autoDetectCamerasCheckbox) {
             autoDetectCamerasCheckbox.checked = configData.auto_detect_cameras || false;
         }
-        
+
         // Update ESPHome hostname input
         if (esphomeHostnameInput) {
             esphomeHostnameInput.value = configData.esphome_hostname || 'shell-sorter-controller.local';
@@ -269,9 +269,9 @@ document.addEventListener('DOMContentLoaded', function() {
             <input type="text" class="network-camera-hostname" value="${hostname}" placeholder="esp32cam1.local">
             <button type="button" class="btn btn-sm btn-danger remove-network-camera-btn">Remove</button>
         `;
-        
+
         networkCamerasList.appendChild(networkCameraItem);
-        
+
         // Update configuration immediately
         updateNetworkCamerasFromUI();
     }
@@ -296,7 +296,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const hostnames = Array.from(hostnameInputs)
             .map(input => input.value.trim())
             .filter(hostname => hostname.length > 0);
-        
+
         configData.network_camera_hostnames = hostnames;
         console.log('Network camera hostnames:', configData.network_camera_hostnames);
     }
@@ -326,10 +326,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         <span class="camera-detail">Index: ${camera.index}</span>
                         <span class="camera-detail">Resolution: ${camera.resolution}</span>
                         ${camera.view_type ? `<span class="camera-detail">View: ${camera.view_type}</span>` : ''}
-                        ${camera.region_x !== null && camera.region_x !== undefined ? 
-                            `<span class="camera-detail">Region: ${camera.region_x},${camera.region_y} (${camera.region_width}x${camera.region_height})</span>` : 
-                            ''
-                        }
+                        ${camera.region_x !== null && camera.region_x !== undefined ?
+                `<span class="camera-detail">Region: ${camera.region_x},${camera.region_y} (${camera.region_width}x${camera.region_height})</span>` :
+                ''
+            }
                     </div>
                 </div>
                 <div class="camera-config-actions">
