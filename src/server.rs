@@ -1481,7 +1481,7 @@ async fn train_model(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()
     Json(ApiResponse::success(()))
 }
 
-async fn get_config(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<ConfigData>> {
+async fn get_config(State(_state): State<Arc<AppState>>) -> Json<ConfigData> {
     // Load current configuration from user config file to ensure it's up to date
     let user_config = Settings::load_user_config();
     let config_data = ConfigData {
@@ -1490,7 +1490,7 @@ async fn get_config(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<Con
         esphome_hostname: user_config.esphome_hostname,
         network_camera_hostnames: user_config.network_camera_hostnames,
     };
-    Json(ApiResponse::success(config_data))
+    Json(config_data)
 }
 
 async fn save_config(
