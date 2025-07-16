@@ -110,11 +110,21 @@ async fn start_test_server()
         use shell_sorter::server::{AppState, create_test_router};
         use std::sync::Arc;
 
+        // Initialize ML trainer and shell data manager for tests
+        let mut ml_trainer = shell_sorter::ml_training::MLTrainer::new(settings.clone());
+        ml_trainer
+            .initialize()
+            .expect("Failed to initialize ML trainer in test");
+        let shell_data_manager =
+            shell_sorter::shell_data::ShellDataManager::new(settings.data_directory.clone());
+
         let state = Arc::new(AppState {
             settings,
             controller: controller_handle,
             camera_manager: camera_handle,
             usb_camera_manager: usb_camera_handle,
+            ml_trainer: Arc::new(std::sync::Mutex::new(ml_trainer)),
+            shell_data_manager: Arc::new(shell_data_manager),
         });
 
         let app = create_test_router(state);

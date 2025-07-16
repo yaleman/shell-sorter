@@ -89,11 +89,36 @@ impl Default for Settings {
 }
 
 /// Camera view type
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ViewType {
     Side,
     Tail,
+    #[default]
+    Unknown,
+}
+
+impl std::fmt::Display for ViewType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ViewType::Side => write!(f, "side"),
+            ViewType::Tail => write!(f, "tail"),
+            ViewType::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
+impl std::str::FromStr for ViewType {
+    type Err = crate::OurError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "side" => Ok(ViewType::Side),
+            "tail" => Ok(ViewType::Tail),
+            "unknown" => Ok(ViewType::Unknown),
+            _ => Err(crate::OurError::App(format!("Invalid view type: {s}"))),
+        }
+    }
 }
 
 /// Configuration for a specific camera

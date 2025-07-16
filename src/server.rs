@@ -13,7 +13,7 @@ use axum::{
 };
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, num::NonZeroU16};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
@@ -21,6 +21,8 @@ use tower_http::services::ServeDir;
 use crate::camera_manager::CameraHandle;
 use crate::config::Settings;
 use crate::controller_monitor::{ControllerCommand, ControllerHandle, ControllerResponse};
+use crate::ml_training::MLTrainer;
+use crate::shell_data::{Shell, ShellDataManager};
 use crate::usb_camera_controller::UsbCameraHandle;
 use crate::{OurError, OurResult};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -72,6 +74,8 @@ pub struct AppState {
     pub controller: ControllerHandle,
     pub camera_manager: CameraHandle,
     pub usb_camera_manager: UsbCameraHandle,
+    pub ml_trainer: Arc<Mutex<MLTrainer>>,
+    pub shell_data_manager: Arc<ShellDataManager>,
 }
 
 /// Dashboard template
@@ -87,6 +91,31 @@ struct DashboardTemplate {
 #[derive(Template, WebTemplate)]
 #[template(path = "config.html")]
 struct ConfigTemplate {}
+
+/// Shell edit template
+#[derive(Template, WebTemplate)]
+#[template(path = "shell_edit.html")]
+struct ShellEditTemplate {
+    shell: Shell,
+    session_id: String,
+}
+
+/// Shell tagging template
+#[derive(Template, WebTemplate)]
+#[template(path = "tagging.html")]
+struct TaggingTemplate {
+    session_id: String,
+    captured_images: Vec<CapturedImageData>,
+    supported_case_types: Vec<String>,
+    image_filenames: String,
+}
+
+#[derive(Serialize)]
+struct CapturedImageData {
+    filename: String,
+    camera_index: i32,
+    camera_name: String,
+}
 
 #[derive(Deserialize, Serialize)]
 enum CameraType {
@@ -176,11 +205,24 @@ pub async fn start_server(
     camera_manager: CameraHandle,
     usb_camera_manager: UsbCameraHandle,
 ) -> OurResult<()> {
+    // Initialize ML trainer and shell data manager
+    let mut ml_trainer = MLTrainer::new(settings.clone());
+    ml_trainer
+        .initialize()
+        .map_err(|e| OurError::App(format!("Failed to initialize ML trainer: {}", e)))?;
+
+    let shell_data_manager = ShellDataManager::new(settings.data_directory.clone());
+    shell_data_manager
+        .validate_data_directory()
+        .map_err(|e| OurError::App(format!("Failed to validate data directory: {}", e)))?;
+
     let state = Arc::new(AppState {
         settings,
         controller,
         camera_manager,
         usb_camera_manager,
+        ml_trainer: Arc::new(Mutex::new(ml_trainer)),
+        shell_data_manager: Arc::new(shell_data_manager),
     });
 
     let app = Router::new()
@@ -189,6 +231,8 @@ pub async fn start_server(
         // Main dashboard and pages
         .route("/", get(dashboard))
         .route("/config", get(config_page))
+        .route("/shell-edit/:session_id", get(shell_edit_page))
+        .route("/tagging/:session_id", get(tagging_page))
         // Machine control API
         .route("/api/status", get(status))
         .route("/api/machine/next-case", post(trigger_next_case))
@@ -278,6 +322,92 @@ async fn config_page(
 
     template.render().map(Html::from).map_err(|e| {
         error!("Failed to render config template: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Template rendering failed",
+        )
+    })
+}
+
+#[axum::debug_handler]
+async fn shell_edit_page(
+    Path(session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Html<String>, (StatusCode, &'static str)> {
+    // Get the shell data for the session
+    let shell = match state.shell_data_manager.get_shell(&session_id) {
+        Ok(Some(shell)) => shell,
+        Ok(None) => {
+            return Err((StatusCode::NOT_FOUND, "Shell session not found"));
+        }
+        Err(e) => {
+            error!("Failed to get shell data for session {}: {}", session_id, e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to load shell data",
+            ));
+        }
+    };
+
+    let template = ShellEditTemplate { shell, session_id };
+
+    template.render().map(Html::from).map_err(|e| {
+        error!("Failed to render shell edit template: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Template rendering failed",
+        )
+    })
+}
+
+#[axum::debug_handler]
+async fn tagging_page(
+    Path(session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Html<String>, (StatusCode, &'static str)> {
+    // TODO: Get captured images for this session from images directory
+    // For now, create empty captured images list
+    let captured_images = Vec::new();
+
+    // Get supported case types from ML trainer
+    let supported_case_types = {
+        let ml_trainer = match state.ml_trainer.lock() {
+            Ok(trainer) => trainer,
+            Err(e) => {
+                error!("Failed to acquire ML trainer lock: {}", e);
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to access ML trainer",
+                ));
+            }
+        };
+
+        match ml_trainer.get_supported_case_types() {
+            Ok(types) => types,
+            Err(e) => {
+                error!("Failed to get supported case types: {}", e);
+                // Return empty list as fallback
+                Vec::new()
+            }
+        }
+    };
+
+    // Create comma-separated list of image filenames
+    let image_filenames = captured_images
+        .iter()
+        .map(|img: &CapturedImageData| img.filename.clone())
+        .collect::<Vec<String>>()
+        .join(",");
+
+    let template = TaggingTemplate {
+        session_id,
+        captured_images,
+        supported_case_types,
+        image_filenames,
+    };
+
+    template.render().map(Html::from).map_err(|e| {
+        error!("Failed to render tagging template: {e}");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Template rendering failed",
@@ -1035,32 +1165,181 @@ async fn clear_camera_region(
 }
 
 async fn list_shells(
-    State(_state): State<Arc<AppState>>,
-) -> Json<ApiResponse<Vec<HashMap<String, String>>>> {
-    // TODO: Implement shell listing
-    let shells = vec![];
-    Json(ApiResponse::success(shells))
+    State(state): State<Arc<AppState>>,
+) -> Json<ApiResponse<Vec<HashMap<String, serde_json::Value>>>> {
+    match state.shell_data_manager.list_shells() {
+        Ok(shells) => {
+            let shell_data: Vec<HashMap<String, serde_json::Value>> = shells
+                .into_iter()
+                .map(|(session_id, shell)| {
+                    let mut data = HashMap::new();
+                    data.insert(
+                        "session_id".to_string(),
+                        serde_json::Value::String(session_id),
+                    );
+                    data.insert(
+                        "brand".to_string(),
+                        serde_json::Value::String(shell.brand.clone()),
+                    );
+                    data.insert(
+                        "shell_type".to_string(),
+                        serde_json::Value::String(shell.shell_type.clone()),
+                    );
+                    data.insert(
+                        "date_captured".to_string(),
+                        serde_json::Value::String(shell.date_captured.to_rfc3339()),
+                    );
+                    data.insert(
+                        "include".to_string(),
+                        serde_json::Value::Bool(shell.include),
+                    );
+                    data.insert(
+                        "image_count".to_string(),
+                        serde_json::Value::Number(serde_json::Number::from(shell.image_count())),
+                    );
+                    data.insert(
+                        "has_complete_regions".to_string(),
+                        serde_json::Value::Bool(shell.has_complete_regions()),
+                    );
+                    data
+                })
+                .collect();
+
+            Json(ApiResponse::success(shell_data))
+        }
+        Err(e) => {
+            error!("Failed to list shells: {}", e);
+            Json(ApiResponse::error(format!("Failed to list shells: {}", e)))
+        }
+    }
 }
 
-async fn save_shell_data(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
-    // TODO: Implement shell data saving
-    Json(ApiResponse::success(()))
+async fn save_shell_data(
+    State(state): State<Arc<AppState>>,
+    ExtractJson(payload): ExtractJson<SaveShellRequest>,
+) -> Json<ApiResponse<HashMap<String, String>>> {
+    let mut shell = Shell::new(payload.brand, payload.shell_type);
+    shell.include = payload.include;
+    shell.image_filenames = payload.image_filenames;
+
+    match state
+        .shell_data_manager
+        .save_shell(&payload.session_id, &shell)
+    {
+        Ok(()) => {
+            let mut response = HashMap::new();
+            response.insert("session_id".to_string(), payload.session_id);
+            response.insert(
+                "message".to_string(),
+                "Shell data saved successfully".to_string(),
+            );
+            Json(ApiResponse::success(response))
+        }
+        Err(e) => {
+            error!(
+                "Failed to save shell data for session {}: {}",
+                payload.session_id, e
+            );
+            Json(ApiResponse::error(format!(
+                "Failed to save shell data: {}",
+                e
+            )))
+        }
+    }
 }
 
 async fn toggle_shell_training(
-    Path(_session_id): Path<String>,
-    State(_state): State<Arc<AppState>>,
-) -> Json<ApiResponse<()>> {
-    // TODO: Implement training toggle
-    Json(ApiResponse::success(()))
+    Path(session_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Json<ApiResponse<HashMap<String, bool>>> {
+    match state.shell_data_manager.toggle_shell_training(&session_id) {
+        Ok(include_flag) => {
+            let mut response = HashMap::new();
+            response.insert("include".to_string(), include_flag);
+            Json(ApiResponse::success(response))
+        }
+        Err(e) => {
+            error!(
+                "Failed to toggle training for session {}: {}",
+                session_id, e
+            );
+            Json(ApiResponse::error(format!(
+                "Failed to toggle training: {}",
+                e
+            )))
+        }
+    }
 }
 
 async fn ml_list_shells(
-    State(_state): State<Arc<AppState>>,
-) -> Json<ApiResponse<Vec<HashMap<String, String>>>> {
-    // TODO: Implement ML shell listing
-    let shells = vec![];
-    Json(ApiResponse::success(shells))
+    State(state): State<Arc<AppState>>,
+) -> Json<ApiResponse<Vec<HashMap<String, serde_json::Value>>>> {
+    match state.shell_data_manager.get_shells_for_training() {
+        Ok(shells) => {
+            let shell_data: Vec<HashMap<String, serde_json::Value>> = shells
+                .into_iter()
+                .map(|(session_id, shell)| {
+                    let mut data = HashMap::new();
+                    data.insert(
+                        "session_id".to_string(),
+                        serde_json::Value::String(session_id),
+                    );
+                    data.insert(
+                        "brand".to_string(),
+                        serde_json::Value::String(shell.brand.clone()),
+                    );
+                    data.insert(
+                        "shell_type".to_string(),
+                        serde_json::Value::String(shell.shell_type.clone()),
+                    );
+                    data.insert(
+                        "date_captured".to_string(),
+                        serde_json::Value::String(shell.date_captured.to_rfc3339()),
+                    );
+                    data.insert(
+                        "include".to_string(),
+                        serde_json::Value::Bool(shell.include),
+                    );
+                    data.insert(
+                        "image_count".to_string(),
+                        serde_json::Value::Number(serde_json::Number::from(shell.image_count())),
+                    );
+                    data.insert(
+                        "has_complete_regions".to_string(),
+                        serde_json::Value::Bool(shell.has_complete_regions()),
+                    );
+                    data.insert(
+                        "case_type_key".to_string(),
+                        serde_json::Value::String(shell.get_case_type_key()),
+                    );
+
+                    // Add image filenames if available
+                    if !shell.image_filenames.is_empty() {
+                        let filenames: Vec<serde_json::Value> = shell
+                            .image_filenames
+                            .into_iter()
+                            .map(serde_json::Value::String)
+                            .collect();
+                        data.insert(
+                            "image_filenames".to_string(),
+                            serde_json::Value::Array(filenames),
+                        );
+                    }
+
+                    data
+                })
+                .collect();
+
+            Json(ApiResponse::success(shell_data))
+        }
+        Err(e) => {
+            error!("Failed to list shells for ML training: {}", e);
+            Json(ApiResponse::error(format!(
+                "Failed to list shells for ML training: {}",
+                e
+            )))
+        }
+    }
 }
 
 async fn generate_composites(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
@@ -1068,18 +1347,77 @@ async fn generate_composites(State(_state): State<Arc<AppState>>) -> Json<ApiRes
     Json(ApiResponse::success(()))
 }
 
-async fn list_case_types(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<String>>> {
-    let case_types = vec![
-        "9mm".to_string(),
-        "40sw".to_string(),
-        "45acp".to_string(),
-        "223rem".to_string(),
-        "308win".to_string(),
-        "3006spr".to_string(),
-        "38special".to_string(),
-        "357mag".to_string(),
-    ];
-    Json(ApiResponse::success(case_types))
+async fn list_case_types(
+    State(state): State<Arc<AppState>>,
+) -> Json<ApiResponse<Vec<HashMap<String, serde_json::Value>>>> {
+    let ml_trainer = match state.ml_trainer.lock() {
+        Ok(trainer) => trainer,
+        Err(_) => {
+            error!("Failed to acquire ML trainer lock");
+            return Json(ApiResponse::error(
+                "Failed to access ML trainer".to_string(),
+            ));
+        }
+    };
+
+    match ml_trainer.get_training_summary() {
+        Ok(summary) => {
+            let case_types: Vec<HashMap<String, serde_json::Value>> = summary
+                .into_iter()
+                .map(|(name, summary_data)| {
+                    let mut data = HashMap::new();
+                    data.insert("name".to_string(), serde_json::Value::String(name));
+                    data.insert(
+                        "designation".to_string(),
+                        serde_json::Value::String(summary_data.designation),
+                    );
+                    data.insert(
+                        "brand".to_string(),
+                        summary_data
+                            .brand
+                            .map(serde_json::Value::String)
+                            .unwrap_or(serde_json::Value::Null),
+                    );
+                    data.insert(
+                        "reference_count".to_string(),
+                        serde_json::Value::Number(serde_json::Number::from(
+                            summary_data.reference_count,
+                        )),
+                    );
+                    data.insert(
+                        "training_count".to_string(),
+                        serde_json::Value::Number(serde_json::Number::from(
+                            summary_data.training_count,
+                        )),
+                    );
+                    data.insert(
+                        "shell_count".to_string(),
+                        serde_json::Value::Number(serde_json::Number::from(
+                            summary_data.shell_count,
+                        )),
+                    );
+                    data.insert(
+                        "ready_for_training".to_string(),
+                        serde_json::Value::Bool(summary_data.ready_for_training),
+                    );
+                    data.insert(
+                        "updated_at".to_string(),
+                        serde_json::Value::String(summary_data.updated_at.to_rfc3339()),
+                    );
+                    data
+                })
+                .collect();
+
+            Json(ApiResponse::success(case_types))
+        }
+        Err(e) => {
+            error!("Failed to get training summary: {}", e);
+            Json(ApiResponse::error(format!(
+                "Failed to get case types: {}",
+                e
+            )))
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -1097,6 +1435,15 @@ struct SelectCamerasRequest {
 #[derive(Deserialize)]
 struct BrightnessRequest {
     brightness: i64,
+}
+
+#[derive(Deserialize)]
+struct SaveShellRequest {
+    session_id: String,
+    brand: String,
+    shell_type: String,
+    include: bool,
+    image_filenames: Vec<String>,
 }
 
 #[derive(Serialize)]
