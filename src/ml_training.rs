@@ -189,11 +189,20 @@ impl MLTrainer {
             return Ok(());
         }
 
-        let json_data = fs::read_to_string(&self.case_types_file)
-            .map_err(|e| OurError::App(format!("Failed to read case types file: {}", e)))?;
+        let json_data = fs::read_to_string(&self.case_types_file).map_err(|e| {
+            OurError::App(format!(
+                "Failed to read case types file: {} {e}",
+                self.case_types_file.display()
+            ))
+        })?;
 
-        let case_types_data: HashMap<String, CaseType> = serde_json::from_str(&json_data)
-            .map_err(|e| OurError::App(format!("Failed to parse case types file: {}", e)))?;
+        let case_types_data: HashMap<String, CaseType> =
+            serde_json::from_str(&json_data).map_err(|e| {
+                OurError::App(format!(
+                    "Failed to parse case types file: {} {e}",
+                    self.case_types_file.display()
+                ))
+            })?;
 
         self.case_types = case_types_data;
 
