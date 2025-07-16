@@ -748,13 +748,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (startSelectedBtn) {
         startSelectedBtn.addEventListener('click', async function () {
-            console.debug('Starting selected cameras...'); // Debug log
+            // Get currently selected cameras from the UI
+            const selectedCameras = Array.from(document.querySelectorAll('.camera-checkbox:checked'))
+                .map(cb => cb.dataset.cameraId);
+            
+            console.debug('Starting selected cameras:', selectedCameras); // Debug log
+            
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 seconds for API response
 
                 const response = await fetch('/api/cameras/start-selected', {
                     method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ camera_ids: selectedCameras }),
                     signal: controller.signal
                 });
 

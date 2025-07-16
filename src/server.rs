@@ -705,9 +705,60 @@ async fn select_cameras(
     Json(ApiResponse::success(()))
 }
 
-async fn start_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
+async fn start_cameras(
+    State(state): State<Arc<AppState>>,
+    ExtractJson(payload): ExtractJson<SelectCamerasRequest>,
+) -> Json<ApiResponse<()>> {
     let mut errors = Vec::new();
     let mut started_any = false;
+
+    // First, select the specified cameras
+    if !payload.camera_ids.is_empty() {
+        info!(
+            "Selecting cameras before starting: {:?}",
+            payload.camera_ids
+        );
+
+        // Separate camera IDs by type
+        let mut esphome_cameras = Vec::new();
+        let mut usb_cameras = Vec::new();
+
+        for camera_id in &payload.camera_ids {
+            if camera_id.starts_with("usb:") {
+                usb_cameras.push(camera_id.clone());
+            } else {
+                esphome_cameras.push(camera_id.clone());
+            }
+        }
+
+        // Select ESPHome cameras if any
+        if !esphome_cameras.is_empty() {
+            if let Err(e) = state.camera_manager.select_cameras(esphome_cameras).await {
+                error!("Failed to select ESPHome cameras: {e}");
+                errors.push(format!("Failed to select ESPHome cameras: {e}"));
+            }
+        }
+
+        // Select USB cameras if any
+        if !usb_cameras.is_empty() {
+            if let Err(e) = state.usb_camera_manager.select_cameras(usb_cameras).await {
+                error!("Failed to select USB cameras: {e}");
+                errors.push(format!("Failed to select USB cameras: {e}"));
+            }
+        }
+
+        // Save selected camera IDs to persistent configuration
+        let mut user_config = Settings::load_user_config();
+        user_config.set_selected_cameras(payload.camera_ids.clone());
+        if let Err(e) = Settings::save_user_config(&user_config) {
+            error!("Failed to save camera selections to config: {e}");
+            // Don't fail the request, just log the error
+        } else {
+            info!("Saved camera selections to persistent configuration");
+        }
+    } else {
+        info!("Starting streaming with no specific camera selection");
+    }
 
     // Try to start ESPHome cameras
     match state.camera_manager.start_streaming().await {
