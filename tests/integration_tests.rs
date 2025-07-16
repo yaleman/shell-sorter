@@ -511,3 +511,446 @@ async fn test_status_endpoint() {
         "Status 'total_sorted' field should be a number"
     );
 }
+
+#[tokio::test]
+async fn test_shell_edit_page() {
+    let (base_url, _server_handle) = start_test_server()
+        .await
+        .expect("Failed to start test server");
+
+    let client = reqwest::Client::new();
+
+    // First, create a test shell using the API
+    let shell_data = serde_json::json!({
+        "session_id": "test-session-123",
+        "brand": "Winchester",
+        "shell_type": "9mm",
+        "include": true,
+        "image_filenames": ["test1.jpg", "test2.jpg"]
+    });
+
+    let save_response = timeout(
+        Duration::from_secs(10),
+        client
+            .post(format!("{base_url}/api/shells/save"))
+            .json(&shell_data)
+            .send(),
+    )
+    .await
+    .expect("Save request timed out")
+    .expect("Failed to send save request");
+
+    assert!(
+        save_response.status().is_success(),
+        "Failed to save test shell data: {}",
+        save_response.status()
+    );
+
+    // Now test the shell-edit page
+    let response = timeout(
+        Duration::from_secs(10),
+        client
+            .get(format!("{base_url}/shell-edit/test-session-123"))
+            .send(),
+    )
+    .await
+    .expect("Shell-edit request timed out")
+    .expect("Failed to send shell-edit request");
+
+    assert!(
+        response.status().is_success(),
+        "Shell-edit page failed to load: {}",
+        response.status()
+    );
+
+    let html = response.text().await.expect("Failed to get response text");
+
+    // Check for expected HTML content specific to shell editing
+    assert!(
+        html.contains("Edit Shell: Winchester 9mm"),
+        "Shell-edit page missing proper title"
+    );
+    assert!(
+        html.contains("test-session-123"),
+        "Shell-edit page missing session ID"
+    );
+    assert!(
+        html.contains("value=\"Winchester\""),
+        "Shell-edit page missing brand value"
+    );
+    assert!(
+        html.contains("checked"),
+        "Shell-edit page should show include checkbox as checked"
+    );
+    assert!(
+        html.contains("save-shell-changes"),
+        "Shell-edit page missing save button"
+    );
+    assert!(
+        html.contains("delete-shell-btn"),
+        "Shell-edit page missing delete button"
+    );
+    assert!(
+        html.contains("shell_edit.js"),
+        "Shell-edit page missing JavaScript file"
+    );
+}
+
+#[tokio::test]
+async fn test_shell_edit_page_not_found() {
+    let (base_url, _server_handle) = start_test_server()
+        .await
+        .expect("Failed to start test server");
+
+    let client = reqwest::Client::new();
+
+    // Test shell-edit page with non-existent session ID
+    let response = timeout(
+        Duration::from_secs(10),
+        client
+            .get(format!("{base_url}/shell-edit/non-existent-session"))
+            .send(),
+    )
+    .await
+    .expect("Shell-edit request timed out")
+    .expect("Failed to send shell-edit request");
+
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::NOT_FOUND,
+        "Shell-edit page should return 404 for non-existent session"
+    );
+}
+
+#[tokio::test]
+async fn test_tagging_page() {
+    let (base_url, _server_handle) = start_test_server()
+        .await
+        .expect("Failed to start test server");
+
+    let client = reqwest::Client::new();
+
+    // Test the tagging page
+    let response = timeout(
+        Duration::from_secs(10),
+        client
+            .get(format!("{base_url}/tagging/new-session-456"))
+            .send(),
+    )
+    .await
+    .expect("Tagging request timed out")
+    .expect("Failed to send tagging request");
+
+    assert!(
+        response.status().is_success(),
+        "Tagging page failed to load: {}",
+        response.status()
+    );
+
+    let html = response.text().await.expect("Failed to get response text");
+
+    // Check for expected HTML content specific to shell tagging
+    assert!(
+        html.contains("Shell Image Tagging"),
+        "Tagging page missing proper title"
+    );
+    assert!(
+        html.contains("new-session-456"),
+        "Tagging page missing session ID"
+    );
+    assert!(
+        html.contains("Session: new-session-456"),
+        "Tagging page missing session display"
+    );
+    assert!(html.contains("brand"), "Tagging page missing brand input");
+    assert!(
+        html.contains("shell_type"),
+        "Tagging page missing shell type select"
+    );
+    assert!(
+        html.contains("save-btn"),
+        "Tagging page missing save button"
+    );
+    assert!(
+        html.contains("cancel-btn"),
+        "Tagging page missing cancel button"
+    );
+    assert!(
+        html.contains("image_filenames"),
+        "Tagging page missing image filenames input"
+    );
+}
+
+#[tokio::test]
+async fn test_shell_data_api_endpoints() {
+    let (base_url, _server_handle) = start_test_server()
+        .await
+        .expect("Failed to start test server");
+
+    let client = reqwest::Client::new();
+
+    // Test saving shell data
+    let shell_data = serde_json::json!({
+        "session_id": "api-test-789",
+        "brand": "Federal",
+        "shell_type": "308win",
+        "include": false,
+        "image_filenames": ["federal1.jpg", "federal2.jpg", "federal3.jpg"]
+    });
+
+    let save_response = timeout(
+        Duration::from_secs(10),
+        client
+            .post(format!("{base_url}/api/shells/save"))
+            .json(&shell_data)
+            .send(),
+    )
+    .await
+    .expect("Save request timed out")
+    .expect("Failed to send save request");
+
+    assert!(
+        save_response.status().is_success(),
+        "Failed to save shell data: {}",
+        save_response.status()
+    );
+
+    let save_json: Value = save_response
+        .json()
+        .await
+        .expect("Failed to parse save response");
+
+    assert!(
+        save_json["success"].as_bool().unwrap_or(false),
+        "Shell save was not successful"
+    );
+    assert!(
+        save_json["data"]["session_id"] == "api-test-789",
+        "Save response missing correct session ID"
+    );
+
+    // Test listing shells
+    let list_response = timeout(
+        Duration::from_secs(10),
+        client.get(format!("{base_url}/api/shells")).send(),
+    )
+    .await
+    .expect("List request timed out")
+    .expect("Failed to send list request");
+
+    assert!(
+        list_response.status().is_success(),
+        "Failed to list shells: {}",
+        list_response.status()
+    );
+
+    let list_json: Value = list_response
+        .json()
+        .await
+        .expect("Failed to parse list response");
+
+    assert!(
+        list_json["success"].as_bool().unwrap_or(false),
+        "Shell list was not successful"
+    );
+
+    let shells = list_json["data"]
+        .as_array()
+        .expect("Shell list data is not an array");
+
+    // Should find our saved shell
+    let found_shell = shells.iter().find(|shell| {
+        shell["session_id"]
+            .as_str()
+            .map(|id| id == "api-test-789")
+            .unwrap_or(false)
+    });
+
+    assert!(found_shell.is_some(), "Saved shell not found in list");
+
+    let shell = found_shell.unwrap();
+    assert_eq!(
+        shell["brand"].as_str().unwrap(),
+        "Federal",
+        "Shell brand mismatch"
+    );
+    assert_eq!(
+        shell["shell_type"].as_str().unwrap(),
+        "308win",
+        "Shell type mismatch"
+    );
+    assert_eq!(
+        shell["include"].as_bool().unwrap(),
+        false,
+        "Shell include flag mismatch"
+    );
+
+    // Test toggling training flag
+    let toggle_response = timeout(
+        Duration::from_secs(10),
+        client
+            .post(format!("{base_url}/api/shells/api-test-789/toggle"))
+            .send(),
+    )
+    .await
+    .expect("Toggle request timed out")
+    .expect("Failed to send toggle request");
+
+    assert!(
+        toggle_response.status().is_success(),
+        "Failed to toggle shell training: {}",
+        toggle_response.status()
+    );
+
+    let toggle_json: Value = toggle_response
+        .json()
+        .await
+        .expect("Failed to parse toggle response");
+
+    assert!(
+        toggle_json["success"].as_bool().unwrap_or(false),
+        "Shell toggle was not successful"
+    );
+    assert_eq!(
+        toggle_json["data"]["include"].as_bool().unwrap(),
+        true,
+        "Training flag should be toggled to true"
+    );
+}
+
+#[tokio::test]
+async fn test_ml_training_api_endpoints() {
+    let (base_url, _server_handle) = start_test_server()
+        .await
+        .expect("Failed to start test server");
+
+    let client = reqwest::Client::new();
+
+    // Test ML shells endpoint
+    let ml_response = timeout(
+        Duration::from_secs(10),
+        client.get(format!("{base_url}/api/ml/shells")).send(),
+    )
+    .await
+    .expect("ML shells request timed out")
+    .expect("Failed to send ML shells request");
+
+    assert!(
+        ml_response.status().is_success(),
+        "Failed to get ML shells: {}",
+        ml_response.status()
+    );
+
+    let ml_json: Value = ml_response
+        .json()
+        .await
+        .expect("Failed to parse ML shells response");
+
+    assert!(
+        ml_json["success"].as_bool().unwrap_or(false),
+        "ML shells request was not successful"
+    );
+
+    // Data should be an array (may be empty initially)
+    let shells = ml_json["data"]
+        .as_array()
+        .expect("ML shells data is not an array");
+
+    println!("ML training shells found: {}", shells.len());
+
+    // Test case types endpoint
+    let case_types_response = timeout(
+        Duration::from_secs(10),
+        client.get(format!("{base_url}/api/case-types")).send(),
+    )
+    .await
+    .expect("Case types request timed out")
+    .expect("Failed to send case types request");
+
+    assert!(
+        case_types_response.status().is_success(),
+        "Failed to get case types: {}",
+        case_types_response.status()
+    );
+
+    let case_types_json: Value = case_types_response
+        .json()
+        .await
+        .expect("Failed to parse case types response");
+
+    assert!(
+        case_types_json["success"].as_bool().unwrap_or(false),
+        "Case types request was not successful"
+    );
+
+    // Data should be an array (may be empty initially)
+    let case_types = case_types_json["data"]
+        .as_array()
+        .expect("Case types data is not an array");
+
+    println!("Case types found: {}", case_types.len());
+
+    // Verify each case type has required fields
+    for case_type in case_types {
+        assert!(
+            case_type.get("name").is_some(),
+            "Case type missing name field"
+        );
+        assert!(
+            case_type.get("designation").is_some(),
+            "Case type missing designation field"
+        );
+        assert!(
+            case_type.get("reference_count").is_some(),
+            "Case type missing reference_count field"
+        );
+        assert!(
+            case_type.get("training_count").is_some(),
+            "Case type missing training_count field"
+        );
+        assert!(
+            case_type.get("shell_count").is_some(),
+            "Case type missing shell_count field"
+        );
+        assert!(
+            case_type.get("ready_for_training").is_some(),
+            "Case type missing ready_for_training field"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_config_page() {
+    let (base_url, _server_handle) = start_test_server()
+        .await
+        .expect("Failed to start test server");
+
+    let client = reqwest::Client::new();
+
+    // Test config page loads
+    let response = timeout(
+        Duration::from_secs(10),
+        client.get(format!("{base_url}/config")).send(),
+    )
+    .await
+    .expect("Config request timed out")
+    .expect("Failed to send config request");
+
+    assert!(
+        response.status().is_success(),
+        "Config page failed to load: {}",
+        response.status()
+    );
+
+    let html = response.text().await.expect("Failed to get response text");
+
+    // Check for expected HTML content
+    assert!(
+        html.contains("Configuration"),
+        "Config page missing configuration title"
+    );
+    assert!(
+        html.contains("config.js"),
+        "Config page missing JavaScript file"
+    );
+}

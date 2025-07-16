@@ -187,12 +187,29 @@ impl<T> ApiResponse<T> {
 /// Create a test router for integration testing
 pub fn create_test_router(state: Arc<AppState>) -> Router {
     Router::new()
+        // Static files
+        .nest_service("/static", ServeDir::new("shell_sorter/static"))
+        // Main dashboard and pages
+        .route("/", get(dashboard))
+        .route("/config", get(config_page))
+        .route("/shell-edit/{session_id}", get(shell_edit_page))
+        .route("/tagging/{session_id}", get(tagging_page))
+        // Machine control API
         .route("/api/status", get(status))
+        .route("/api/machine/hardware-status", get(hardware_status))
+        // Camera management API
         .route("/api/cameras", get(list_cameras))
         .route("/api/cameras/detect", get(detect_cameras))
-        .route("/api/machine/hardware-status", get(hardware_status))
+        // Data management API
+        .route("/api/shells", get(list_shells))
+        .route("/api/shells/save", post(save_shell_data))
+        .route(
+            "/api/shells/{session_id}/toggle",
+            post(toggle_shell_training),
+        )
+        // ML API
+        .route("/api/ml/shells", get(ml_list_shells))
         .route("/api/case-types", get(list_case_types))
-        .route("/", get(dashboard))
         .with_state(state)
 }
 
@@ -231,8 +248,8 @@ pub async fn start_server(
         // Main dashboard and pages
         .route("/", get(dashboard))
         .route("/config", get(config_page))
-        .route("/shell-edit/:session_id", get(shell_edit_page))
-        .route("/tagging/:session_id", get(tagging_page))
+        .route("/shell-edit/{session_id}", get(shell_edit_page))
+        .route("/tagging/{session_id}", get(tagging_page))
         // Machine control API
         .route("/api/status", get(status))
         .route("/api/machine/next-case", post(trigger_next_case))
