@@ -8,8 +8,8 @@ use nokhwa::{
     Camera,
     pixel_format::RgbFormat,
     utils::{
-        ApiBackend, CameraIndex, CameraInfo as NokhwaCameraInfo,
-        RequestedFormat, RequestedFormatType,
+        ApiBackend, CameraIndex, CameraInfo as NokhwaCameraInfo, RequestedFormat,
+        RequestedFormatType,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -336,8 +336,11 @@ impl UsbCameraManager {
     fn apply_brightness_adjustment(&self, image: &mut image::RgbImage, hardware_id: &str) {
         if let Some(&brightness_offset) = self.brightness_adjustments.get(hardware_id) {
             if brightness_offset != 0.0 {
-                debug!("Applying brightness adjustment of {} to camera {}", brightness_offset, hardware_id);
-                
+                debug!(
+                    "Applying brightness adjustment of {} to camera {}",
+                    brightness_offset, hardware_id
+                );
+
                 // Convert brightness from -100 to +100 range to a multiplier
                 // -100 = 0.0 (black), 0 = 1.0 (no change), +100 = 4.0 (quadruple brightness)
                 // This provides much brighter images for dark cameras like FaceTime
@@ -348,16 +351,16 @@ impl UsbCameraManager {
                     // For negative adjustments: -100 to 0 maps to 0.0 to 1.0
                     (brightness_offset + 100.0) / 100.0
                 };
-                
+
                 // Apply brightness adjustment to each pixel
                 for pixel in image.pixels_mut() {
                     let [r, g, b] = pixel.0;
-                    
+
                     // Apply brightness adjustment and clamp to valid range
                     let new_r = ((r as f32 * brightness_multiplier).min(255.0).max(0.0)) as u8;
                     let new_g = ((g as f32 * brightness_multiplier).min(255.0).max(0.0)) as u8;
                     let new_b = ((b as f32 * brightness_multiplier).min(255.0).max(0.0)) as u8;
-                    
+
                     *pixel = image::Rgb([new_r, new_g, new_b]);
                 }
             }
@@ -924,37 +927,45 @@ impl UsbCameraManager {
         // Convert brightness from 0-100 range to -100 to +100 offset
         // 50 = no adjustment (0), 0 = darkest (-100), 100 = brightest (+100)
         let brightness_offset = (brightness as f32 - 50.0) * 2.0;
-        
+
         // Store the brightness adjustment for this camera
-        self.brightness_adjustments.insert(hardware_id.to_string(), brightness_offset);
-        
+        self.brightness_adjustments
+            .insert(hardware_id.to_string(), brightness_offset);
+
         info!(
             "Set software brightness offset for camera {} to {} (original: {})",
             hardware_id, brightness_offset, brightness
         );
-        
+
         Ok(())
     }
 
     /// Get camera brightness control (software-based image adjustment)
     async fn get_brightness_internal(&mut self, hardware_id: &str) -> OurResult<i64> {
-        info!("Getting software brightness adjustment for camera {}", hardware_id);
+        info!(
+            "Getting software brightness adjustment for camera {}",
+            hardware_id
+        );
 
         // Validate camera exists
         let _camera_info = self.get_camera_info(hardware_id)?;
 
         // Get the stored brightness offset and convert back to 0-100 range
-        let brightness_offset = self.brightness_adjustments.get(hardware_id).copied().unwrap_or(0.0);
-        
+        let brightness_offset = self
+            .brightness_adjustments
+            .get(hardware_id)
+            .copied()
+            .unwrap_or(0.0);
+
         // Convert from -100 to +100 offset back to 0-100 brightness scale
         // 0 offset = 50 brightness, -100 offset = 0 brightness, +100 offset = 100 brightness
         let brightness = ((brightness_offset / 2.0) + 50.0) as i64;
-        
+
         info!(
             "Current software brightness for camera {}: {} (offset: {})",
             hardware_id, brightness, brightness_offset
         );
-        
+
         Ok(brightness)
     }
 }
