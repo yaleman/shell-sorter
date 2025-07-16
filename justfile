@@ -7,16 +7,12 @@ default:
 
 # Run linting checks
 lint:
-    cargo clippy --all-targets
+    cargo clippy --quiet --all-targets
 # uv run ruff check shell_sorter/ tests
 
-# Run type checking
-mypy:
-    uv run mypy --strict shell_sorter/
 
 # Run tests
 test:
-    # uv run pytest -s -v
     cargo test
 
 # Run all checks
@@ -24,25 +20,16 @@ check: fmt lint test esphome-check
 
 # Format code
 fmt:
-    uv run ruff format --check shell_sorter/ tests
     cargo fmt
 
 # Run the Rust application
 run:
     killall shell-sorter || true
-    cargo run -- serve
-
-# Run the Python application (legacy)
-python:
-    killall shell-sorter || true
-    uv run shell-sorter
-
-rust:
-    cargo run
+    cargo run --quiet -- serve
 
 # Flash ESPHome configuration to device
 esphome-flash:
-    esphome upload esphome-shell-sorter.yaml
+    uvx esphome upload esphome-shell-sorter.yaml
 
 # flash and monitor the device
 esphome-monitor:
@@ -50,20 +37,20 @@ esphome-monitor:
 
 # Build ESPHome configuration for shell sorter
 esphome-cam-build:
-    esphome compile esphome-esp32cam1.yaml
+    uvx esphome compile esphome-esp32cam1.yaml
 
 # Flash ESP32 Camera configuration to device
 esphome-cam-flash: esphome-cam-build
-    esphome upload esphome-esp32cam1.yaml
+    uvx esphome upload esphome-esp32cam1.yaml
 
 # flash and monitor the ESP32 camera device
 esphome-cam-monitor:
-    esphome run esphome-esp32cam1.yaml
+    uvx esphome run esphome-esp32cam1.yaml
 
 esphome-check:
     yamllint esphome*.yaml
-    esphome config esphome-shell-sorter.yaml > /dev/null
-    esphome config esphome-esp32cam1.yaml > /dev/null
+    uvx esphome config esphome-shell-sorter.yaml > /dev/null
+    uvx esphome config esphome-esp32cam1.yaml > /dev/null
 
 favicon_file := "2025-07-13-favicon-1-purple.png"
 static_dir := "./shell_sorter/static"
