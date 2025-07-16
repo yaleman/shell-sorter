@@ -357,9 +357,9 @@ impl UsbCameraManager {
                     let [r, g, b] = pixel.0;
 
                     // Apply brightness adjustment and clamp to valid range
-                    let new_r = ((r as f32 * brightness_multiplier).min(255.0).max(0.0)) as u8;
-                    let new_g = ((g as f32 * brightness_multiplier).min(255.0).max(0.0)) as u8;
-                    let new_b = ((b as f32 * brightness_multiplier).min(255.0).max(0.0)) as u8;
+                    let new_r = ((r as f32 * brightness_multiplier).clamp(0.0, 255.0)) as u8;
+                    let new_g = ((g as f32 * brightness_multiplier).clamp(0.0, 255.0)) as u8;
+                    let new_b = ((b as f32 * brightness_multiplier).clamp(0.0, 255.0)) as u8;
 
                     *pixel = image::Rgb([new_r, new_g, new_b]);
                 }
@@ -762,10 +762,9 @@ impl UsbCameraManager {
         // Update streaming status - actual streaming is done on-demand during capture
         let mut status = self.get_status_mut();
 
+        // Allow starting streaming with no cameras selected - this is a valid state
         if status.selected_cameras.is_empty() {
-            return Err(OurError::App(
-                "No cameras selected for streaming".to_string(),
-            ));
+            info!("Starting streaming with no cameras selected - this is allowed");
         }
 
         status.streaming = true;

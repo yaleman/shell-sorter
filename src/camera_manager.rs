@@ -296,10 +296,9 @@ impl CameraManager {
     async fn start_streaming(&mut self) -> OurResult<()> {
         let mut status = self.lock_status()?;
 
+        // Allow starting streaming with no cameras selected - this is a valid state
         if status.selected_cameras.is_empty() {
-            return Err(OurError::App(
-                "No cameras selected for streaming".to_string(),
-            ));
+            info!("Starting streaming with no cameras selected - this is allowed");
         }
 
         status.streaming = true;
