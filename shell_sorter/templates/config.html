@@ -29,7 +29,7 @@
                         </label>
                         <small class="form-help">Automatically start cameras as soon as they are detected on startup</small>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="auto-detect-cameras">
                             <input type="checkbox" id="auto-detect-cameras">
@@ -37,13 +37,13 @@
                         </label>
                         <small class="form-help">Automatically detect and configure available cameras when the application starts</small>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="esphome-hostname">ESPHome Device Hostname</label>
                         <input type="text" id="esphome-hostname" value="{{ esphome_hostname }}" placeholder="shell-sorter-controller.local">
                         <small class="form-help">Hostname or IP address of the ESPHome device for hardware control</small>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="network-cameras">Network Camera Hostnames</label>
                         <div class="network-cameras-config">
@@ -68,7 +68,7 @@
                     <button id="refresh-cameras-btn" class="btn btn-secondary">Refresh Camera List</button>
                     <button id="clear-all-cameras-btn" class="btn btn-danger">Clear All Cameras</button>
                 </div>
-                
+
                 <div class="cameras-config-list" id="cameras-config-list">
                     {% if cameras %}
                         {% for camera in cameras %}
