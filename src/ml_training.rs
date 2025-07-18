@@ -218,10 +218,10 @@ impl MLTrainer {
     /// Save case types to storage
     pub fn save_case_types(&self) -> OurResult<()> {
         let json_data = serde_json::to_string_pretty(&self.case_types)
-            .map_err(|e| OurError::App(format!("Failed to serialize case types: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to serialize case types: {e}")))?;
 
         fs::write(&self.case_types_file, json_data)
-            .map_err(|e| OurError::App(format!("Failed to write case types file: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to write case types file: {e}")))?;
 
         info!("Saved {} case types", self.case_types.len());
         Ok(())
@@ -235,10 +235,7 @@ impl MLTrainer {
         brand: Option<String>,
     ) -> OurResult<CaseType> {
         if self.case_types.contains_key(&name) {
-            return Err(OurError::App(format!(
-                "Case type '{}' already exists",
-                name
-            )));
+            return Err(OurError::App(format!("Case type '{name}' already exists")));
         }
 
         let case_type = CaseType::new(name.clone(), designation, brand);
@@ -249,15 +246,13 @@ impl MLTrainer {
 
         fs::create_dir_all(&case_ref_dir).map_err(|e| {
             OurError::App(format!(
-                "Failed to create reference directory for {}: {}",
-                name, e
+                "Failed to create reference directory for {name}: {e}"
             ))
         })?;
 
         fs::create_dir_all(&case_train_dir).map_err(|e| {
             OurError::App(format!(
-                "Failed to create training directory for {}: {}",
-                name, e
+                "Failed to create training directory for {name}: {e}"
             ))
         })?;
 
@@ -294,7 +289,7 @@ impl MLTrainer {
         let case_type = self
             .case_types
             .get_mut(case_type_name)
-            .ok_or_else(|| OurError::App(format!("Case type '{}' not found", case_type_name)))?;
+            .ok_or_else(|| OurError::App(format!("Case type '{case_type_name}' not found")))?;
 
         let target_dir = self.references_dir.join(case_type_name);
         let target_path = target_dir.join(
@@ -305,7 +300,7 @@ impl MLTrainer {
 
         // Copy image to reference directory
         fs::copy(image_path, &target_path)
-            .map_err(|e| OurError::App(format!("Failed to copy reference image: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to copy reference image: {e}")))?;
 
         case_type.add_reference_image(target_path);
         self.save_case_types()?;
@@ -323,7 +318,7 @@ impl MLTrainer {
         let case_type = self
             .case_types
             .get_mut(case_type_name)
-            .ok_or_else(|| OurError::App(format!("Case type '{}' not found", case_type_name)))?;
+            .ok_or_else(|| OurError::App(format!("Case type '{case_type_name}' not found")))?;
 
         let target_dir = self.images_dir.join(case_type_name);
         let target_path = target_dir.join(
@@ -334,7 +329,7 @@ impl MLTrainer {
 
         // Copy image to training directory
         fs::copy(image_path, &target_path)
-            .map_err(|e| OurError::App(format!("Failed to copy training image: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to copy training image: {e}")))?;
 
         case_type.add_training_image(target_path);
         self.save_case_types()?;
@@ -454,17 +449,17 @@ impl MLTrainer {
         };
 
         // Save model metadata
-        let metadata_path = self.models_dir.join(format!("{}.json", model_name));
+        let metadata_path = self.models_dir.join(format!("{model_name}.json"));
         let metadata_json = serde_json::to_string_pretty(&model_metadata)
-            .map_err(|e| OurError::App(format!("Failed to serialize model metadata: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to serialize model metadata: {e}")))?;
 
         fs::write(&metadata_path, metadata_json)
-            .map_err(|e| OurError::App(format!("Failed to write model metadata: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to write model metadata: {e}")))?;
 
         // Create placeholder model file
-        let model_path = self.models_dir.join(format!("{}.model", model_name));
+        let model_path = self.models_dir.join(format!("{model_name}.model"));
         fs::write(&model_path, "Placeholder model file")
-            .map_err(|e| OurError::App(format!("Failed to create model file: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to create model file: {e}")))?;
 
         info!(
             "Model training completed: {} with {} case types, {} shells, {} images",
@@ -486,11 +481,11 @@ impl MLTrainer {
         }
 
         let entries = fs::read_dir(&self.models_dir)
-            .map_err(|e| OurError::App(format!("Failed to read models directory: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to read models directory: {e}")))?;
 
         for entry in entries {
-            let entry = entry
-                .map_err(|e| OurError::App(format!("Failed to read directory entry: {}", e)))?;
+            let entry =
+                entry.map_err(|e| OurError::App(format!("Failed to read directory entry: {e}")))?;
             let path = entry.path();
 
             if path.is_file() && path.extension() == Some(std::ffi::OsStr::new("json")) {
@@ -518,7 +513,7 @@ impl MLTrainer {
         if shell
             .captured_images
             .as_ref()
-            .map_or(true, |images| images.is_empty())
+            .is_none_or(|images| images.is_empty())
         {
             return Err(OurError::App(
                 "No captured images found for composite generation".to_string(),
@@ -536,18 +531,18 @@ impl MLTrainer {
             .settings
             .data_directory
             .join("composites")
-            .join(format!("{}_composite.jpg", session_id));
+            .join(format!("{session_id}_composite.jpg"));
 
         // Create composites directory if it doesn't exist
         if let Some(parent) = composite_path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                OurError::App(format!("Failed to create composites directory: {}", e))
+                OurError::App(format!("Failed to create composites directory: {e}"))
             })?;
         }
 
         // Create placeholder composite file
         fs::write(&composite_path, "Placeholder composite image")
-            .map_err(|e| OurError::App(format!("Failed to create composite file: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to create composite file: {e}")))?;
 
         info!("Generated composite for session {}", session_id);
         Ok(composite_path)
@@ -556,7 +551,7 @@ impl MLTrainer {
     /// Delete a case type and its associated data
     pub fn delete_case_type(&mut self, name: &str) -> OurResult<()> {
         if !self.case_types.contains_key(name) {
-            return Err(OurError::App(format!("Case type '{}' not found", name)));
+            return Err(OurError::App(format!("Case type '{name}' not found")));
         }
 
         // Remove directories
@@ -564,15 +559,13 @@ impl MLTrainer {
         let train_dir = self.images_dir.join(name);
 
         if ref_dir.exists() {
-            fs::remove_dir_all(&ref_dir).map_err(|e| {
-                OurError::App(format!("Failed to remove reference directory: {}", e))
-            })?;
+            fs::remove_dir_all(&ref_dir)
+                .map_err(|e| OurError::App(format!("Failed to remove reference directory: {e}")))?;
         }
 
         if train_dir.exists() {
-            fs::remove_dir_all(&train_dir).map_err(|e| {
-                OurError::App(format!("Failed to remove training directory: {}", e))
-            })?;
+            fs::remove_dir_all(&train_dir)
+                .map_err(|e| OurError::App(format!("Failed to remove training directory: {e}")))?;
         }
 
         // Remove from case types

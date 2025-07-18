@@ -238,19 +238,19 @@ impl ShellDataManager {
 
     /// Save shell data to a JSON file with the given session ID
     pub fn save_shell(&self, session_id: &str, shell: &Shell) -> OurResult<()> {
-        let file_path = self.data_directory.join(format!("{}.json", session_id));
+        let file_path = self.data_directory.join(format!("{session_id}.json"));
 
         // Ensure the data directory exists
         if let Some(parent) = file_path.parent() {
             fs::create_dir_all(parent)
-                .map_err(|e| OurError::App(format!("Failed to create data directory: {}", e)))?;
+                .map_err(|e| OurError::App(format!("Failed to create data directory: {e}")))?;
         }
 
         let json_data = serde_json::to_string_pretty(shell)
-            .map_err(|e| OurError::App(format!("Failed to serialize shell data: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to serialize shell data: {e}")))?;
 
         fs::write(&file_path, json_data)
-            .map_err(|e| OurError::App(format!("Failed to write shell data: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to write shell data: {e}")))?;
 
         info!("Saved shell data for session {}", session_id);
         Ok(())
@@ -258,20 +258,19 @@ impl ShellDataManager {
 
     /// Load shell data from a JSON file
     pub fn load_shell(&self, session_id: &str) -> OurResult<Shell> {
-        let file_path = self.data_directory.join(format!("{}.json", session_id));
+        let file_path = self.data_directory.join(format!("{session_id}.json"));
 
         if !file_path.exists() {
             return Err(OurError::App(format!(
-                "Shell data file not found: {}",
-                session_id
+                "Shell data file not found: {session_id}"
             )));
         }
 
         let json_data = fs::read_to_string(&file_path)
-            .map_err(|e| OurError::App(format!("Failed to read shell data: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to read shell data: {e}")))?;
 
         let shell: Shell = serde_json::from_str(&json_data)
-            .map_err(|e| OurError::App(format!("Failed to parse shell data: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to parse shell data: {e}")))?;
 
         debug!("Loaded shell data for session {}", session_id);
         Ok(shell)
@@ -288,11 +287,11 @@ impl ShellDataManager {
 
     /// Delete shell data file
     pub fn delete_shell(&self, session_id: &str) -> OurResult<()> {
-        let file_path = self.data_directory.join(format!("{}.json", session_id));
+        let file_path = self.data_directory.join(format!("{session_id}.json"));
 
         if file_path.exists() {
             fs::remove_file(&file_path)
-                .map_err(|e| OurError::App(format!("Failed to delete shell data: {}", e)))?;
+                .map_err(|e| OurError::App(format!("Failed to delete shell data: {e}")))?;
             info!("Deleted shell data for session {}", session_id);
         } else {
             warn!("Shell data file not found for deletion: {}", session_id);
@@ -310,11 +309,11 @@ impl ShellDataManager {
         }
 
         let entries = fs::read_dir(&self.data_directory)
-            .map_err(|e| OurError::App(format!("Failed to read data directory: {}", e)))?;
+            .map_err(|e| OurError::App(format!("Failed to read data directory: {e}")))?;
 
         for entry in entries {
-            let entry = entry
-                .map_err(|e| OurError::App(format!("Failed to read directory entry: {}", e)))?;
+            let entry =
+                entry.map_err(|e| OurError::App(format!("Failed to read directory entry: {e}")))?;
             let path = entry.path();
 
             if path.is_file() && path.extension() == Some(std::ffi::OsStr::new("json")) {

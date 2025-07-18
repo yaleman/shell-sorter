@@ -6,8 +6,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::{Mutex, RwLock};
+use std::sync::RwLock;
 use std::time::{Duration, Instant};
+use tokio::sync::RwLock as AsyncRwLock;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{interval, sleep};
 use tracing::{debug, error, info, warn};
@@ -76,7 +77,7 @@ pub struct ControllerRequest {
 /// Controller monitor that runs in a separate thread
 pub struct ControllerMonitor {
     settings: Arc<RwLock<Settings>>,
-    status: Arc<Mutex<ControllerStatus>>,
+    status: Arc<AsyncRwLock<ControllerStatus>>,
     request_receiver: mpsc::UnboundedReceiver<ControllerRequest>,
     client: reqwest::Client,
 }
@@ -85,15 +86,13 @@ pub struct ControllerMonitor {
 #[derive(Clone)]
 pub struct ControllerHandle {
     request_sender: mpsc::UnboundedSender<ControllerRequest>,
-    status: Arc<Mutex<ControllerStatus>>,
+    status: Arc<AsyncRwLock<ControllerStatus>>,
 }
 
 impl ControllerHandle {
-    /// Safely lock the status mutex
-    fn lock_status(&self) -> Result<std::sync::MutexGuard<ControllerStatus>, String> {
-        self.status
-            .lock()
-            .map_err(|_| "Status lock poisoned".to_string())
+    /// Safely lock the status for reading
+    async fn lock_status(&self) -> tokio::sync::RwLockReadGuard<ControllerStatus> {
+        self.status.read().await
     }
 
     /// Update the controller configuration
@@ -120,10 +119,8 @@ impl ControllerHandle {
     }
 
     /// Get current controller status
-    pub fn get_status(&self) -> ControllerStatus {
-        self.lock_status()
-            .map(|guard| guard.clone())
-            .unwrap_or_default()
+    pub async fn get_status(&self) -> ControllerStatus {
+        self.lock_status().await.clone()
     }
 }
 
@@ -142,11 +139,14 @@ impl ControllerMonitor {
             .map_err(|_| OurError::App("Settings lock poisoned".to_string()))
     }
 
-    /// Safely lock the status mutex
-    fn lock_status(&self) -> Result<std::sync::MutexGuard<ControllerStatus>, OurError> {
-        self.status
-            .lock()
-            .map_err(|_| OurError::App("Status lock poisoned".to_string()))
+    /// Safely lock the status for reading
+    async fn lock_status(&self) -> tokio::sync::RwLockReadGuard<ControllerStatus> {
+        self.status.read().await
+    }
+
+    /// Safely lock the status for writing
+    async fn lock_status_write(&self) -> tokio::sync::RwLockWriteGuard<ControllerStatus> {
+        self.status.write().await
     }
 
     /// Create a new controller monitor and return a handle for communication
@@ -160,7 +160,7 @@ impl ControllerMonitor {
             .esphome_hostname
             .clone();
 
-        let status = Arc::new(Mutex::new(ControllerStatus {
+        let status = Arc::new(AsyncRwLock::new(ControllerStatus {
             online: false,
             hostname,
             last_seen: None,
@@ -291,17 +291,13 @@ impl ControllerMonitor {
 
         // Update status with new hostname if it changed
         if old_hostname != new_hostname {
-            match self.lock_status() {
-                Ok(mut status) => {
-                    status.hostname = new_hostname.clone();
-                    status.online = false; // Reset online status until next health check
-                    status.last_seen = None;
-                    status.response_time_ms = None;
-                    status.error_count = 0;
-                }
-                Err(e) => {
-                    return ControllerResponse::Error(format!("Failed to update status: {e}"));
-                }
+            {
+                let mut status = self.lock_status_write().await;
+                status.hostname = new_hostname.clone();
+                status.online = false; // Reset online status until next health check
+                status.last_seen = None;
+                status.response_time_ms = None;
+                status.error_count = 0;
             }
 
             info!(
@@ -449,10 +445,7 @@ impl ControllerMonitor {
 
     /// Check if the controller is online
     async fn is_online(&self) -> bool {
-        match self.lock_status() {
-            Ok(status) => status.online,
-            Err(_) => false,
-        }
+        self.lock_status().await.online
     }
 
     /// Get binary sensor state from ESPHome
@@ -525,7 +518,8 @@ impl ControllerMonitor {
             let text = response.text().await?;
 
             // Update response time in status
-            if let Ok(mut status) = self.lock_status() {
+            {
+                let mut status = self.lock_status_write().await;
                 status.response_time_ms = Some(elapsed.as_millis() as u64);
                 status.last_seen = Some(Instant::now());
             }
@@ -540,7 +534,7 @@ impl ControllerMonitor {
     async fn perform_health_check(
         client: &reqwest::Client,
         hostname: &str,
-        status: &Arc<Mutex<ControllerStatus>>,
+        status: &Arc<AsyncRwLock<ControllerStatus>>,
     ) {
         let url = format!("http://{hostname}/");
         let start_time = Instant::now();
@@ -567,7 +561,8 @@ impl ControllerMonitor {
                 }
 
                 // Update status
-                if let Ok(mut status_lock) = status.lock() {
+                {
+                    let mut status_lock = status.write().await;
                     status_lock.online = success;
                     status_lock.last_seen = Some(Instant::now());
                     status_lock.response_time_ms = Some(elapsed.as_millis() as u64);
@@ -585,7 +580,8 @@ impl ControllerMonitor {
                 warn!("Health check failed: {e}");
 
                 // Update status
-                if let Ok(mut status_lock) = status.lock() {
+                {
+                    let mut status_lock = status.write().await;
                     status_lock.online = false;
                     status_lock.error_count += 1;
                     status_lock.response_time_ms = None;
