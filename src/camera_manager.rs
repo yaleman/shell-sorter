@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -60,7 +61,7 @@ pub enum CameraRequest {
 
 pub struct CameraManager {
     network_camera_hostnames: Vec<String>,
-    status: Arc<Mutex<CameraStatus>>,
+    status: Arc<RwLock<CameraStatus>>,
     request_receiver: mpsc::UnboundedReceiver<CameraRequest>,
     client: reqwest::Client,
 }
@@ -69,7 +70,7 @@ pub struct CameraManager {
 pub struct CameraHandle {
     request_sender: mpsc::UnboundedSender<CameraRequest>,
     #[allow(dead_code)]
-    status: Arc<Mutex<CameraStatus>>,
+    status: Arc<RwLock<CameraStatus>>,
 }
 
 impl CameraHandle {
@@ -151,10 +152,12 @@ impl CameraHandle {
 }
 
 impl CameraManager {
-    fn lock_status(&self) -> OurResult<std::sync::MutexGuard<CameraStatus>> {
-        self.status
-            .lock()
-            .map_err(|_| OurError::App("Camera status lock poisoned".to_string()))
+    async fn lock_status(&self) -> tokio::sync::RwLockReadGuard<CameraStatus> {
+        self.status.read().await
+    }
+
+    async fn lock_status_write(&self) -> tokio::sync::RwLockWriteGuard<CameraStatus> {
+        self.status.write().await
     }
 
     pub fn new(
@@ -162,7 +165,7 @@ impl CameraManager {
     ) -> Result<(Self, CameraHandle), Box<dyn std::error::Error>> {
         let (request_sender, request_receiver) = mpsc::unbounded_channel();
 
-        let status = Arc::new(Mutex::new(CameraStatus::default()));
+        let status = Arc::new(RwLock::new(CameraStatus::default()));
 
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
@@ -231,10 +234,7 @@ impl CameraManager {
                     }
                 }
                 CameraRequest::GetStatus { respond_to } => {
-                    let status = match self.lock_status() {
-                        Ok(guard) => Ok(guard.clone()),
-                        Err(e) => Err(e),
-                    };
+                    let status = Ok(self.lock_status().await.clone());
                     if respond_to.send(status).is_err() {
                         error!("Failed to send status response");
                     }
@@ -263,7 +263,8 @@ impl CameraManager {
         }
 
         // Update status
-        if let Ok(mut status) = self.lock_status() {
+        {
+            let mut status = self.lock_status_write().await;
             status.cameras.clear();
             for camera in &cameras {
                 status.cameras.insert(camera.id.clone(), camera.clone());
@@ -274,12 +275,12 @@ impl CameraManager {
     }
 
     async fn list_cameras(&self) -> OurResult<Vec<CameraInfo>> {
-        let status = self.lock_status()?;
+        let status = self.lock_status().await;
         Ok(status.cameras.values().cloned().collect())
     }
 
     async fn select_cameras(&mut self, camera_ids: Vec<String>) -> OurResult<()> {
-        let mut status = self.lock_status()?;
+        let mut status = self.lock_status_write().await;
 
         // Validate all camera IDs exist
         for id in &camera_ids {
@@ -294,7 +295,7 @@ impl CameraManager {
     }
 
     async fn start_streaming(&mut self) -> OurResult<()> {
-        let mut status = self.lock_status()?;
+        let mut status = self.lock_status_write().await;
 
         // Allow starting streaming with no cameras selected - this is a valid state
         if status.selected_cameras.is_empty() {
@@ -310,7 +311,7 @@ impl CameraManager {
     }
 
     async fn stop_streaming(&mut self) -> OurResult<()> {
-        let mut status = self.lock_status()?;
+        let mut status = self.lock_status_write().await;
         status.streaming = false;
         info!("Stopped camera streaming");
         Ok(())
@@ -318,7 +319,7 @@ impl CameraManager {
 
     async fn capture_image(&self, camera_id: &str) -> OurResult<Vec<u8>> {
         let snapshot_url = {
-            let status = self.lock_status()?;
+            let status = self.lock_status().await;
             let camera = status
                 .cameras
                 .get(camera_id)

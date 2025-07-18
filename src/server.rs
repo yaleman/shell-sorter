@@ -72,8 +72,8 @@ async fn no_cache_middleware(request: Request, next: Next) -> Response {
 pub struct AppState {
     pub settings: Settings,
     pub controller: ControllerHandle,
-    pub camera_manager: CameraHandle,
-    pub usb_camera_manager: UsbCameraHandle,
+    pub camera_manager: Box<CameraHandle>,
+    pub usb_camera_manager: Box<UsbCameraHandle>,
     pub ml_trainer: Arc<Mutex<MLTrainer>>,
     pub shell_data_manager: Arc<ShellDataManager>,
 }
@@ -226,18 +226,18 @@ pub async fn start_server(
     let mut ml_trainer = MLTrainer::new(settings.clone());
     ml_trainer
         .initialize()
-        .map_err(|e| OurError::App(format!("Failed to initialize ML trainer: {}", e)))?;
+        .map_err(|e| OurError::App(format!("Failed to initialize ML trainer: {e}")))?;
 
     let shell_data_manager = ShellDataManager::new(settings.data_directory.clone());
     shell_data_manager
         .validate_data_directory()
-        .map_err(|e| OurError::App(format!("Failed to validate data directory: {}", e)))?;
+        .map_err(|e| OurError::App(format!("Failed to validate data directory: {e}")))?;
 
     let state = Arc::new(AppState {
         settings,
         controller,
-        camera_manager,
-        usb_camera_manager,
+        camera_manager: Box::new(camera_manager),
+        usb_camera_manager: Box::new(usb_camera_manager),
         ml_trainer: Arc::new(Mutex::new(ml_trainer)),
         shell_data_manager: Arc::new(shell_data_manager),
     });
@@ -636,7 +636,7 @@ async fn list_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Ve
                 .map(|cam| {
                     // Check both in-memory status and saved config for selection
                     let is_selected_in_memory =
-                        usb_status.selected_cameras.contains(&cam.hardware_id);
+                        usb_status.selected_cameras().contains(&cam.hardware_id);
                     let is_selected_in_config = saved_selections.contains(&cam.hardware_id);
                     let is_selected = is_selected_in_memory || is_selected_in_config;
                     let is_active = is_selected_in_memory && usb_status.streaming;
@@ -1226,7 +1226,7 @@ async fn list_shells(
         }
         Err(e) => {
             error!("Failed to list shells: {}", e);
-            Json(ApiResponse::error(format!("Failed to list shells: {}", e)))
+            Json(ApiResponse::error(format!("Failed to list shells: {e}")))
         }
     }
 }
@@ -1258,8 +1258,7 @@ async fn save_shell_data(
                 payload.session_id, e
             );
             Json(ApiResponse::error(format!(
-                "Failed to save shell data: {}",
-                e
+                "Failed to save shell data: {e}"
             )))
         }
     }
@@ -1281,8 +1280,7 @@ async fn toggle_shell_training(
                 session_id, e
             );
             Json(ApiResponse::error(format!(
-                "Failed to toggle training: {}",
-                e
+                "Failed to toggle training: {e}"
             )))
         }
     }
@@ -1352,8 +1350,7 @@ async fn ml_list_shells(
         Err(e) => {
             error!("Failed to list shells for ML training: {}", e);
             Json(ApiResponse::error(format!(
-                "Failed to list shells for ML training: {}",
-                e
+                "Failed to list shells for ML training: {e}"
             )))
         }
     }
@@ -1429,10 +1426,7 @@ async fn list_case_types(
         }
         Err(e) => {
             error!("Failed to get training summary: {}", e);
-            Json(ApiResponse::error(format!(
-                "Failed to get case types: {}",
-                e
-            )))
+            Json(ApiResponse::error(format!("Failed to get case types: {e}")))
         }
     }
 }

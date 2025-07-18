@@ -14,7 +14,8 @@ use nokhwa::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 
@@ -42,6 +43,14 @@ pub struct UsbCameraInfo {
     /// Currently selected format
     pub current_format: Option<CameraFormatInfo>,
 }
+impl UsbCameraInfo {
+    pub fn stop(&mut self) {
+        // Reset current format to None when stopping streaming
+        self.current_format = None;
+        self.connected = false; // Mark as disconnected
+        debug!("Camera {} stopped", self.hardware_id);
+    }
+}
 
 /// Camera format information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,12 +66,29 @@ pub struct CameraFormatInfo {
 pub struct UsbCameraStatus {
     /// Available USB cameras by hardware ID
     pub cameras: HashMap<String, UsbCameraInfo>,
-    /// Currently selected cameras
-    pub selected_cameras: Vec<String>,
     /// Streaming status
     pub streaming: bool,
     /// Last detection timestamp
     pub last_detection: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+impl UsbCameraStatus {
+    /// Get currently selected cameras
+    pub fn selected_cameras(&self) -> Vec<String> {
+        self.cameras
+            .iter()
+            .filter(|(_, camera)| camera.connected)
+            .map(|(hardware_id, _)| hardware_id.clone())
+            .collect()
+    }
+
+    /// Set currently selected cameras
+    pub fn set_selected_cameras(&mut self, hardware_ids: &[String]) {
+        self.cameras.iter_mut().for_each(|(_, camera)| {
+            // Set connected status based on selection
+            camera.connected = hardware_ids.contains(&camera.hardware_id);
+        });
+    }
 }
 
 /// USB Camera control commands
@@ -125,7 +151,7 @@ pub enum UsbCameraRequest {
 /// USB Camera Manager implementation
 pub struct UsbCameraManager {
     /// Current camera status
-    status: Arc<Mutex<UsbCameraStatus>>,
+    status: Arc<RwLock<UsbCameraStatus>>,
     /// Request receiver channel
     request_receiver: mpsc::UnboundedReceiver<UsbCameraRequest>,
     /// Preferred API backend
@@ -139,7 +165,7 @@ pub struct UsbCameraManager {
 pub struct UsbCameraHandle {
     request_sender: mpsc::UnboundedSender<UsbCameraRequest>,
     #[allow(dead_code)]
-    status: Arc<Mutex<UsbCameraStatus>>,
+    status: Arc<RwLock<UsbCameraStatus>>,
 }
 
 impl UsbCameraHandle {
@@ -294,24 +320,18 @@ impl UsbCameraHandle {
 
 impl UsbCameraManager {
     /// Get read-only access to camera status
-    fn get_status(&self) -> std::sync::MutexGuard<UsbCameraStatus> {
-        self.status.lock().unwrap_or_else(|e| {
-            error!("USB camera status mutex poisoned: {e}");
-            e.into_inner()
-        })
+    async fn get_status(&self) -> tokio::sync::RwLockReadGuard<UsbCameraStatus> {
+        self.status.read().await
     }
 
     /// Get mutable access to camera status
-    fn get_status_mut(&mut self) -> std::sync::MutexGuard<UsbCameraStatus> {
-        self.status.lock().unwrap_or_else(|e| {
-            error!("USB camera status mutex poisoned: {e}");
-            e.into_inner()
-        })
+    async fn get_status_mut(&mut self) -> tokio::sync::RwLockWriteGuard<UsbCameraStatus> {
+        self.status.write().await
     }
 
     /// Get camera info by hardware ID
-    fn get_camera_info(&self, hardware_id: &str) -> OurResult<UsbCameraInfo> {
-        let status = self.get_status();
+    async fn get_camera_info(&self, hardware_id: &str) -> OurResult<UsbCameraInfo> {
+        let status = self.get_status().await;
         status
             .cameras
             .values()
@@ -321,15 +341,21 @@ impl UsbCameraManager {
     }
 
     /// Create a new camera instance with efficient error handling
-    fn create_camera(&self, hardware_id: &str) -> OurResult<Camera> {
-        let camera_info = self.get_camera_info(hardware_id)?;
+    async fn create_camera(&self, hardware_id: &str) -> OurResult<Camera> {
+        let camera_info = self.get_camera_info(hardware_id).await?;
         let camera_index = CameraIndex::Index(camera_info.index);
 
         // Use highest resolution for best quality
         let format =
             RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestResolution);
-        Camera::new(camera_index, format)
-            .map_err(|e| OurError::App(format!("Failed to create camera {hardware_id}: {e}")))
+        debug!(
+            "Creating camera {} with index {} and format {:?}",
+            hardware_id, camera_index, format
+        );
+        // Wrap Camera::new in catch_unwind to handle macOS AVFoundation panics
+        std::panic::catch_unwind(|| Camera::new(camera_index, format))
+            .map_err(|_| OurError::App(format!("Camera creation panicked for {hardware_id} (likely AVFoundation issue on macOS)")))
+            .and_then(|result| result.map_err(|e| OurError::App(format!("Failed to create camera {hardware_id}: {e}"))))
     }
 
     /// Apply software brightness adjustment to an image
@@ -370,7 +396,7 @@ impl UsbCameraManager {
     /// Create new USB camera manager
     pub fn new() -> OurResult<(UsbCameraManager, UsbCameraHandle)> {
         let (request_sender, request_receiver) = mpsc::unbounded_channel();
-        let status = Arc::new(Mutex::new(UsbCameraStatus::default()));
+        let status = Arc::new(RwLock::new(UsbCameraStatus::default()));
 
         let backend = Self::select_best_backend()?;
 
@@ -437,7 +463,7 @@ impl UsbCameraManager {
                     }
                 }
                 UsbCameraRequest::ListCameras { respond_to } => {
-                    let cameras = self.list_cameras_internal();
+                    let cameras = self.list_cameras_internal().await;
                     if respond_to.send(Ok(cameras)).is_err() {
                         debug!("Failed to send camera list response");
                     }
@@ -446,7 +472,7 @@ impl UsbCameraManager {
                     hardware_ids,
                     respond_to,
                 } => {
-                    let result = self.select_cameras_internal(hardware_ids);
+                    let result = self.select_cameras_internal(hardware_ids).await;
                     if respond_to.send(result).is_err() {
                         debug!("Failed to send camera selection response");
                     }
@@ -458,7 +484,7 @@ impl UsbCameraManager {
                     }
                 }
                 UsbCameraRequest::StopStreaming { respond_to } => {
-                    let result = self.stop_streaming_internal();
+                    let result = self.stop_streaming_internal().await;
                     if respond_to.send(result).is_err() {
                         debug!("Failed to send streaming stop response");
                     }
@@ -473,7 +499,7 @@ impl UsbCameraManager {
                     }
                 }
                 UsbCameraRequest::GetStatus { respond_to } => {
-                    let status = self.get_status_internal();
+                    let status = self.get_status_internal().await;
                     if respond_to.send(Ok(status)).is_err() {
                         debug!("Failed to send status response");
                     }
@@ -545,7 +571,7 @@ impl UsbCameraManager {
 
             // Update status one camera at a time to avoid holding lock across await
             {
-                let mut status = self.get_status_mut();
+                let mut status = self.get_status_mut().await;
                 status
                     .cameras
                     .insert(usb_camera_info.hardware_id.clone(), usb_camera_info);
@@ -554,7 +580,7 @@ impl UsbCameraManager {
 
         // Remove cameras that are no longer detected from status
         let cameras_to_remove: Vec<String> = {
-            let status = self.get_status();
+            let status = self.get_status().await;
             status
                 .cameras
                 .keys()
@@ -565,13 +591,13 @@ impl UsbCameraManager {
 
         for hardware_id in cameras_to_remove {
             info!("Camera {hardware_id} no longer detected, removing from status");
-            let mut status = self.get_status_mut();
+            let mut status = self.get_status_mut().await;
             status.cameras.remove(&hardware_id);
         }
 
         // Update last detection time
         {
-            let mut status = self.get_status_mut();
+            let mut status = self.get_status_mut().await;
             status.last_detection = Some(chrono::Utc::now());
         }
 
@@ -736,14 +762,14 @@ impl UsbCameraManager {
     }
 
     /// List currently known cameras
-    fn list_cameras_internal(&self) -> Vec<UsbCameraInfo> {
-        let status = self.get_status();
+    async fn list_cameras_internal(&self) -> Vec<UsbCameraInfo> {
+        let status = self.get_status().await;
         status.cameras.values().cloned().collect()
     }
 
     /// Select cameras for operations
-    fn select_cameras_internal(&mut self, hardware_ids: Vec<String>) -> OurResult<()> {
-        let mut status = self.get_status_mut();
+    async fn select_cameras_internal(&mut self, hardware_ids: Vec<String>) -> OurResult<()> {
+        let mut status = self.get_status_mut().await;
 
         // Validate that all requested cameras exist
         for hardware_id in &hardware_ids {
@@ -752,23 +778,23 @@ impl UsbCameraManager {
             }
         }
 
-        status.selected_cameras = hardware_ids;
-        info!("Selected {} cameras", status.selected_cameras.len());
+        status.set_selected_cameras(&hardware_ids);
+        info!("Selected {} cameras", hardware_ids.len());
         Ok(())
     }
 
     /// Start streaming from selected cameras
     async fn start_streaming_internal(&mut self) -> OurResult<()> {
         // Update streaming status - actual streaming is done on-demand during capture
-        let mut status = self.get_status_mut();
+        let mut status = self.get_status_mut().await;
 
         // Allow starting streaming with no cameras selected - this is a valid state
-        if status.selected_cameras.is_empty() {
+        if status.selected_cameras().is_empty() {
             info!("Starting streaming with no cameras selected - this is allowed");
         }
 
         status.streaming = true;
-        let camera_count = status.selected_cameras.len();
+        let camera_count = status.selected_cameras().len();
         drop(status);
 
         info!("Enabled streaming for {} cameras", camera_count);
@@ -776,11 +802,15 @@ impl UsbCameraManager {
     }
 
     /// Stop all streaming
-    fn stop_streaming_internal(&mut self) -> OurResult<()> {
+    async fn stop_streaming_internal(&mut self) -> OurResult<()> {
         // Update streaming status
-        let mut status = self.get_status_mut();
+        let mut status = self.get_status_mut().await;
 
-        let camera_count = status.selected_cameras.len();
+        let camera_count = status.selected_cameras().len();
+        status.cameras.iter_mut().for_each(|(_, camera)| {
+            // Reset current format to None when stopping streaming
+            camera.stop()
+        });
         status.streaming = false;
 
         info!("Disabled streaming for {} cameras", camera_count);
@@ -789,59 +819,82 @@ impl UsbCameraManager {
 
     /// Capture streaming frame from specific camera (optimized for streaming)
     async fn capture_streaming_frame_internal(&mut self, hardware_id: &str) -> OurResult<Vec<u8>> {
-        // Create camera instance
-        let mut camera = self.create_camera(hardware_id)?;
+        // Get camera info and brightness adjustment
+        let camera_info = self.get_camera_info(hardware_id).await?.clone();
+        let brightness_offset = self
+            .brightness_adjustments
+            .get(hardware_id)
+            .copied()
+            .unwrap_or(0.0);
+        let hardware_id = hardware_id.to_string();
 
-        // Open camera stream
-        camera
-            .open_stream()
-            .map_err(|e| OurError::App(format!("Failed to open camera stream: {e}")))?;
+        // Move entire camera operation to blocking task to handle AVFoundation panics
+        tokio::task::spawn_blocking(move || {
+            std::panic::catch_unwind(|| {
+                let camera_index = CameraIndex::Index(camera_info.index);
+                let format = RequestedFormat::new::<RgbFormat>(RequestedFormatType::AbsoluteHighestResolution);
+                // Create camera
+                let mut camera = Camera::new(camera_index, format)
+                    .map_err(|e| OurError::App(format!("Failed to create camera {hardware_id}: {e}")))?;
 
-        match camera.frame() {
-            Ok(frame) => {
-                // Convert frame to RGB image
-                let mut image = frame
-                    .decode_image::<RgbFormat>()
-                    .map_err(|e| OurError::App(format!("Failed to decode frame: {e}")))?;
+                // Open camera stream
+                camera
+                    .open_stream()
+                    .map_err(|e| OurError::App(format!("Failed to open camera stream: {e}")))?;
 
-                // Apply software brightness adjustment
-                self.apply_brightness_adjustment(&mut image, hardware_id);
+                let result = match camera.frame() {
+                    Ok(frame) => {
+                        // Convert frame to RGB image
+                        let mut image = frame
+                            .decode_image::<RgbFormat>()
+                            .map_err(|e| OurError::App(format!("Failed to decode frame: {e}")))?;
 
-                // Convert to JPEG with lower quality for streaming
-                let mut jpeg_data = Vec::new();
-                let mut cursor = std::io::Cursor::new(&mut jpeg_data);
+                        // Apply software brightness adjustment if needed
+                        if brightness_offset != 0.0 {
+                            let brightness_multiplier = if brightness_offset >= 0.0 {
+                                1.0 + (brightness_offset / 100.0) * 3.0
+                            } else {
+                                1.0 + (brightness_offset / 100.0)
+                            };
 
-                DynamicImage::ImageRgb8(image)
-                    .write_to(&mut cursor, image::ImageFormat::Jpeg)
-                    .map_err(|e| OurError::App(format!("Failed to encode JPEG: {e}")))?;
+                            for pixel in image.pixels_mut() {
+                                let r = (pixel[0] as f32 * brightness_multiplier).min(255.0) as u8;
+                                let g = (pixel[1] as f32 * brightness_multiplier).min(255.0) as u8;
+                                let b = (pixel[2] as f32 * brightness_multiplier).min(255.0) as u8;
+                                *pixel = image::Rgb([r, g, b]);
+                            }
+                        }
+
+                        // Convert to JPEG
+                        let mut jpeg_data = Vec::new();
+                        let mut cursor = std::io::Cursor::new(&mut jpeg_data);
+
+                        DynamicImage::ImageRgb8(image)
+                            .write_to(&mut cursor, image::ImageFormat::Jpeg)
+                            .map_err(|e| OurError::App(format!("Failed to encode JPEG: {e}")))?;
+
+                        Ok(jpeg_data)
+                    }
+                    Err(e) => Err(OurError::App(format!("Failed to capture frame: {e}")))
+                };
 
                 // Clean up camera
                 if let Err(e) = camera.stop_stream() {
                     warn!("Failed to stop camera stream: {e}");
                 }
 
-                debug!(
-                    "Captured streaming frame from camera {} ({} bytes)",
-                    hardware_id,
-                    jpeg_data.len()
-                );
-                Ok(jpeg_data)
-            }
-            Err(e) => {
-                warn!("Failed to capture frame from camera {hardware_id}: {e}");
-                if let Err(stop_err) = camera.stop_stream() {
-                    warn!("Failed to stop camera stream after error: {stop_err}");
-                }
-                Err(OurError::App(format!(
-                    "Failed to capture streaming frame: {e}"
-                )))
-            }
-        }
+                result
+            })
+            .map_err(|_| OurError::App(format!("Camera operation panicked for {hardware_id} (likely AVFoundation issue on macOS)")))
+            .and_then(|result| result)
+        })
+        .await
+        .map_err(|e| OurError::App(format!("Camera task failed: {e}")))?
     }
 
     async fn capture_image_internal(&mut self, hardware_id: &str) -> OurResult<Vec<u8>> {
         // Create camera instance
-        let mut camera = self.create_camera(hardware_id)?;
+        let mut camera = self.create_camera(hardware_id).await?;
 
         // Open camera stream
         camera
@@ -884,8 +937,8 @@ impl UsbCameraManager {
     }
 
     /// Get current status
-    fn get_status_internal(&self) -> UsbCameraStatus {
-        self.get_status().clone()
+    async fn get_status_internal(&self) -> UsbCameraStatus {
+        self.get_status().await.clone()
     }
 
     /// Set camera format
@@ -896,7 +949,7 @@ impl UsbCameraManager {
     ) -> OurResult<()> {
         // Update camera info with new format
         {
-            let mut status = self.get_status_mut();
+            let mut status = self.get_status_mut().await;
             if let Some(camera_info) = status.cameras.get_mut(hardware_id) {
                 camera_info.current_format = Some(format_info.clone());
             }
@@ -921,7 +974,7 @@ impl UsbCameraManager {
         );
 
         // Validate camera exists
-        let _camera_info = self.get_camera_info(hardware_id)?;
+        let _camera_info = self.get_camera_info(hardware_id).await?;
 
         // Convert brightness from 0-100 range to -100 to +100 offset
         // 50 = no adjustment (0), 0 = darkest (-100), 100 = brightest (+100)
@@ -947,7 +1000,7 @@ impl UsbCameraManager {
         );
 
         // Validate camera exists
-        let _camera_info = self.get_camera_info(hardware_id)?;
+        let _camera_info = self.get_camera_info(hardware_id).await?;
 
         // Get the stored brightness offset and convert back to 0-100 range
         let brightness_offset = self
