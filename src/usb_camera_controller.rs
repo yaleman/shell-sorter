@@ -43,6 +43,7 @@ pub struct UsbCameraInfo {
     /// Currently selected format
     pub current_format: Option<CameraFormatInfo>,
 }
+
 impl UsbCameraInfo {
     pub fn stop(&mut self) {
         // Reset current format to None when stopping streaming
@@ -444,120 +445,142 @@ impl UsbCameraManager {
             self.backend
         );
 
-        // Initial camera detection
-        if let Err(e) = self.detect_cameras_internal().await {
-            warn!("Initial camera detection failed: {e}");
-        }
+        // Skip initial camera detection to avoid blocking the manager thread
+        // Detection will happen on-demand when detect_cameras is called
+        info!("USB camera manager ready - camera detection will happen on-demand");
 
-        // Main event loop
+        // Main event loop - simplified without tokio::select!
         while let Some(request) = self.request_receiver.recv().await {
-            match request {
-                UsbCameraRequest::DetectCameras { respond_to } => {
-                    let result = self.detect_cameras_internal().await;
-                    let _cameras = match &result {
-                        Ok(cameras) => cameras.clone(),
-                        Err(_) => Vec::new(),
-                    };
-                    if respond_to.send(result).is_err() {
-                        debug!("Failed to send camera detection response");
-                    }
-                }
-                UsbCameraRequest::ListCameras { respond_to } => {
-                    let cameras = self.list_cameras_internal().await;
-                    if respond_to.send(Ok(cameras)).is_err() {
-                        debug!("Failed to send camera list response");
-                    }
-                }
-                UsbCameraRequest::SelectCameras {
-                    hardware_ids,
-                    respond_to,
-                } => {
-                    let result = self.select_cameras_internal(hardware_ids).await;
-                    if respond_to.send(result).is_err() {
-                        debug!("Failed to send camera selection response");
-                    }
-                }
-                UsbCameraRequest::StartStreaming { respond_to } => {
-                    let result = self.start_streaming_internal().await;
-                    if respond_to.send(result).is_err() {
-                        debug!("Failed to send streaming start response");
-                    }
-                }
-                UsbCameraRequest::StopStreaming { respond_to } => {
-                    let result = self.stop_streaming_internal().await;
-                    if respond_to.send(result).is_err() {
-                        debug!("Failed to send streaming stop response");
-                    }
-                }
-                UsbCameraRequest::CaptureImage {
-                    hardware_id,
-                    respond_to,
-                } => {
-                    let result = self.capture_image_internal(&hardware_id).await;
-                    if respond_to.send(result).is_err() {
-                        debug!("Failed to send image capture response");
-                    }
-                }
-                UsbCameraRequest::GetStatus { respond_to } => {
-                    let status = self.get_status_internal().await;
-                    if respond_to.send(Ok(status)).is_err() {
-                        debug!("Failed to send status response");
-                    }
-                }
-                UsbCameraRequest::SetCameraFormat {
-                    hardware_id,
-                    format,
-                    respond_to,
-                } => {
-                    let result = self.set_camera_format_internal(&hardware_id, format).await;
-                    if respond_to.send(result).is_err() {
-                        debug!("Failed to send camera format response");
-                    }
-                }
-                UsbCameraRequest::CaptureStreamingFrame {
-                    hardware_id,
-                    response_sender,
-                } => {
-                    let result = self.capture_streaming_frame_internal(&hardware_id).await;
-                    if response_sender.send(result).is_err() {
-                        debug!("Failed to send streaming frame response");
-                    }
-                }
-                UsbCameraRequest::SetBrightness {
-                    hardware_id,
-                    brightness,
-                    respond_to,
-                } => {
-                    let result = self.set_brightness_internal(&hardware_id, brightness).await;
-                    if respond_to.send(result).is_err() {
-                        debug!("Failed to send brightness set response");
-                    }
-                }
-                UsbCameraRequest::GetBrightness {
-                    hardware_id,
-                    respond_to,
-                } => {
-                    let result = self.get_brightness_internal(&hardware_id).await;
-                    if respond_to.send(result).is_err() {
-                        debug!("Failed to send brightness get response");
-                    }
-                }
-            }
+            self.handle_request(request).await;
         }
 
         info!("USB camera manager shutting down");
         Ok(())
     }
 
-    /// Internal camera detection implementation
+    /// Handle a single camera request
+    async fn handle_request(&mut self, request: UsbCameraRequest) {
+        match request {
+            UsbCameraRequest::DetectCameras { respond_to } => {
+                let result = self.detect_cameras_internal().await;
+                let _cameras = match &result {
+                    Ok(cameras) => cameras.clone(),
+                    Err(_) => Vec::new(),
+                };
+                if respond_to.send(result).is_err() {
+                    debug!("Failed to send camera detection response");
+                }
+            }
+            UsbCameraRequest::ListCameras { respond_to } => {
+                let cameras = self.list_cameras_internal().await;
+                if respond_to.send(Ok(cameras)).is_err() {
+                    debug!("Failed to send camera list response");
+                }
+            }
+            UsbCameraRequest::SelectCameras {
+                hardware_ids,
+                respond_to,
+            } => {
+                let result = self.select_cameras_internal(hardware_ids).await;
+                if respond_to.send(result).is_err() {
+                    debug!("Failed to send camera selection response");
+                }
+            }
+            UsbCameraRequest::StartStreaming { respond_to } => {
+                let result = self.start_streaming_internal().await;
+                if respond_to.send(result).is_err() {
+                    debug!("Failed to send streaming start response");
+                }
+            }
+            UsbCameraRequest::StopStreaming { respond_to } => {
+                let result = self.stop_streaming_internal().await;
+                if respond_to.send(result).is_err() {
+                    debug!("Failed to send streaming stop response");
+                }
+            }
+            UsbCameraRequest::CaptureImage {
+                hardware_id,
+                respond_to,
+            } => {
+                let result = self.capture_image_internal(&hardware_id).await;
+                if respond_to.send(result).is_err() {
+                    debug!("Failed to send image capture response");
+                }
+            }
+            UsbCameraRequest::GetStatus { respond_to } => {
+                let status = self.get_status_internal().await;
+                if respond_to.send(Ok(status)).is_err() {
+                    debug!("Failed to send status response");
+                }
+            }
+            UsbCameraRequest::SetCameraFormat {
+                hardware_id,
+                format,
+                respond_to,
+            } => {
+                let result = self.set_camera_format_internal(&hardware_id, format).await;
+                if respond_to.send(result).is_err() {
+                    debug!("Failed to send camera format response");
+                }
+            }
+            UsbCameraRequest::CaptureStreamingFrame {
+                hardware_id,
+                response_sender,
+            } => {
+                let result = self.capture_streaming_frame_internal(&hardware_id).await;
+                if response_sender.send(result).is_err() {
+                    debug!("Failed to send streaming frame response");
+                }
+            }
+            UsbCameraRequest::SetBrightness {
+                hardware_id,
+                brightness,
+                respond_to,
+            } => {
+                let result = self.set_brightness_internal(&hardware_id, brightness).await;
+                if respond_to.send(result).is_err() {
+                    debug!("Failed to send brightness set response");
+                }
+            }
+            UsbCameraRequest::GetBrightness {
+                hardware_id,
+                respond_to,
+            } => {
+                let result = self.get_brightness_internal(&hardware_id).await;
+                if respond_to.send(result).is_err() {
+                    debug!("Failed to send brightness get response");
+                }
+            }
+        }
+    }
+
+    // Implementation methods continue...
     async fn detect_cameras_internal(&mut self) -> OurResult<Vec<UsbCameraInfo>> {
         info!("Detecting USB cameras with backend: {:?}", self.backend);
 
-        let cameras = match nokhwa::query(self.backend) {
-            Ok(camera_list) => camera_list,
-            Err(e) => {
+        // Use spawn_blocking with timeout to prevent hanging
+        let backend = self.backend;
+        let cameras = tokio::time::timeout(
+            std::time::Duration::from_secs(10), // 10 second timeout
+            tokio::task::spawn_blocking(move || nokhwa::query(backend)),
+        )
+        .await;
+
+        let cameras = match cameras {
+            Ok(Ok(Ok(camera_list))) => camera_list,
+            Ok(Ok(Err(e))) => {
                 error!("Failed to query cameras: {e}");
                 return Err(OurError::App(format!("Failed to query cameras: {e}")));
+            }
+            Ok(Err(e)) => {
+                error!("Camera detection task panicked: {e}");
+                return Err(OurError::App(format!(
+                    "Camera detection task panicked: {e}"
+                )));
+            }
+            Err(_) => {
+                error!("Camera detection timed out after 10 seconds");
+                return Err(OurError::App("Camera detection timed out".to_string()));
             }
         };
 
@@ -817,7 +840,7 @@ impl UsbCameraManager {
         Ok(())
     }
 
-    /// Capture streaming frame from specific camera (optimized for streaming)
+    /// Capture streaming frame from specific camera
     async fn capture_streaming_frame_internal(&mut self, hardware_id: &str) -> OurResult<Vec<u8>> {
         // Get camera info and brightness adjustment
         let camera_info = self.get_camera_info(hardware_id).await?.clone();
