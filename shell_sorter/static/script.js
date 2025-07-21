@@ -712,36 +712,53 @@ document.addEventListener('DOMContentLoaded', function () {
             showToast('Detecting cameras...', 'info');
 
             try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 seconds for camera detection
-
-                const response = await fetch('/api/cameras/detect', {
-                    signal: controller.signal
-                });
-
-                clearTimeout(timeoutId);
-
-                if (response.ok) {
-                    const apiResponse = await response.json();
-                    if (apiResponse.success && apiResponse.data) {
-                        const cameras = apiResponse.data;
-                        showToast(`Detected ${cameras.length} cameras`, 'success');
-                        displayCameras(cameras);
-                        updateCameraSelection();
-                        // Note: No need to sync here - cameras come from backend with correct selection state
+                // Trigger async detection
+                const detectResponse = await fetch('/api/cameras/detect');
+                
+                if (detectResponse.ok) {
+                    const detectApiResponse = await detectResponse.json();
+                    if (detectApiResponse.success) {
+                        // Detection started, now poll for results
+                        showToast('Camera detection started, checking for results...', 'info');
+                        
+                        // Poll for results with a short delay to allow detection to complete
+                        let attempts = 0;
+                        const maxAttempts = 10; // 5 seconds max
+                        
+                        const pollForResults = async () => {
+                            attempts++;
+                            
+                            const listResponse = await fetch('/api/cameras');
+                            if (listResponse.ok) {
+                                const listApiResponse = await listResponse.json();
+                                if (listApiResponse.success && listApiResponse.data) {
+                                    const cameras = listApiResponse.data;
+                                    showToast(`Detected ${cameras.length} cameras`, 'success');
+                                    displayCameras(cameras);
+                                    updateCameraSelection();
+                                    return true;
+                                }
+                            }
+                            
+                            // If no results yet and haven't exceeded max attempts, try again
+                            if (attempts < maxAttempts) {
+                                setTimeout(pollForResults, 500); // Wait 0.5s before next attempt
+                            } else {
+                                showToast('Camera detection completed, but no new cameras found', 'warning');
+                            }
+                        };
+                        
+                        // Start polling after a brief delay
+                        setTimeout(pollForResults, 500);
                     } else {
-                        showToast(`Error detecting cameras: ${apiResponse.message || 'Unknown error'}`, 'error');
+                        showToast(`Error starting camera detection: ${detectApiResponse.message || 'Unknown error'}`, 'error');
                     }
                 } else {
-                    showToast('Error detecting cameras: Server returned an error', 'error');
+                    showToast('Error starting camera detection: Server returned an error', 'error');
                 }
             } catch (error) {
                 console.error('Error:', error);
-                if (error.name === 'AbortError') {
-                    showToast('Camera detection timed out after 10 seconds. This may indicate no cameras are available or they are slow to respond.', 'warning');
-                } else {
-                    showToast('Error detecting cameras: ' + error.message, 'error');
-                }
+                showToast('Error detecting cameras: ' + error.message, 'error');
             }
         });
     }
@@ -991,28 +1008,47 @@ document.addEventListener('DOMContentLoaded', function () {
                     console.log('No cameras detected, auto-detecting...');
                     showToast('No cameras found, automatically detecting...', 'info');
 
-                    const detectResponse = await fetch('/api/cameras/detect', {
-                        signal: AbortSignal.timeout(10000)
-                    });
+                    const detectResponse = await fetch('/api/cameras/detect');
 
                     if (detectResponse.ok) {
                         const detectApiResponse = await detectResponse.json();
-                        if (detectApiResponse.success && detectApiResponse.data) {
-                            const detectedCameras = detectApiResponse.data;
-                            console.log(`Auto-detected ${detectedCameras.length} cameras`);
+                        if (detectApiResponse.success) {
+                            console.log('Auto-detection started, waiting for results...');
+                            
+                            // Wait for detection to complete and poll for results
+                            setTimeout(async () => {
+                                try {
+                                    const listResponse = await fetch('/api/cameras');
+                                    if (listResponse.ok) {
+                                        const listApiResponse = await listResponse.json();
+                                        if (listApiResponse.success && listApiResponse.data) {
+                                            const detectedCameras = listApiResponse.data;
+                                            console.log(`Auto-detected ${detectedCameras.length} cameras`);
 
-                            if (detectedCameras.length > 0) {
-                                showToast(`Auto-detected ${detectedCameras.length} cameras`, 'success');
-                                displayCameras(detectedCameras);
-                                updateCameraSelection();
-                                // Note: No need to sync here - cameras come from backend with correct selection state
-                            } else {
-                                console.log('No cameras found during auto-detection');
-                                showToast('No cameras found on this system', 'warning');
-                                displayNoCameras();
-                            }
+                                            if (detectedCameras.length > 0) {
+                                                showToast(`Auto-detected ${detectedCameras.length} cameras`, 'success');
+                                                displayCameras(detectedCameras);
+                                                updateCameraSelection();
+                                            } else {
+                                                console.log('No cameras found during auto-detection');
+                                                showToast('No cameras found on this system', 'warning');
+                                                displayNoCameras();
+                                            }
+                                        } else {
+                                            console.log('Failed to get camera list after detection');
+                                            displayNoCameras();
+                                        }
+                                    } else {
+                                        console.log('Failed to fetch camera list after detection');
+                                        displayNoCameras();
+                                    }
+                                } catch (error) {
+                                    console.error('Error polling for detection results:', error);
+                                    displayNoCameras();
+                                }
+                            }, 1000); // Wait 1 second for detection to complete
                         } else {
-                            console.log('Auto-detection failed:', detectApiResponse.message || 'Unknown error');
+                            console.log('Auto-detection failed to start:', detectApiResponse.message || 'Unknown error');
                             showToast(`Auto-detection failed: ${detectApiResponse.message || 'Unknown error'}`, 'error');
                             displayNoCameras();
                         }

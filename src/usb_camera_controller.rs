@@ -19,7 +19,7 @@ use tokio::sync::RwLock;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 
-use crate::{OurError, OurResult};
+use crate::{OurError, OurResult, constants::USB_DEVICE_PREFIX};
 
 /// USB Camera device information with hardware identification
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -509,8 +509,8 @@ impl UsbCameraManager {
             }
             UsbCameraRequest::GetStatus { respond_to } => {
                 let status = self.get_status_internal().await;
-                if respond_to.send(Ok(status)).is_err() {
-                    debug!("Failed to send status response");
+                if let Err(err) = respond_to.send(Ok(status)) {
+                    error!("Failed to send status response: {err:?}");
                 }
             }
             UsbCameraRequest::SetCameraFormat {
@@ -561,7 +561,7 @@ impl UsbCameraManager {
         // Use spawn_blocking with timeout to prevent hanging
         let backend = self.backend;
         let cameras = tokio::time::timeout(
-            std::time::Duration::from_secs(10), // 10 second timeout
+            std::time::Duration::from_secs(2), // 2 second timeout for faster API response
             tokio::task::spawn_blocking(move || nokhwa::query(backend)),
         )
         .await;
@@ -579,7 +579,7 @@ impl UsbCameraManager {
                 )));
             }
             Err(_) => {
-                error!("Camera detection timed out after 10 seconds");
+                error!("Camera detection timed out after 2 seconds");
                 return Err(OurError::App("Camera detection timed out".to_string()));
             }
         };
@@ -722,7 +722,7 @@ impl UsbCameraManager {
         serial_number: &Option<String>,
     ) -> String {
         // Create stable identifier based on available hardware info
-        let mut parts = vec!["usb".to_string()];
+        let mut parts = vec![USB_DEVICE_PREFIX.to_string()];
 
         if let (Some(vid), Some(pid)) = (vendor_id, product_id) {
             parts.push(format!("{vid}:{pid}"));
