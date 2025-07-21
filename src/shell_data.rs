@@ -157,6 +157,19 @@ pub struct Shell {
     pub include: bool,
 }
 
+impl Default for Shell {
+    fn default() -> Self {
+        Self {
+            date_captured: Utc::now(),
+            brand: String::new(),
+            shell_type: String::new(),
+            image_filenames: Vec::new(),
+            captured_images: None,
+            include: true,
+        }
+    }
+}
+
 impl Shell {
     /// Create a new shell record
     pub fn new(brand: String, shell_type: String) -> Self {

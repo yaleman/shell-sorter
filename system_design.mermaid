@@ -1,0 +1,13 @@
+architecture-beta
+
+    service web_server(server)[Web Server]
+    service esp_cameras(server)[ESP Camera Controller]
+    service usb_cameras(server)[USB Camera Controller]
+    service controller(server)[ESPHome Hardware Comms]
+    service mltrainer(server)[ML Trainer]
+
+    web_server:L -- R:controller
+    web_server:L -- R:usb_cameras
+    web_server:L -- R:esp_cameras
+    web_server:L -- R:mltrainer
+

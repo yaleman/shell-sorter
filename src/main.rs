@@ -1,4 +1,6 @@
 use std::num::NonZeroU16;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
 use shell_sorter::camera_manager::CameraManager;
@@ -7,6 +9,7 @@ use shell_sorter::controller_monitor::ControllerMonitor;
 use shell_sorter::server;
 use shell_sorter::usb_camera_controller::start_usb_camera_manager;
 use shell_sorter::{OurError, OurResult};
+use tokio::sync::RwLock;
 use tracing::{debug, info};
 use tracing_subscriber::{filter::EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -237,7 +240,12 @@ async fn main() -> OurResult<()> {
         Commands::Data { action } => handle_data_command(action, &settings).await,
         Commands::Ml { action } => handle_ml_command(action, &settings).await,
         Commands::Config { action } => handle_config_command(action, &settings).await,
-        Commands::Serve { host, port } => start_web_server(host, port, settings).await,
+        Commands::Serve { host, port } => {
+            let mut settings = settings.clone();
+            settings.host = host;
+            settings.port = port;
+            start_web_server(settings, Settings::get_config_path()).await
+        }
     }
 }
 
@@ -668,18 +676,25 @@ async fn handle_config_command(action: ConfigAction, settings: &Settings) -> Our
     }
 }
 
-async fn start_web_server(host: String, port: NonZeroU16, settings: Settings) -> OurResult<()> {
+async fn start_web_server(settings: Settings, settings_filename: PathBuf) -> OurResult<()> {
     // Create the controller monitor and get a handle for communication
-    let (controller_monitor, controller_handle) = ControllerMonitor::new(settings.clone())
+    let (controller_monitor, _controller_handle) = ControllerMonitor::new(settings.clone())
         .map_err(|e| OurError::App(format!("Failed to create controller monitor: {e}")))?;
 
+    let (global_tx, global_rx_base) = tokio::sync::broadcast::channel(1024);
+
+    let global_rx = Arc::new(global_rx_base);
+
     // Create the camera manager and get a handle for communication
-    let (camera_manager, camera_handle) =
-        CameraManager::new(settings.network_camera_hostnames.clone())
-            .map_err(|e| OurError::App(format!("Failed to create camera manager: {e}")))?;
+    let (camera_manager, _camera_handle) = CameraManager::new(
+        global_tx.clone(),
+        global_rx.clone(),
+        settings.network_camera_hostnames.clone(),
+    )
+    .map_err(|e| OurError::App(format!("Failed to create camera manager: {e}")))?;
 
     // Create the USB camera manager and get a handle for communication
-    let usb_camera_handle = start_usb_camera_manager()
+    let _usb_camera_handle = start_usb_camera_manager()
         .await
         .map_err(|e| OurError::App(format!("Failed to create USB camera manager: {e}")))?;
 
@@ -699,12 +714,10 @@ async fn start_web_server(host: String, port: NonZeroU16, settings: Settings) ->
 
     // Start the web server with all handles
     server::start_server(
-        host,
-        port,
-        settings,
-        controller_handle,
-        camera_handle,
-        usb_camera_handle,
+        Arc::new(RwLock::new(settings)),
+        settings_filename,
+        global_tx,
+        global_rx,
     )
     .await
 }

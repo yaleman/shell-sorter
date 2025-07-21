@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 
+use crate::protocol::GlobalMessage;
 use crate::{OurError, OurResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,9 +65,13 @@ pub struct CameraManager {
     client: reqwest::Client,
 }
 
-#[derive(Clone)]
 pub struct CameraHandle {
     request_sender: mpsc::UnboundedSender<CameraRequest>,
+    #[allow(dead_code)]
+    global_tx: tokio::sync::broadcast::Sender<GlobalMessage>,
+    #[allow(dead_code)]
+    global_rx: Arc<tokio::sync::broadcast::Receiver<GlobalMessage>>,
+
     #[allow(dead_code)]
     status: Arc<RwLock<CameraStatus>>,
 }
@@ -156,6 +161,8 @@ impl CameraManager {
     }
 
     pub fn new(
+        global_tx: tokio::sync::broadcast::Sender<GlobalMessage>,
+        global_rx: Arc<tokio::sync::broadcast::Receiver<GlobalMessage>>,
         network_camera_hostnames: Vec<String>,
     ) -> Result<(Self, CameraHandle), Box<dyn std::error::Error>> {
         let (request_sender, request_receiver) = mpsc::unbounded_channel();
@@ -175,6 +182,8 @@ impl CameraManager {
 
         let handle = CameraHandle {
             request_sender,
+            global_tx,
+            global_rx,
             status,
         };
 

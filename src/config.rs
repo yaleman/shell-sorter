@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::num::NonZeroU16;
 use std::path::PathBuf;
 
 /// Configuration settings for the Shell Sorter application.
@@ -16,7 +17,7 @@ pub struct Settings {
     /// Server host address
     pub host: String,
     /// Server port
-    pub port: u16,
+    pub port: NonZeroU16,
     /// Enable debug mode
     pub debug: bool,
     /// Machine identifier
@@ -55,9 +56,10 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
+        #[allow(clippy::expect_used)]
         Self {
             host: "127.0.0.1".to_string(),
-            port: 8000,
+            port: NonZeroU16::try_from(8000u16).expect("Port must be non-zero"),
             debug: false,
             machine_name: "Shell Sorter v1.0".to_string(),
             cameras: Vec::new(),
@@ -358,6 +360,17 @@ impl Settings {
     pub fn base_url(&self) -> String {
         format!("http://{}:{}", self.host, self.port)
     }
+
+    pub async fn write_to_disk(
+        &self,
+        filename: &PathBuf,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Serialize settings to JSON
+        let contents = serde_json::to_string_pretty(self)?;
+        tokio::fs::write(filename, contents).await?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -368,7 +381,7 @@ mod tests {
     fn test_settings_default() {
         let settings = Settings::default();
         assert_eq!(settings.host, "127.0.0.1");
-        assert_eq!(settings.port, 8000);
+        assert_eq!(settings.port.get(), 8000);
         assert!(!settings.debug);
         assert_eq!(settings.machine_name, "Shell Sorter v1.0");
         assert_eq!(settings.camera_count, 4);
@@ -438,7 +451,7 @@ mod tests {
     fn test_base_url() {
         let settings = Settings {
             host: "localhost".to_string(),
-            port: 3000,
+            port: NonZeroU16::try_from(3000u16).expect("Port must be non-zero"),
             ..Settings::default()
         };
         assert_eq!(settings.base_url(), "http://localhost:3000");
