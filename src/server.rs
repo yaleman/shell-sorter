@@ -16,17 +16,18 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::{collections::HashMap, num::NonZeroU16};
 use tokio::net::TcpListener;
+
 use tower_http::services::ServeDir;
 
-use crate::camera_manager::CameraHandle;
 use crate::config::Settings;
 use crate::controller_monitor::{ControllerCommand, ControllerHandle, ControllerResponse};
 use crate::ml_training::MLTrainer;
 use crate::shell_data::{Shell, ShellDataManager};
 use crate::usb_camera_controller::UsbCameraHandle;
 use crate::{OurError, OurResult};
+use crate::{camera_manager::CameraHandle, constants::USB_DEVICE_PREFIX_WITH_COLON};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 
 /// Middleware to add no-cache headers to prevent browser caching
 async fn no_cache_middleware(request: Request, next: Next) -> Response {
@@ -185,64 +186,8 @@ impl<T> ApiResponse<T> {
 }
 
 /// Create a test router for integration testing
-pub fn create_test_router(state: Arc<AppState>) -> Router {
+pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
-        // Static files
-        .nest_service("/static", ServeDir::new("shell_sorter/static"))
-        // Main dashboard and pages
-        .route("/", get(dashboard))
-        .route("/config", get(config_page))
-        .route("/shell-edit/{session_id}", get(shell_edit_page))
-        .route("/tagging/{session_id}", get(tagging_page))
-        // Machine control API
-        .route("/api/status", get(status))
-        .route("/api/machine/hardware-status", get(hardware_status))
-        // Camera management API
-        .route("/api/cameras", get(list_cameras))
-        .route("/api/cameras/detect", get(detect_cameras))
-        // Data management API
-        .route("/api/shells", get(list_shells))
-        .route("/api/shells/save", post(save_shell_data))
-        .route(
-            "/api/shells/{session_id}/toggle",
-            post(toggle_shell_training),
-        )
-        // ML API
-        .route("/api/ml/shells", get(ml_list_shells))
-        .route("/api/case-types", get(list_case_types))
-        .with_state(state)
-}
-
-/// Start the web server
-pub async fn start_server(
-    host: String,
-    port: NonZeroU16,
-    settings: Settings,
-    controller: ControllerHandle,
-    camera_manager: CameraHandle,
-    usb_camera_manager: UsbCameraHandle,
-) -> OurResult<()> {
-    // Initialize ML trainer and shell data manager
-    let mut ml_trainer = MLTrainer::new(settings.clone());
-    ml_trainer
-        .initialize()
-        .map_err(|e| OurError::App(format!("Failed to initialize ML trainer: {e}")))?;
-
-    let shell_data_manager = ShellDataManager::new(settings.data_directory.clone());
-    shell_data_manager
-        .validate_data_directory()
-        .map_err(|e| OurError::App(format!("Failed to validate data directory: {e}")))?;
-
-    let state = Arc::new(AppState {
-        settings,
-        controller,
-        camera_manager: Box::new(camera_manager),
-        usb_camera_manager: Box::new(usb_camera_manager),
-        ml_trainer: Arc::new(Mutex::new(ml_trainer)),
-        shell_data_manager: Arc::new(shell_data_manager),
-    });
-
-    let app = Router::new()
         // Static files
         .nest_service("/static", ServeDir::new("shell_sorter/static"))
         // Main dashboard and pages
@@ -295,7 +240,39 @@ pub async fn start_server(
         .route("/api/config/cameras", delete(clear_camera_configs))
         .route("/api/config/reset", post(reset_config))
         .layer(middleware::from_fn(no_cache_middleware))
-        .with_state(state);
+        .with_state(state)
+}
+
+/// Start the web server
+pub async fn start_server(
+    host: String,
+    port: NonZeroU16,
+    settings: Settings,
+    controller: ControllerHandle,
+    camera_manager: CameraHandle,
+    usb_camera_manager: UsbCameraHandle,
+) -> OurResult<()> {
+    // Initialize ML trainer and shell data manager
+    let mut ml_trainer = MLTrainer::new(settings.clone());
+    ml_trainer
+        .initialize()
+        .map_err(|e| OurError::App(format!("Failed to initialize ML trainer: {e}")))?;
+
+    let shell_data_manager = ShellDataManager::new(settings.data_directory.clone());
+    shell_data_manager
+        .validate_data_directory()
+        .map_err(|e| OurError::App(format!("Failed to validate data directory: {e}")))?;
+
+    let state = Arc::new(AppState {
+        settings,
+        controller,
+        camera_manager: Box::new(camera_manager),
+        usb_camera_manager: Box::new(usb_camera_manager),
+        ml_trainer: Arc::new(Mutex::new(ml_trainer)),
+        shell_data_manager: Arc::new(shell_data_manager),
+    });
+
+    let app = create_router(state);
 
     let addr = format!("{host}:{port}");
     let listener = TcpListener::bind(&addr)
@@ -686,7 +663,7 @@ async fn restore_saved_camera_selections(state: &Arc<AppState>) {
     let mut usb_cameras = Vec::new();
 
     for camera_id in saved_selections {
-        if camera_id.starts_with("usb:") {
+        if camera_id.starts_with(USB_DEVICE_PREFIX_WITH_COLON) {
             usb_cameras.push(camera_id.clone());
         } else {
             esphome_cameras.push(camera_id.clone());
@@ -712,94 +689,40 @@ async fn restore_saved_camera_selections(state: &Arc<AppState>) {
     }
 }
 
-async fn detect_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<Vec<CameraInfo>>> {
-    let mut all_cameras = Vec::new();
-    let mut errors = Vec::new();
+async fn detect_cameras(State(state): State<Arc<AppState>>) -> Json<ApiResponse<String>> {
+    info!("Camera detection requested - triggering async detection");
 
-    // Detect ESPHome cameras
-    match state.camera_manager.detect_cameras().await {
-        Ok(cameras) => {
-            let esphome_cameras: Vec<CameraInfo> = cameras
-                .into_iter()
-                .map(|cam| CameraInfo {
-                    id: cam.id,
-                    name: cam.name,
-                    hostname: Some(cam.hostname),
-                    online: cam.online,
-                    view_type: None,
-                    camera_type: CameraType::EspHome,
-                    index: None,
-                    vendor_id: None,
-                    product_id: None,
-                    serial_number: None,
-                    is_active: false,
-                    is_selected: false,
-                })
-                .collect();
-            all_cameras.extend(esphome_cameras);
-        }
-        Err(e) => {
+    // Trigger detection asynchronously without waiting for results
+    let camera_manager = state.camera_manager.clone();
+    let usb_camera_manager = state.usb_camera_manager.clone();
+    let state_clone = state.clone();
+
+    tokio::spawn(async move {
+        info!("Starting async camera detection");
+
+        // Detect ESPHome cameras
+        if let Err(e) = camera_manager.detect_cameras().await {
             error!("Failed to detect ESPHome cameras: {e}");
-            errors.push(format!("ESPHome: {e}"));
         }
-    }
 
-    // Detect USB cameras
-    match state.usb_camera_manager.detect_cameras().await {
-        Ok(cameras) => {
-            let usb_cameras: Vec<CameraInfo> = cameras
-                .into_iter()
-                .map(|cam| CameraInfo {
-                    id: cam.hardware_id.clone(),
-                    name: cam.name,
-                    hostname: None,
-                    online: cam.connected,
-                    view_type: None,
-                    camera_type: CameraType::Usb,
-                    index: Some(cam.index),
-                    vendor_id: cam.vendor_id,
-                    product_id: cam.product_id,
-                    serial_number: cam.serial_number,
-                    is_active: false,
-                    is_selected: false,
-                })
-                .collect();
-            all_cameras.extend(usb_cameras);
-        }
-        Err(e) => {
+        // Detect USB cameras
+        if let Err(e) = usb_camera_manager.detect_cameras().await {
             error!("Failed to detect USB cameras: {e}");
-            errors.push(format!("USB: {e}"));
         }
-    }
 
-    if all_cameras.is_empty() && !errors.is_empty() {
-        Json(ApiResponse::<Vec<CameraInfo>>::error(format!(
-            "Failed to detect cameras: {}",
-            errors.join(", ")
-        )))
-    } else {
         // Restore saved camera selections after detection
-        restore_saved_camera_selections(&state).await;
+        restore_saved_camera_selections(&state_clone).await;
 
-        // Get the updated camera list with proper selection status
-        match list_cameras(State(state)).await {
-            Json(response) => {
-                if response.success {
-                    if let Some(cameras) = response.data {
-                        Json(ApiResponse::success(cameras))
-                    } else {
-                        Json(ApiResponse::success(all_cameras))
-                    }
-                } else {
-                    // Fallback to the original list if list_cameras fails
-                    all_cameras.sort_by(|a, b| a.name.cmp(&b.name));
-                    Json(ApiResponse::success(all_cameras))
-                }
-            }
-        }
-    }
+        info!("Async camera detection completed");
+    });
+
+    // Return immediately with status message
+    Json(ApiResponse::success(
+        "Camera detection started. Use /api/cameras to check results.".to_string(),
+    ))
 }
 
+#[instrument(level = "info", skip(state))]
 async fn select_cameras(
     State(state): State<Arc<AppState>>,
     ExtractJson(payload): ExtractJson<SelectCamerasRequest>,
@@ -812,7 +735,7 @@ async fn select_cameras(
     let mut usb_cameras = Vec::new();
 
     for camera_id in payload.camera_ids {
-        if camera_id.starts_with("usb:") {
+        if camera_id.starts_with(USB_DEVICE_PREFIX_WITH_COLON) {
             usb_cameras.push(camera_id);
         } else {
             esphome_cameras.push(camera_id);
@@ -871,7 +794,7 @@ async fn start_cameras(
         let mut usb_cameras = Vec::new();
 
         for camera_id in &payload.camera_ids {
-            if camera_id.starts_with("usb:") {
+            if camera_id.starts_with(USB_DEVICE_PREFIX_WITH_COLON) {
                 usb_cameras.push(camera_id.clone());
             } else {
                 esphome_cameras.push(camera_id.clone());
@@ -1010,7 +933,7 @@ async fn camera_stream(
     State(state): State<Arc<AppState>>,
 ) -> Result<Response<Body>, StatusCode> {
     // Determine camera type and route to appropriate manager
-    if camera_id.starts_with("usb:") {
+    if camera_id.starts_with(USB_DEVICE_PREFIX_WITH_COLON) {
         stream_usb_camera(&state, &camera_id).await
     } else {
         stream_esphome_camera(&state, &camera_id).await
@@ -1438,7 +1361,7 @@ struct CreateCaseTypeRequest {
     designation: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct SelectCamerasRequest {
     camera_ids: Vec<String>,
 }
@@ -1587,7 +1510,7 @@ async fn get_camera_brightness(
     info!("Getting brightness for camera: {}", camera_id);
 
     // Determine camera type and route to appropriate manager
-    if camera_id.starts_with("usb:") {
+    if camera_id.starts_with(USB_DEVICE_PREFIX_WITH_COLON) {
         match state.usb_camera_manager.get_brightness(camera_id).await {
             Ok(brightness) => {
                 info!("Current brightness for USB camera: {}", brightness);
@@ -1626,7 +1549,7 @@ async fn set_camera_brightness(
     }
 
     // Determine camera type and route to appropriate manager
-    if camera_id.starts_with("usb:") {
+    if camera_id.starts_with(USB_DEVICE_PREFIX_WITH_COLON) {
         match state
             .usb_camera_manager
             .set_brightness(camera_id, payload.brightness)

@@ -252,9 +252,9 @@ impl ControllerMonitor {
             }
         };
 
-        if request.response_sender.send(response).is_err() {
+        if let Err(err) = request.response_sender.send(response) {
             debug!(
-                "Failed to send response back to web server (receiver dropped - likely due to client timeout or connection closed)"
+                "Failed to send response back to web server (receiver dropped - likely due to client timeout or connection closed): {err:?}",
             );
         }
     }

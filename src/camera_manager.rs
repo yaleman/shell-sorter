@@ -34,9 +34,7 @@ pub struct CameraStatus {
 
 #[derive(Debug)]
 pub enum CameraRequest {
-    DetectCameras {
-        respond_to: oneshot::Sender<OurResult<Vec<CameraInfo>>>,
-    },
+    DetectCameras,
     ListCameras {
         respond_to: oneshot::Sender<OurResult<Vec<CameraInfo>>>,
     },
@@ -74,14 +72,11 @@ pub struct CameraHandle {
 }
 
 impl CameraHandle {
-    pub async fn detect_cameras(&self) -> OurResult<Vec<CameraInfo>> {
-        let (sender, receiver) = oneshot::channel();
+    pub async fn detect_cameras(&self) -> OurResult<()> {
         self.request_sender
-            .send(CameraRequest::DetectCameras { respond_to: sender })
+            .send(CameraRequest::DetectCameras)
             .map_err(|_| OurError::App("Camera manager channel closed".to_string()))?;
-        receiver
-            .await
-            .map_err(|_| OurError::App("Camera manager response failed".to_string()))?
+        Ok(())
     }
 
     pub async fn list_cameras(&self) -> OurResult<Vec<CameraInfo>> {
@@ -191,11 +186,9 @@ impl CameraManager {
 
         while let Some(request) = self.request_receiver.recv().await {
             match request {
-                CameraRequest::DetectCameras { respond_to } => {
+                CameraRequest::DetectCameras => {
                     let result = self.detect_cameras().await;
-                    if respond_to.send(result).is_err() {
-                        error!("Failed to send camera detection response");
-                    }
+                    debug!("Camera detection result: {result:?}",);
                 }
                 CameraRequest::ListCameras { respond_to } => {
                     let result = self.list_cameras().await;
@@ -235,8 +228,8 @@ impl CameraManager {
                 }
                 CameraRequest::GetStatus { respond_to } => {
                     let status = Ok(self.lock_status().await.clone());
-                    if respond_to.send(status).is_err() {
-                        error!("Failed to send status response");
+                    if let Err(err) = respond_to.send(status) {
+                        error!("Failed to send status response: {err:?}");
                     }
                 }
             }

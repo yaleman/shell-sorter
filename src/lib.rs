@@ -3,6 +3,7 @@
 
 pub mod camera_manager;
 pub mod config;
+pub mod constants;
 pub mod controller_monitor;
 pub mod error;
 pub mod ml_training;

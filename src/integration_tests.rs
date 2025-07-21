@@ -1,5 +1,6 @@
 //! Integration tests for the shell-sorter server with camera detection
 
+use crate::constants::USB_DEVICE_PREFIX;
 use serde_json::Value;
 use shell_sorter::camera_manager::CameraManager;
 use shell_sorter::config::Settings;
@@ -356,7 +357,7 @@ async fn test_usb_camera_detection() {
         // Hardware ID should be USB-prefixed
         if let Some(id) = camera.get("id").and_then(|v| v.as_str()) {
             assert!(
-                id.starts_with("usb:"),
+                id.starts_with(USB_DEVICE_PREFIX_WITH_COLON),
                 "USB camera ID should start with 'usb:': {id}",
             );
         }

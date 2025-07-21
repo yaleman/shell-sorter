@@ -27,6 +27,10 @@ run:
     killall shell-sorter || true
     cargo run --quiet -- serve
 
+run_debug:
+    killall shell-sorter || true
+    cargo run --quiet -- serve --debug
+
 # Flash ESPHome configuration to device
 esphome-flash:
     uvx esphome upload esphome-shell-sorter.yaml
