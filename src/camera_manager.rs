@@ -7,8 +7,8 @@ use tokio::sync::RwLock;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
-use tokio::sync::{mpsc, oneshot};
-use tracing::{debug, error, info, warn};
+use tokio::sync::oneshot;
+use tracing::{debug, info, warn};
 
 use crate::protocol::GlobalMessage;
 use crate::{OurError, OurResult};
@@ -16,8 +16,6 @@ use crate::{OurError, OurResult};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde_with::serde_as]
 pub struct CameraInfo {
-    pub id: String,
-    pub name: String,
     pub hostname: String,
     #[serde_as(as = "DisplayFromStr")]
     pub stream_url: Url,
@@ -29,8 +27,36 @@ pub struct CameraInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CameraStatus {
     pub cameras: HashMap<String, CameraInfo>,
-    pub selected_cameras: Vec<String>,
     pub streaming: bool,
+}
+
+impl From<String> for CameraInfo {
+    fn from(camera_id: String) -> Self {
+        let camera_name = camera_id.clone();
+        let hostname = format!("http://{camera_name}");
+
+        CameraInfo {
+            stream_url: Url::from_str(&format!("{hostname}/camera/stream")).unwrap(),
+            snapshot_url: Url::from_str(&format!("{hostname}/camera/snapshot")).unwrap(),
+            hostname,
+            online: true,
+        }
+    }
+}
+
+impl From<Vec<String>> for CameraStatus {
+    fn from(selected_cameras: Vec<String>) -> Self {
+        let mut cameras = HashMap::new();
+
+        for camera_id in selected_cameras {
+            cameras.insert(camera_id.clone(), CameraInfo::from(camera_id));
+        }
+
+        CameraStatus {
+            cameras,
+            streaming: false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -58,188 +84,67 @@ pub enum CameraRequest {
     },
 }
 
-pub struct CameraManager {
-    network_camera_hostnames: Vec<String>,
+pub struct EspCameraManager {
     status: Arc<RwLock<CameraStatus>>,
-    request_receiver: mpsc::UnboundedReceiver<CameraRequest>,
-    client: reqwest::Client,
-}
 
-pub struct CameraHandle {
-    request_sender: mpsc::UnboundedSender<CameraRequest>,
+    client: reqwest::Client,
+
     #[allow(dead_code)]
     global_tx: tokio::sync::broadcast::Sender<GlobalMessage>,
-    #[allow(dead_code)]
-    global_rx: Arc<tokio::sync::broadcast::Receiver<GlobalMessage>>,
-
-    #[allow(dead_code)]
-    status: Arc<RwLock<CameraStatus>>,
+    global_rx: tokio::sync::broadcast::Receiver<GlobalMessage>,
 }
 
-impl CameraHandle {
-    pub async fn detect_cameras(&self) -> OurResult<()> {
-        self.request_sender
-            .send(CameraRequest::DetectCameras)
-            .map_err(|_| OurError::App("Camera manager channel closed".to_string()))?;
-        Ok(())
-    }
-
-    pub async fn list_cameras(&self) -> OurResult<Vec<CameraInfo>> {
-        let (sender, receiver) = oneshot::channel();
-        self.request_sender
-            .send(CameraRequest::ListCameras { respond_to: sender })
-            .map_err(|_| OurError::App("Camera manager channel closed".to_string()))?;
-        receiver
-            .await
-            .map_err(|_| OurError::App("Camera manager response failed".to_string()))?
-    }
-
-    pub async fn select_cameras(&self, camera_ids: Vec<String>) -> OurResult<()> {
-        let (sender, receiver) = oneshot::channel();
-        self.request_sender
-            .send(CameraRequest::SelectCameras {
-                camera_ids,
-                respond_to: sender,
-            })
-            .map_err(|_| OurError::App("Camera manager channel closed".to_string()))?;
-        receiver
-            .await
-            .map_err(|_| OurError::App("Camera manager response failed".to_string()))?
-    }
-
-    pub async fn start_streaming(&self) -> OurResult<()> {
-        let (sender, receiver) = oneshot::channel();
-        self.request_sender
-            .send(CameraRequest::StartStreaming { respond_to: sender })
-            .map_err(|_| OurError::App("Camera manager channel closed".to_string()))?;
-        receiver
-            .await
-            .map_err(|_| OurError::App("Camera manager response failed".to_string()))?
-    }
-
-    pub async fn stop_streaming(&self) -> OurResult<()> {
-        let (sender, receiver) = oneshot::channel();
-        self.request_sender
-            .send(CameraRequest::StopStreaming { respond_to: sender })
-            .map_err(|_| OurError::App("Camera manager channel closed".to_string()))?;
-        receiver
-            .await
-            .map_err(|_| OurError::App("Camera manager response failed".to_string()))?
-    }
-
-    pub async fn capture_image(&self, camera_id: String) -> OurResult<Vec<u8>> {
-        let (sender, receiver) = oneshot::channel();
-        self.request_sender
-            .send(CameraRequest::CaptureImage {
-                camera_id,
-                respond_to: sender,
-            })
-            .map_err(|_| OurError::App("Camera manager channel closed".to_string()))?;
-        receiver
-            .await
-            .map_err(|_| OurError::App("Camera manager response failed".to_string()))?
-    }
-
-    pub async fn get_status(&self) -> OurResult<CameraStatus> {
-        let (sender, receiver) = oneshot::channel();
-        self.request_sender
-            .send(CameraRequest::GetStatus { respond_to: sender })
-            .map_err(|_| OurError::App("Camera manager channel closed".to_string()))?;
-        receiver
-            .await
-            .map_err(|_| OurError::App("Camera manager response failed".to_string()))?
-    }
-}
-
-impl CameraManager {
-    async fn lock_status(&self) -> tokio::sync::RwLockReadGuard<CameraStatus> {
+impl EspCameraManager {
+    async fn status_read(&self) -> tokio::sync::RwLockReadGuard<CameraStatus> {
         self.status.read().await
     }
 
-    async fn lock_status_write(&self) -> tokio::sync::RwLockWriteGuard<CameraStatus> {
+    async fn status_write(&self) -> tokio::sync::RwLockWriteGuard<CameraStatus> {
         self.status.write().await
     }
 
     pub fn new(
         global_tx: tokio::sync::broadcast::Sender<GlobalMessage>,
-        global_rx: Arc<tokio::sync::broadcast::Receiver<GlobalMessage>>,
+        global_rx: tokio::sync::broadcast::Receiver<GlobalMessage>,
         network_camera_hostnames: Vec<String>,
-    ) -> Result<(Self, CameraHandle), Box<dyn std::error::Error>> {
-        let (request_sender, request_receiver) = mpsc::unbounded_channel();
-
-        let status = Arc::new(RwLock::new(CameraStatus::default()));
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let status = Arc::new(RwLock::new(CameraStatus::from(network_camera_hostnames)));
 
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .build()?;
 
-        let manager = Self {
-            network_camera_hostnames,
+        Ok(Self {
             status: status.clone(),
-            request_receiver,
             client,
-        };
-
-        let handle = CameraHandle {
-            request_sender,
-            global_tx,
+            global_tx: global_tx.clone(),
             global_rx,
-            status,
-        };
-
-        Ok((manager, handle))
+        })
     }
 
     pub async fn run(mut self) -> OurResult<()> {
         info!("Starting camera manager");
-
-        while let Some(request) = self.request_receiver.recv().await {
+        while let Ok(request) = self.global_rx.recv().await {
+            debug!("EspCameraManager Received global message: {:?}", request);
             match request {
-                CameraRequest::DetectCameras => {
-                    let result = self.detect_cameras().await;
-                    debug!("Camera detection result: {result:?}",);
+                GlobalMessage::NewConfig(_settings) => {
+                    // Handle new configuration if needed
+                    debug!("EspCameraManager Received NewConfig message, but not implemented yet");
                 }
-                CameraRequest::ListCameras { respond_to } => {
-                    let result = self.list_cameras().await;
-                    if respond_to.send(result).is_err() {
-                        error!("Failed to send camera list response");
-                    }
+                GlobalMessage::Shutdown => return Ok(()),
+                GlobalMessage::NextCase => {}
+                GlobalMessage::GetSensors(_) => {}
+                GlobalMessage::ControllerStatus { .. } => {}
+                GlobalMessage::MachineStatus(_sender) => {}
+                GlobalMessage::SelectCameras(_camera_types) => {}
+
+                GlobalMessage::StartCameras(_camera_types) => {
+                    self.start_streaming().await?;
                 }
-                CameraRequest::SelectCameras {
-                    camera_ids,
-                    respond_to,
-                } => {
-                    let result = self.select_cameras(camera_ids).await;
-                    if respond_to.send(result).is_err() {
-                        error!("Failed to send camera selection response");
-                    }
-                }
-                CameraRequest::StartStreaming { respond_to } => {
-                    let result = self.start_streaming().await;
-                    if respond_to.send(result).is_err() {
-                        error!("Failed to send streaming start response");
-                    }
-                }
-                CameraRequest::StopStreaming { respond_to } => {
-                    let result = self.stop_streaming().await;
-                    if respond_to.send(result).is_err() {
-                        error!("Failed to send streaming stop response");
-                    }
-                }
-                CameraRequest::CaptureImage {
-                    camera_id,
-                    respond_to,
-                } => {
-                    let result = self.capture_image(&camera_id).await;
-                    if respond_to.send(result).is_err() {
-                        error!("Failed to send image capture response");
-                    }
-                }
-                CameraRequest::GetStatus { respond_to } => {
-                    let status = Ok(self.lock_status().await.clone());
-                    if let Err(err) = respond_to.send(status) {
-                        error!("Failed to send status response: {err:?}");
-                    }
+                GlobalMessage::DetectCameras => self.detect_cameras().await?,
+                GlobalMessage::StopCameras => self.stop_streaming().await?,
+                GlobalMessage::SetCameraBrightness { .. } => {
+                    debug!("Received SetCameraBrightness request, but not implemented yet");
                 }
             }
         }
@@ -248,41 +153,35 @@ impl CameraManager {
         Ok(())
     }
 
-    async fn detect_cameras(&mut self) -> OurResult<Vec<CameraInfo>> {
+    async fn detect_cameras(&mut self) -> OurResult<()> {
         debug!("Detecting ESPHome cameras");
-        let mut cameras = Vec::new();
 
-        for hostname in &self.network_camera_hostnames {
-            match self.probe_esphome_camera(hostname).await {
-                Ok(camera_info) => {
-                    cameras.push(camera_info);
-                    info!("Detected camera at {hostname}");
+        let mut camera_writer = self.status.write().await;
+
+        for (_camera_id, camera) in &mut camera_writer.cameras {
+            match self.probe_esphome_camera(&camera.hostname).await {
+                Ok(_camera_info) => {
+                    camera.online = true;
+                    info!("Detected camera at {}", camera.hostname);
                 }
                 Err(e) => {
-                    warn!("Failed to detect camera at {hostname}: {e}");
+                    camera.online = false;
+                    warn!("Failed to detect camera at {}: {e}", camera.hostname);
                 }
             }
         }
 
-        // Update status
-        {
-            let mut status = self.lock_status_write().await;
-            status.cameras.clear();
-            for camera in &cameras {
-                status.cameras.insert(camera.id.clone(), camera.clone());
-            }
-        }
-
-        Ok(cameras)
+        Ok(())
     }
 
+    #[allow(dead_code)]
     async fn list_cameras(&self) -> OurResult<Vec<CameraInfo>> {
-        let status = self.lock_status().await;
+        let status = self.status_read().await;
         Ok(status.cameras.values().cloned().collect())
     }
-
+    #[allow(dead_code)]
     async fn select_cameras(&mut self, camera_ids: Vec<String>) -> OurResult<()> {
-        let mut status = self.lock_status_write().await;
+        let status = self.status_write().await;
 
         // Validate all camera IDs exist
         for id in &camera_ids {
@@ -291,37 +190,40 @@ impl CameraManager {
             }
         }
 
-        status.selected_cameras = camera_ids;
-        info!("Selected cameras: {:?}", status.selected_cameras);
+        // status.selected_cameras = camera_ids;
+        // info!("Selected cameras: {:?}", status.selected_cameras);
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn start_streaming(&mut self) -> OurResult<()> {
-        let mut status = self.lock_status_write().await;
+        // let status = self.status_write().await;
 
-        // Allow starting streaming with no cameras selected - this is a valid state
-        if status.selected_cameras.is_empty() {
-            info!("Starting streaming with no cameras selected - this is allowed");
-        }
+        // // Allow starting streaming with no cameras selected - this is a valid state
+        // if status.selected_cameras.is_empty() {
+        //     info!("Starting streaming with no cameras selected - this is allowed");
+        // }
 
-        status.streaming = true;
-        info!(
-            "Started streaming from {} cameras",
-            status.selected_cameras.len()
-        );
+        // status.streaming = true;
+        // info!(
+        //     "Started streaming from {} cameras",
+        //     status.selected_cameras.len()
+        // );
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn stop_streaming(&mut self) -> OurResult<()> {
-        let mut status = self.lock_status_write().await;
+        let mut status = self.status_write().await;
         status.streaming = false;
         info!("Stopped camera streaming");
         Ok(())
     }
 
+    #[allow(dead_code)]
     async fn capture_image(&self, camera_id: &str) -> OurResult<Vec<u8>> {
         let snapshot_url = {
-            let status = self.lock_status().await;
+            let status = self.status_read().await;
             let camera = status
                 .cameras
                 .get(camera_id)
@@ -360,7 +262,7 @@ impl CameraManager {
         Ok(image_bytes.to_vec())
     }
 
-    async fn probe_esphome_camera(&self, hostname: &str) -> OurResult<CameraInfo> {
+    async fn probe_esphome_camera(&self, hostname: &str) -> OurResult<()> {
         let base_url = if hostname.starts_with("http://") {
             Url::from_str(hostname)?
         } else {
@@ -383,25 +285,6 @@ impl CameraManager {
                 "Camera probe failed with status: {status}"
             )));
         }
-
-        // Extract camera name from hostname (remove protocol and port)
-        let camera_name = hostname
-            .replace("http://", "")
-            .replace("https://", "")
-            .split(':')
-            .next()
-            .unwrap_or(hostname)
-            .to_string();
-
-        let camera_id = format!("esphome_{camera_name}");
-
-        Ok(CameraInfo {
-            id: camera_id,
-            name: camera_name.clone(),
-            hostname: hostname.to_string(),
-            stream_url: base_url.join("/camera/stream")?,
-            snapshot_url: base_url.join("/camera/snapshot")?,
-            online: true,
-        })
+        Ok(())
     }
 }

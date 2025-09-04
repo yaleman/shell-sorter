@@ -19,14 +19,25 @@ use tokio::{net::TcpListener, sync::RwLock};
 
 use tower_http::services::ServeDir;
 
-use crate::{OurError, OurResult, protocol::CameraType};
+use crate::{
+    OurError, OurResult,
+    protocol::CameraType,
+    web_server::{
+        all_cameras::{get_camera_brightness, set_camera_brightness},
+        config,
+        controller::{hardware_status, machine_status, trigger_next_case},
+    },
+};
 use crate::{config::Settings, protocol::GlobalMessage};
-use crate::{constants::USB_DEVICE_PREFIX_WITH_COLON, protocol};
+use crate::{
+    constants::USB_DEVICE_PREFIX_WITH_COLON, web_server::all_cameras::set_camera_view_type,
+};
 use crate::{
     shell_data::{Shell, ShellDataManager},
     web_server::middleware::no_cache_middleware,
 };
-use tracing::{debug, error, info, instrument};
+
+use crate::web_server::prelude::*;
 
 /// Application state shared across handlers
 #[derive(Clone)]
@@ -45,11 +56,6 @@ struct DashboardTemplate {
     host: String,
     port: NonZeroU16,
 }
-
-/// Config template
-#[derive(Template, WebTemplate)]
-#[template(path = "config.html")]
-struct ConfigTemplate {}
 
 /// Shell edit template
 #[derive(Template, WebTemplate)]
@@ -93,14 +99,6 @@ struct CameraInfo {
     is_selected: bool,
 }
 
-/// Generic API response
-#[derive(Serialize)]
-struct ApiResponse<T> {
-    success: bool,
-    data: Option<T>,
-    message: String,
-}
-
 /// Configuration data for API responses
 #[derive(Serialize, Deserialize)]
 struct ConfigData {
@@ -117,24 +115,6 @@ struct StatusData {
     total_sorted: u32,
 }
 
-impl<T> ApiResponse<T> {
-    fn success(data: T) -> Self {
-        Self {
-            success: true,
-            data: Some(data),
-            message: "Success".to_string(),
-        }
-    }
-    #[allow(dead_code)]
-    fn error(message: String) -> Self {
-        Self {
-            success: false,
-            data: None,
-            message,
-        }
-    }
-}
-
 /// Create a test router for integration testing
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
@@ -142,7 +122,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .nest_service("/static", ServeDir::new("shell_sorter/static"))
         // Main dashboard and pages
         .route("/", get(dashboard))
-        .route("/config", get(config_page))
+        .route("/config", get(config::config_page))
         .route("/shell-edit/{session_id}", get(shell_edit_page))
         .route("/tagging/{session_id}", get(tagging_page))
         // Machine control API
@@ -188,7 +168,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/config", post(save_config))
         .route("/api/config/cameras/{index}", delete(delete_camera_config))
         .route("/api/config/cameras", delete(clear_camera_configs))
-        .route("/api/config/reset", post(reset_config))
+        .route("/api/config/reset", post(config::reset_config))
         .layer(middleware::from_fn(no_cache_middleware))
         .with_state(state)
 }
@@ -198,7 +178,7 @@ pub async fn start_server(
     settings: Arc<RwLock<Settings>>,
     settings_filename: PathBuf,
     global_tx: tokio::sync::broadcast::Sender<crate::protocol::GlobalMessage>,
-    global_rx: Arc<tokio::sync::broadcast::Receiver<crate::protocol::GlobalMessage>>,
+    global_rx: tokio::sync::broadcast::Receiver<crate::protocol::GlobalMessage>,
 ) -> OurResult<()> {
     // Initialize ML trainer and shell data manager
     // let mut ml_trainer = MLTrainer::new(settings.clone());
@@ -220,7 +200,7 @@ pub async fn start_server(
         settings,
         settings_filename,
         global_tx,
-        global_rx,
+        global_rx: Arc::new(global_rx),
     });
 
     let app = create_router(state);
@@ -253,20 +233,6 @@ async fn dashboard(
 
     template.render().map(Html::from).map_err(|e| {
         error!("Failed to render dashboard template: {e}");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Template rendering failed",
-        )
-    })
-}
-
-async fn config_page(
-    State(_state): State<Arc<AppState>>,
-) -> Result<Html<String>, (StatusCode, &'static str)> {
-    let template = ConfigTemplate {};
-
-    template.render().map(Html::from).map_err(|e| {
-        error!("Failed to render config template: {e}");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Template rendering failed",
@@ -392,49 +358,6 @@ async fn status(State(_state): State<Arc<AppState>>) -> Json<StatusData> {
     })
 }
 
-async fn trigger_next_case(State(state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
-    match state.global_tx.send(GlobalMessage::NextCase) {
-        Ok(_) => Json(ApiResponse::success(())),
-        Err(e) => {
-            error!("Failed to trigger next case: {e}");
-            Json(ApiResponse::<()>::error(format!(
-                "Failed to trigger next case: {e}",
-            )))
-        }
-    }
-}
-
-async fn machine_status(
-    State(state): State<Arc<AppState>>,
-) -> Json<ApiResponse<crate::controller_monitor::MachineStatus>> {
-    let (responder, receiver) = tokio::sync::oneshot::channel();
-    match state
-        .global_tx
-        .send(GlobalMessage::MachineStatus(Arc::new(responder)))
-    {
-        Ok(_) => match receiver.await {
-            Ok(status) => Json(ApiResponse::success(status)),
-            Err(e) => {
-                error!("Failed to receive machine status: {e}");
-                Json(ApiResponse::error(format!(
-                    "Failed to receive machine status: {e}"
-                )))
-            }
-        },
-
-        Err(e) => {
-            error!("Failed to get machine status: {e}");
-            let fallback_status = crate::controller_monitor::MachineStatus {
-                status: "Offline".to_string(),
-                ready: false,
-                active_jobs: 0,
-                last_update: chrono::Utc::now(),
-            };
-            Json(ApiResponse::success(fallback_status))
-        }
-    }
-}
-
 async fn sensor_readings(
     State(state): State<Arc<AppState>>,
 ) -> Json<ApiResponse<crate::controller_monitor::SensorReadings>> {
@@ -463,52 +386,6 @@ async fn sensor_readings(
                     .unwrap_or(0),
             };
             Json(ApiResponse::success(fallback_readings))
-        }
-    }
-}
-
-async fn hardware_status(
-    State(state): State<Arc<AppState>>,
-) -> Json<ApiResponse<HashMap<String, String>>> {
-    let (responder, receiver) = tokio::sync::oneshot::channel();
-
-    match state
-        .global_tx
-        .send(GlobalMessage::ControllerStatus(Arc::new(responder)))
-    {
-        Ok(_) => match receiver.await {
-            Ok(status) => {
-                let settings_reader = state.settings.read().await;
-                let mut hardware_status = HashMap::new();
-                hardware_status.insert("controller".to_string(), format!("{}", status.online));
-                hardware_status.insert(
-                    "esphome_hostname".to_string(),
-                    settings_reader.esphome_hostname.clone(),
-                );
-                Json(ApiResponse::success(hardware_status))
-            }
-            Err(e) => {
-                let settings_reader = state.settings.read().await;
-                error!("Failed to receive hardware status: {e}");
-                let mut fallback_status = HashMap::new();
-                fallback_status.insert("controller".to_string(), "Error".to_string());
-                fallback_status.insert(
-                    "esphome_hostname".to_string(),
-                    settings_reader.esphome_hostname.clone(),
-                );
-                Json(ApiResponse::success(fallback_status))
-            }
-        },
-        Err(e) => {
-            let settings_reader = state.settings.read().await;
-            error!("Failed to get hardware status: {e}");
-            let mut fallback_status = HashMap::new();
-            fallback_status.insert("controller".to_string(), "Disconnected".to_string());
-            fallback_status.insert(
-                "esphome_hostname".to_string(),
-                settings_reader.esphome_hostname.clone(),
-            );
-            Json(ApiResponse::success(fallback_status))
         }
     }
 }
@@ -878,21 +755,6 @@ async fn stream_esphome_camera(
 
 #[derive(Deserialize)]
 #[allow(dead_code)]
-struct ViewTypeRequest {
-    view_type: String,
-}
-
-async fn set_camera_view_type(
-    Path(_index): Path<usize>,
-    State(_state): State<Arc<AppState>>,
-    Json(_payload): Json<ViewTypeRequest>,
-) -> Json<ApiResponse<()>> {
-    // TODO: Implement view type setting
-    Json(ApiResponse::success(()))
-}
-
-#[derive(Deserialize)]
-#[allow(dead_code)]
 struct RegionRequest {
     x: i32,
     y: i32,
@@ -1188,22 +1050,12 @@ struct SelectCamerasRequest {
 }
 
 #[derive(Deserialize)]
-struct BrightnessRequest {
-    brightness: i64,
-}
-
-#[derive(Deserialize)]
 struct SaveShellRequest {
     _session_id: String,
     brand: String,
     shell_type: String,
     include: bool,
     image_filenames: Vec<String>,
-}
-
-#[derive(Serialize)]
-struct BrightnessResponse {
-    brightness: i64,
 }
 
 async fn create_case_type(
@@ -1291,87 +1143,4 @@ async fn clear_camera_configs(State(_state): State<Arc<AppState>>) -> Json<ApiRe
     // In a full implementation, this would remove all cameras from configuration
     info!("Clear all cameras requested");
     Json(ApiResponse::success(()))
-}
-
-async fn reset_config(State(_state): State<Arc<AppState>>) -> Json<ApiResponse<()>> {
-    // For now, just acknowledge the reset request
-    // In a full implementation, this would reset configuration to defaults
-    info!("Config reset to defaults requested");
-    Json(ApiResponse::success(()))
-}
-
-async fn get_camera_brightness(
-    Path(camera_id): Path<String>,
-    State(_state): State<Arc<AppState>>,
-) -> Json<ApiResponse<BrightnessResponse>> {
-    info!("Getting brightness for camera: {}", camera_id);
-
-    // // Determine camera type and route to appropriate manager
-    // if camera_id.starts_with(USB_DEVICE_PREFIX_WITH_COLON) {
-    //     match state.usb_camera_manager.get_brightness(camera_id).await {
-    //         Ok(brightness) => {
-    //             info!("Current brightness for USB camera: {}", brightness);
-    //             Json(ApiResponse::success(BrightnessResponse { brightness }))
-    //         }
-    //         Err(e) => {
-    //             error!("Failed to get USB camera brightness: {}", e);
-    //             Json(ApiResponse::<BrightnessResponse>::error(format!(
-    //                 "Failed to get camera brightness: {e}"
-    //             )))
-    //         }
-    //     }
-    // } else {
-    //     // ESPHome cameras don't support brightness control
-    Json(ApiResponse::<BrightnessResponse>::error(
-        "ESPHome cameras do not support brightness control".to_string(),
-    ))
-    // }
-}
-
-async fn set_camera_brightness(
-    Path(camera_id): Path<String>,
-    State(state): State<Arc<AppState>>,
-    Json(payload): Json<BrightnessRequest>,
-) -> Json<ApiResponse<()>> {
-    let camera_id: protocol::CameraType = camera_id.into();
-
-    info!(
-        "Setting brightness for camera: {camera_id:?} to {}",
-        payload.brightness
-    );
-
-    // Validate brightness range (typically 0-100 or similar)
-    if payload.brightness < 0 || payload.brightness > 255 {
-        return Json(ApiResponse::<()>::error(
-            "Brightness must be between 0 and 255".to_string(),
-        ));
-    }
-
-    match camera_id.clone() {
-        protocol::CameraType::EspHome(_) => {
-            // ESPHome cameras do not support brightness control
-            Json(ApiResponse::<()>::error(
-                "ESPHome cameras do not support brightness control".to_string(),
-            ))
-        }
-        protocol::CameraType::Usb(id) => {
-            // USB cameras can have brightness set
-            info!("Setting brightness for USB camera: {id:?}");
-            match state.global_tx.send(GlobalMessage::SetUsbCameraBrightness {
-                camera_id,
-                brightness: payload.brightness,
-            }) {
-                Ok(_) => {
-                    info!("Brightness set successfully for USB camera: {id:?}");
-                    Json(ApiResponse::success(()))
-                }
-                Err(err) => {
-                    error!("Failed to set brightness for USB camera {id:?}: {err}");
-                    Json(ApiResponse::<()>::error(format!(
-                        "Failed to set brightness for USB camera {id:?}: {err}"
-                    )))
-                }
-            }
-        }
-    }
 }

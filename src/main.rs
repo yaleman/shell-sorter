@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
-use shell_sorter::camera_manager::CameraManager;
+use shell_sorter::camera_manager::EspCameraManager;
 use shell_sorter::config::Settings;
 use shell_sorter::controller_monitor::ControllerMonitor;
 use shell_sorter::server;
@@ -677,18 +677,16 @@ async fn handle_config_command(action: ConfigAction, settings: &Settings) -> Our
 }
 
 async fn start_web_server(settings: Settings, settings_filename: PathBuf) -> OurResult<()> {
+    let (global_tx, _global_rx_base) = tokio::sync::broadcast::channel(1024);
+
     // Create the controller monitor and get a handle for communication
-    let (controller_monitor, _controller_handle) = ControllerMonitor::new(settings.clone())
+    let controller_monitor = ControllerMonitor::new(settings.clone(), global_tx.clone())
         .map_err(|e| OurError::App(format!("Failed to create controller monitor: {e}")))?;
 
-    let (global_tx, global_rx_base) = tokio::sync::broadcast::channel(1024);
-
-    let global_rx = Arc::new(global_rx_base);
-
     // Create the camera manager and get a handle for communication
-    let (camera_manager, _camera_handle) = CameraManager::new(
+    let camera_manager = EspCameraManager::new(
         global_tx.clone(),
-        global_rx.clone(),
+        global_tx.subscribe(),
         settings.network_camera_hostnames.clone(),
     )
     .map_err(|e| OurError::App(format!("Failed to create camera manager: {e}")))?;
@@ -716,8 +714,8 @@ async fn start_web_server(settings: Settings, settings_filename: PathBuf) -> Our
     server::start_server(
         Arc::new(RwLock::new(settings)),
         settings_filename,
-        global_tx,
-        global_rx,
+        global_tx.clone(),
+        global_tx.subscribe(),
     )
     .await
 }

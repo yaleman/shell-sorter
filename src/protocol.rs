@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
-use crate::constants::USB_DEVICE_PREFIX_WITH_COLON;
+use crate::{config::Settings, constants::USB_DEVICE_PREFIX_WITH_COLON};
 
 #[derive(Debug, Clone, Deserialize)]
 
@@ -65,15 +66,42 @@ pub enum GlobalMessage {
     NextCase,
     DetectCameras,
     GetSensors(Arc<tokio::sync::oneshot::Sender<crate::controller_monitor::SensorReadings>>),
-    ControllerStatus(
-        Arc<tokio::sync::oneshot::Sender<crate::controller_monitor::ControllerStatus>>,
-    ),
+    ControllerStatus {
+        responder: Arc<tokio::sync::oneshot::Sender<crate::controller_monitor::ControllerStatus>>,
+    },
     MachineStatus(Arc<tokio::sync::oneshot::Sender<crate::controller_monitor::MachineStatus>>),
     SelectCameras(Vec<CameraType>),
     StartCameras(Vec<CameraType>),
     StopCameras,
-    SetUsbCameraBrightness {
+    SetCameraBrightness {
         camera_id: CameraType,
         brightness: i64,
     },
+    NewConfig(Settings),
+}
+
+/// Generic API response
+#[derive(Serialize)]
+pub(crate) struct ApiResponse<T> {
+    pub success: bool,
+    pub data: Option<T>,
+    pub message: String,
+}
+
+impl<T> ApiResponse<T> {
+    pub(crate) fn success(data: T) -> Self {
+        Self {
+            success: true,
+            data: Some(data),
+            message: "Success".to_string(),
+        }
+    }
+    #[allow(dead_code)]
+    pub(crate) fn error(message: String) -> Self {
+        Self {
+            success: false,
+            data: None,
+            message,
+        }
+    }
 }
