@@ -30,7 +30,7 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 url = { version = "2.5.4", features = ["serde"] }
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
-nokhwa = { version = "0.10.9", features = ["input-native", "output-threaded"] }
+nokhwa = { version = "0.10.10", features = ["input-native", "output-threaded"] }
 regex = "1.11.1"
 async-stream = "0.3"
 futures-util = "0.3"
