@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-askama = { version = "0.14.0", features = ["serde_json"] }
+askama = { version = "0.15.4", features = ["serde_json"] }
 askama_web = { version = "0.15.1", features = ["axum-0.8"] }
 axum = { version = "0.8.8", features = [
     "macros",
@@ -17,7 +17,7 @@ axum = { version = "0.8.8", features = [
 chrono = { version = "0.4.43", features = ["serde"] }
 clap = { version = "4.5.57", features = ["derive"] }
 dirs = "6.0.0"
-image = "0.25.6"
+image = "0.25.9"
 reqwest = { version = "0.12.22", features = ["json", "stream", "trust-dns"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.140"

@@ -147,11 +147,11 @@ impl CameraHandle {
 }
 
 impl CameraManager {
-    async fn lock_status(&self) -> tokio::sync::RwLockReadGuard<CameraStatus> {
+    async fn lock_status(&self) -> tokio::sync::RwLockReadGuard<'_, CameraStatus> {
         self.status.read().await
     }
 
-    async fn lock_status_write(&self) -> tokio::sync::RwLockWriteGuard<CameraStatus> {
+    async fn lock_status_write(&self) -> tokio::sync::RwLockWriteGuard<'_, CameraStatus> {
         self.status.write().await
     }
 

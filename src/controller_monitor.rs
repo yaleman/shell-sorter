@@ -91,7 +91,7 @@ pub struct ControllerHandle {
 
 impl ControllerHandle {
     /// Safely lock the status for reading
-    async fn lock_status(&self) -> tokio::sync::RwLockReadGuard<ControllerStatus> {
+    async fn lock_status(&self) -> tokio::sync::RwLockReadGuard<'_, ControllerStatus> {
         self.status.read().await
     }
 
@@ -126,26 +126,26 @@ impl ControllerHandle {
 
 impl ControllerMonitor {
     /// Safely lock the settings for reading
-    fn lock_settings_read(&self) -> Result<std::sync::RwLockReadGuard<Settings>, OurError> {
+    fn lock_settings_read(&self) -> Result<std::sync::RwLockReadGuard<'_, Settings>, OurError> {
         self.settings
             .read()
             .map_err(|_| OurError::App("Settings lock poisoned".to_string()))
     }
 
     /// Safely lock the settings for writing
-    fn lock_settings_write(&self) -> Result<std::sync::RwLockWriteGuard<Settings>, OurError> {
+    fn lock_settings_write(&self) -> Result<std::sync::RwLockWriteGuard<'_, Settings>, OurError> {
         self.settings
             .write()
             .map_err(|_| OurError::App("Settings lock poisoned".to_string()))
     }
 
     /// Safely lock the status for reading
-    async fn lock_status(&self) -> tokio::sync::RwLockReadGuard<ControllerStatus> {
+    async fn lock_status(&self) -> tokio::sync::RwLockReadGuard<'_, ControllerStatus> {
         self.status.read().await
     }
 
     /// Safely lock the status for writing
-    async fn lock_status_write(&self) -> tokio::sync::RwLockWriteGuard<ControllerStatus> {
+    async fn lock_status_write(&self) -> tokio::sync::RwLockWriteGuard<'_, ControllerStatus> {
         self.status.write().await
     }
 

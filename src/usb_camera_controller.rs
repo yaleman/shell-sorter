@@ -321,12 +321,12 @@ impl UsbCameraHandle {
 
 impl UsbCameraManager {
     /// Get read-only access to camera status
-    async fn get_status(&self) -> tokio::sync::RwLockReadGuard<UsbCameraStatus> {
+    async fn get_status(&self) -> tokio::sync::RwLockReadGuard<'_, UsbCameraStatus> {
         self.status.read().await
     }
 
     /// Get mutable access to camera status
-    async fn get_status_mut(&mut self) -> tokio::sync::RwLockWriteGuard<UsbCameraStatus> {
+    async fn get_status_mut(&mut self) -> tokio::sync::RwLockWriteGuard<'_, UsbCameraStatus> {
         self.status.write().await
     }
 
