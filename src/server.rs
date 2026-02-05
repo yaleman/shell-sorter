@@ -743,24 +743,22 @@ async fn select_cameras(
     }
 
     // Select ESPHome cameras if any
-    if !esphome_cameras.is_empty() {
-        if let Err(e) = state.camera_manager.select_cameras(esphome_cameras).await {
+    if !esphome_cameras.is_empty()
+        && let Err(e) = state.camera_manager.select_cameras(esphome_cameras).await {
             error!("Failed to select ESPHome cameras: {e}");
             return Json(ApiResponse::<()>::error(format!(
                 "Failed to select ESPHome cameras: {e}"
             )));
         }
-    }
 
     // Select USB cameras if any
-    if !usb_cameras.is_empty() {
-        if let Err(e) = state.usb_camera_manager.select_cameras(usb_cameras).await {
+    if !usb_cameras.is_empty()
+        && let Err(e) = state.usb_camera_manager.select_cameras(usb_cameras).await {
             error!("Failed to select USB cameras: {e}");
             return Json(ApiResponse::<()>::error(format!(
                 "Failed to select USB cameras: {e}"
             )));
         }
-    }
 
     // Save selected camera IDs to persistent configuration
     let mut user_config = Settings::load_user_config();
@@ -802,20 +800,18 @@ async fn start_cameras(
         }
 
         // Select ESPHome cameras if any
-        if !esphome_cameras.is_empty() {
-            if let Err(e) = state.camera_manager.select_cameras(esphome_cameras).await {
+        if !esphome_cameras.is_empty()
+            && let Err(e) = state.camera_manager.select_cameras(esphome_cameras).await {
                 error!("Failed to select ESPHome cameras: {e}");
                 errors.push(format!("Failed to select ESPHome cameras: {e}"));
             }
-        }
 
         // Select USB cameras if any
-        if !usb_cameras.is_empty() {
-            if let Err(e) = state.usb_camera_manager.select_cameras(usb_cameras).await {
+        if !usb_cameras.is_empty()
+            && let Err(e) = state.usb_camera_manager.select_cameras(usb_cameras).await {
                 error!("Failed to select USB cameras: {e}");
                 errors.push(format!("Failed to select USB cameras: {e}"));
             }
-        }
 
         // Save selected camera IDs to persistent configuration
         let mut user_config = Settings::load_user_config();

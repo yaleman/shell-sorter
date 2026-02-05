@@ -361,8 +361,8 @@ impl UsbCameraManager {
 
     /// Apply software brightness adjustment to an image
     fn apply_brightness_adjustment(&self, image: &mut image::RgbImage, hardware_id: &str) {
-        if let Some(&brightness_offset) = self.brightness_adjustments.get(hardware_id) {
-            if brightness_offset != 0.0 {
+        if let Some(&brightness_offset) = self.brightness_adjustments.get(hardware_id)
+            && brightness_offset != 0.0 {
                 debug!(
                     "Applying brightness adjustment of {} to camera {}",
                     brightness_offset, hardware_id
@@ -391,7 +391,6 @@ impl UsbCameraManager {
                     *pixel = image::Rgb([new_r, new_g, new_b]);
                 }
             }
-        }
     }
 
     /// Create new USB camera manager
