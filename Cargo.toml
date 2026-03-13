@@ -38,4 +38,4 @@ futures-util = "0.3"
 [dev-dependencies]
 rand = "0.10.0"
 tokio-test = "0.4.5"
-tempfile = "3.26.0"
+tempfile = "3.27.0"
