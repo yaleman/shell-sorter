@@ -500,7 +500,7 @@ impl MLTrainer {
         }
 
         // Sort by training date, newest first
-        models.sort_by(|a, b| b.training_date.cmp(&a.training_date));
+        models.sort_by_key(|model| std::cmp::Reverse(model.training_date));
 
         Ok(models)
     }

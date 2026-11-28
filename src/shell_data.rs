@@ -337,7 +337,7 @@ impl ShellDataManager {
         }
 
         // Sort by date captured, newest first
-        shells.sort_by(|a, b| b.1.date_captured.cmp(&a.1.date_captured));
+        shells.sort_by_key(|(_, shell)| std::cmp::Reverse(shell.date_captured));
 
         info!("Listed {} shell records", shells.len());
         Ok(shells)
